@@ -157,6 +157,17 @@ class TilesMixin:
             # fuer den Kopf-Schimmer – der ist raus, siehe glow_animator.)
             name = c.create_text(X0, y, anchor="nw", text=repo, font=nf,
                                  fill=INK if connected else INK_3)
+            # Klick auf den Namen holt das VS-Code-Fenster nach vorn (show_window).
+            # Der Kopf ist die einzige Stelle im Deck, die das FENSTER meint und nicht
+            # einen Agenten – bisher war er ein reines Etikett, obwohl "da hin" die
+            # naheliegendste Geste darauf ist. Auch beim getrennten Block gebunden: die
+            # Extension kann weg sein, während das Fenster noch offen ist (dann findet
+            # es _raise_window über den Titel, und der Klick hilft gerade dort).
+            # tag_bind nimmt die Item-ID direkt – der Kopf ist EIN Item, ein eigener Tag
+            # brächte nichts.
+            c.tag_bind(name, "<Button-1>", lambda e, k=w: self.show_window(k))
+            c.tag_bind(name, "<Enter>", lambda e, k=w: self._head_enter(k))
+            c.tag_bind(name, "<Leave>", lambda e: self._head_leave())
             # Knapp gehalten: der Kopf soll an SEINER Reihe kleben. Der Halo braucht RING,
             # darueber bleiben _SLIM_HEAD_GAP sichtbare Luft (siehe Konstanten).
             y += name_h + RING + self._SLIM_HEAD_GAP * s

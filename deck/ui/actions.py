@@ -30,6 +30,21 @@ class ActionsMixin:
         wf.focus_window(hwnd)
         return True
 
+    def show_window(self, win) -> None:
+        """Klick auf den Repo-Namen: das dazugehörige VS-Code-Fenster nach vorn holen
+        (ein minimiertes wird dabei wiederhergestellt – siehe focus.focus_window).
+
+        Bewusst OHNE focus_pane: der Blockkopf meint das FENSTER, nicht einen Agenten.
+        VS Code behält damit den Fokus, den es zuletzt hatte (Editor, Suche, irgendein
+        Terminal); wer eine bestimmte Pane will, klickt deren Kachel.
+
+        Findet _raise_window nichts, passiert nichts. Das ist der Fall, in dem die
+        Bindung noch steht, das Fenster aber schon zu ist (bis _cleanup_closed_windows
+        aufräumt) – dann gibt es nichts nach vorn zu holen, und ein neues VS Code
+        aufzumachen wäre eine andere Geste als die hier geklickte.
+        """
+        self._raise_window(win)
+
     def focus_slot(self, slot) -> None:
         win = slot[0]
         if not self.bindings.get(win):

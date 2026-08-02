@@ -47,6 +47,28 @@ class HoverMixin:
             except tk.TclError:
                 pass          # Items schon weg (Redraw dazwischen) -> nichts zu tun
 
+    def _head_enter(self, win) -> None:
+        """Zeiger auf dem Repo-Namen. Der Kopf ist seit dem Klick-Binding kein bloßes
+        Etikett mehr, also muss er sich auch so anfühlen: Handzeiger und derselbe
+        Gruppen-Hinweis wie bei den Kacheln.
+
+        Ein Kachel-Tooltip wird hier HART ausgeblendet (nicht verzögert wie in
+        _hover_leave): wir sind sicher nicht mehr über einer Kachel – der Kopf ist ein
+        eigenes Item, kein Nachbar unter demselben t_-Tag. _hide_prompt_tip nimmt dabei
+        die Hervorhebung mit zurück, darum wird sie danach neu gesetzt."""
+        if self._dragging():
+            return                    # beim Umsortieren nichts umfärben
+        self._hide_prompt_tip()
+        self._highlight_group(win)
+        self.deck.configure(cursor="hand2")
+
+    def _head_leave(self) -> None:
+        """Zeiger verlässt den Repo-Namen: Hervorhebung und Zeiger zurück. Sofort und
+        ohne Timer – anders als bei den Kacheln gibt es hier keine gestapelten Items,
+        zwischen denen Tk ein Leave/Enter-Paar feuern könnte."""
+        self._highlight_group(None)
+        self.deck.configure(cursor="")
+
     def _hover_enter(self, slot) -> None:
         """Zeiger betritt ein Item der Kachel. Wegen des geteilten t_-Tags feuert Tk das
         AUCH beim Wechsel zwischen den gestapelten Items DERSELBEN Kachel – dann ist
