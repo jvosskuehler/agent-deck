@@ -201,7 +201,8 @@ if (-not $py) {
 # ── 3. Extension ─────────────────────────────────────────────────────────────
 Step '3/5  VS-Code-Extension'
 
-$srcJs = Join-Path $Here 'extension\extension.js'
+# Die Hauptdatei steht stellvertretend fuer "ueberhaupt installiert"; verglichen wird
+# darunter der ganze Ordner.
 $dstJs = Join-Path $ExtDst 'extension.js'
 
 if ($Remove) {
@@ -213,22 +214,44 @@ if ($Remove) {
 } elseif ($Check) {
     if (-not (Test-Path $dstJs)) {
         Fail "Extension nicht installiert ($ExtDst)"
-    } elseif ((Get-FileHash $srcJs).Hash -ne (Get-FileHash $dstJs).Hash) {
-        # Genau dieses Fehlerbild stand schon zweimal hinter "verbindet nicht mehr".
-        Fail 'Installierte Extension weicht vom Repo ab - install.ps1 neu laufen lassen, dann Reload Window.'
     } else {
-        Ok 'Extension-Ordner ist da und aktuell'
+        # ALLE Dateien vergleichen, nicht nur extension.js. Die Extension besteht aus
+        # mehreren Modulen (detect.js, killable.js), und ein fehlendes davon ist kein
+        # Teilausfall: `require` wirft beim Aktivieren, VS Code laedt die Extension GAR
+        # NICHT - auch die Bruecke zum Panel ist dann tot. Ein Check, der nur die
+        # Hauptdatei ansieht, meldete dabei gruen. Dieselbe Sorte blinder Fleck wie der
+        # Ordner ohne Registratur-Eintrag.
+        $fehlend = @(); $abweichend = @()
+        foreach ($f in Get-ChildItem (Join-Path $Here 'extension') -File) {
+            $dst = Join-Path $ExtDst $f.Name
+            if (-not (Test-Path $dst)) { $fehlend += $f.Name }
+            elseif ((Get-FileHash $f.FullName).Hash -ne (Get-FileHash $dst).Hash) { $abweichend += $f.Name }
+        }
+        # Genau dieses Fehlerbild stand schon zweimal hinter "verbindet nicht mehr".
+        if ($fehlend) {
+            Fail "Extension unvollstaendig - fehlt: $($fehlend -join ', '). install.ps1 neu laufen lassen, dann Reload Window."
+        } elseif ($abweichend) {
+            Fail "Installierte Extension weicht vom Repo ab ($($abweichend -join ', ')) - install.ps1 neu laufen lassen, dann Reload Window."
+        } else {
+            Ok "Extension-Ordner ist da und aktuell (alle Dateien)"
+        }
     }
     # Der Ordner allein beweist NICHTS: geladen wird, was in VS Codes extensions.json
     # steht. Am 2026-07-30 zeigte der Eintrag dort auf einen umbenannten Ordner, und
     # dieser Schritt meldete gruen, waehrend VS Code die Extension nie geladen hat.
     Invoke-DeckTool 'deck.ops.vscode_ext' @('--check')
 } else {
-    $vorher = if (Test-Path $dstJs) { (Get-FileHash $dstJs).Hash } else { '' }
+    # Bilanz ueber ALLE Dateien ziehen, sonst meldet ein Lauf "war schon aktuell",
+    # weil extension.js gleich blieb - waehrend ein neues Modul daneben fehlt.
+    $vorher = @{}
+    if (Test-Path $ExtDst) {
+        foreach ($f in Get-ChildItem $ExtDst -File) { $vorher[$f.Name] = (Get-FileHash $f.FullName).Hash }
+    }
     New-Item -ItemType Directory -Force -Path $ExtDst | Out-Null
     Copy-Item (Join-Path $Here 'extension\*') $ExtDst -Recurse -Force
-    if ($vorher -eq (Get-FileHash $dstJs).Hash) { Ok 'Extension war schon aktuell' }
-    else { Ok "Extension kopiert -> $ExtDst" }
+    $neu = @(Get-ChildItem $ExtDst -File | Where-Object { $vorher[$_.Name] -ne (Get-FileHash $_.FullName).Hash })
+    if (-not $neu) { Ok 'Extension war schon aktuell' }
+    else { Ok "Extension kopiert -> $ExtDst ($($neu.Name -join ', '))" }
     # Erst kopieren, DANN registrieren - umgekehrt legt der Lauf einen Eintrag auf einen
     # Ordner an, den es noch nicht gibt, und VS Code bricht beim Laden ab.
     Invoke-DeckTool 'deck.ops.vscode_ext'

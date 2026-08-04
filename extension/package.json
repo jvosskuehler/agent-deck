@@ -2,7 +2,7 @@
   "name": "agent-deck-bridge",
   "displayName": "Agent Deck Bridge",
   "description": "Bruecke zwischen dem Agent-Deck-Panel und den Claude-Code-Terminals in diesem VS-Code-Fenster.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },
   "activationEvents": ["onStartupFinished"],
@@ -10,7 +10,11 @@
   "contributes": {
     "commands": [
       { "command": "agentDeck.createAgent", "title": "Agent Deck: Neues Claude-Terminal anlegen" },
-      { "command": "agentDeck.createAgents", "title": "Agent Deck: Agent-Terminals anlegen (4 Splits)" }
+      { "command": "agentDeck.createAgents", "title": "Agent Deck: Agent-Terminals anlegen (4 Splits)" },
+      { "command": "agentDeck.killPortBlockers", "title": "Agent Deck: Port-Blocker beenden" }
+    ],
+    "keybindings": [
+      { "command": "agentDeck.killPortBlockers", "key": "ctrl+alt+k" }
     ],
     "configuration": {
       "title": "Agent Deck",

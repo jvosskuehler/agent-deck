@@ -81,6 +81,7 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 | Griff: Aussehen | `render/capsule.py`, Maße und Masken in `render/capsule_masks.py` |
 | Griff: Verhalten | `dock/handle.py`, Schwappen in `dock/wave.py` |
 | ein neues Kommando an die Extension | `domain/protocol.py` **und** `extension/extension.js` |
+| wen `Ctrl+Alt+K` zum Abschießen anbietet | `extension/killable.js` (getestet), Dialog in `extension/extension.js` |
 | Hook-Verhalten (was gemeldet wird) | `claude/hooks/report.py` |
 | welche Hooks **eingetragen** werden | `claude/hook_setup.py` (`HOOKS`) — und `docs/SETUP.md`-Anhang nachziehen |
 | ob VS Code die Extension überhaupt **lädt** | `ops/vscode_ext.py` (Eintrag in `extensions.json`) — der Ordner allein beweist nichts |
@@ -177,6 +178,24 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
    Extensions des Nutzers (also ergänzen, nie neu schreiben — und eine Datei, die nicht
    als JSON-Array liest, gar nicht anfassen), und eine Reparatur wirkt erst nach
    „Developer: Reload Window", pro Fenster.
+
+   Derselbe blinde Fleck eine Ebene tiefer: die Extension ist **mehr als eine Datei**
+   (`extension.js`, `detect.js`, `killable.js`). Fehlt eines der Nebenmodule, ist das
+   kein Teilausfall — `require` wirft beim Aktivieren, und VS Code lädt die Extension
+   **gar nicht**, samt Panel-Brücke. `install.ps1 -Check` vergleicht darum seit
+   2026-08-03 **jede** Datei des Ordners, nicht mehr nur `extension.js`; die
+   Kopier-Bilanz („war schon aktuell") zählt ebenfalls über alle.
+
+8. **Was `Ctrl+Alt+K` anbietet, ist eine Sicherheitsfrage.** Der Befehl beendet
+   Prozesse — und im Prozessbaum unter VS Code laufen die Claude-Sessions des Decks.
+   Die Auswahlregeln stehen darum in `extension/killable.js`, getrennt vom Dialog und
+   getestet (`tests/test_extension_killable.py`, über `node`). Drei Sperren, die
+   bleiben müssen: **Claude** (auch als `node …\claude\cli.js` — der Name allein
+   genügt nicht), **Sitzung 0** (dort hält `lsass.exe` einen Port, und es zu beenden
+   ist ein Bluescreen) und der **Broker-Port**. Angeboten wird nur, wer wirklich einen
+   TCP-Port hält; alles andere wäre eine Liste mit 100 Zeilen, in der man den einen
+   Blocker sucht. Wer die Regeln lockert, macht aus einem Werkzeug einen Fußschuss —
+   ein zu enger Filter kostet nur einen Blick in den Task-Manager.
 
 ## Fallen, die schon einmal wehgetan haben
 
