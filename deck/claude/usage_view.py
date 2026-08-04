@@ -7,6 +7,7 @@ rein, Zeile raus.
 Zahlen fuer Menschen brauchen einen festen Punkt als Dezimaltrenner; eine
 locale-abhaengige Formatierung zeigt auf einem deutschen System sonst $0,15 statt $0.15.
 """
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,29 +18,63 @@ from deck import i18n
 _GREEN, _AMBER, _RED, _GRAY = "#6ee7a8", "#ffc48a", "#ff6b6b", "#8b8b99"
 _SEVERITY_COLORS = {"normal": _GREEN, "warning": _AMBER, "critical": _RED}
 
+# Ab diesem Datenalter nennt der Tooltip den Stand. Darunter ist Alter kein Befund:
+# der gemeinsame Poller haelt seinen Cache regulaer 90 s und im 429-Backoff bis
+# 10 Min. — eine Stand-Zeile bei jedem Hover waere Rauschen.
+STALE_AFTER = 900
 
-def fmt_reset(iso: str | None, now: Any = None) -> str:
-    """ISO-Zeit -> 'X Tg. Y Std.' / 'X Std. Y Min.' / 'X Min.' relativ zu now
-    (tz-aware datetime; Default = jetzt UTC). Leer/kaputt -> ''; Vergangenheit ->
-    'jetzt'. now injizierbar, damit Tests nicht von der Wanduhr abhaengen."""
-    if not iso:
-        return ""
-    try:
-        dt = datetime.fromisoformat(iso)
-    except (ValueError, TypeError):
-        return ""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
-    now = now or datetime.now(UTC)
-    delta = (dt - now).total_seconds()
-    if delta <= 0:
-        return i18n.L("jetzt", "now")
-    d, h, m = int(delta // 86400), int((delta % 86400) // 3600), int((delta % 3600) // 60)
+
+def _fmt_span(seconds: float) -> str:
+    """Sekunden -> 'X Tg. Y Std.' / 'X Std. Y Min.' / 'X Min.'; die gemeinsame
+    Zerlegung von fmt_reset (Zukunft) und fmt_age (Vergangenheit)."""
+    d, h, m = int(seconds // 86400), int((seconds % 86400) // 3600), int((seconds % 3600) // 60)
     if d:
         return i18n.L(f"{d} Tg. {h} Std.", f"{d}d {h}h") if h else i18n.L(f"{d} Tg.", f"{d}d")
     if h:
         return i18n.L(f"{h} Std. {m} Min.", f"{h}h {m}min") if m else i18n.L(f"{h} Std.", f"{h}h")
     return i18n.L(f"{m} Min.", f"{m}min")
+
+
+def _as_utc(iso: str | None) -> datetime | None:
+    """ISO-Zeit -> tz-aware datetime; None bei leer/kaputt. Naive Zeiten gelten als
+    UTC (die API liefert Offsets, aber der Parser soll daran nicht haengen)."""
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        return None
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
+
+
+def fmt_reset(iso: str | None, now: Any = None) -> str:
+    """ISO-Zeit -> 'X Tg. Y Std.' / 'X Std. Y Min.' / 'X Min.' relativ zu now
+    (tz-aware datetime; Default = jetzt UTC). Leer/kaputt -> ''; Vergangenheit ->
+    'jetzt'. now injizierbar, damit Tests nicht von der Wanduhr abhaengen."""
+    dt = _as_utc(iso)
+    if dt is None:
+        return ""
+    delta = (dt - (now or datetime.now(UTC))).total_seconds()
+    if delta <= 0:
+        return i18n.L("jetzt", "now")
+    return _fmt_span(delta)
+
+
+def fmt_age(ts: Any, now: Any = None, min_seconds: float = STALE_AFTER) -> str:
+    """Unix-Sekunden -> 'vor X Std. Y Min.'. Leer, wenn kein Zeitstempel vorliegt
+    oder die Daten juenger als min_seconds sind (siehe STALE_AFTER)."""
+    if not isinstance(ts, (int, float)):
+        return ""
+    if isinstance(now, datetime):
+        now_s = now.timestamp()
+    elif isinstance(now, (int, float)):
+        now_s = float(now)
+    else:
+        now_s = time.time()
+    age = now_s - ts
+    if age < min_seconds:
+        return ""
+    return i18n.L(f"vor {_fmt_span(age)}", f"{_fmt_span(age)} ago")
 
 
 def severity_color(severity: str | None, percent: float | None) -> str:
@@ -113,8 +148,43 @@ def parse_usage(data: dict[str, Any]) -> dict[str, Any]:
                            "label": i18n.L("Woche", "Week"),
                            "percent": _pct(seven["utilization"]), "severity": "",
                            "resets_at": seven.get("resets_at"), "active": False})
-    session = next((lim for lim in limits if lim["group"] == "session" or lim["kind"] == "session"), None)
-    return {"session": session, "limits": limits}
+    return {"session": session_of(limits), "limits": limits}
+
+
+def session_of(limits: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Das Session-Limit aus einer Limit-Liste (oder None). Eigene Funktion, weil
+    die Auswahl nach dem Entwerten (expire_limits) noch einmal gebraucht wird."""
+    return next((lim for lim in limits
+                 if lim.get("group") == "session" or lim.get("kind") == "session"), None)
+
+
+def expire_limits(limits: list[dict[str, Any]],
+                  now: Any = None) -> list[dict[str, Any]]:
+    """Limits, deren Reset-Zeitpunkt VORBEI ist, verlieren Prozentwert und Ampel
+    (und werden mit stale=True markiert).
+
+    Das ist keine Vorsicht, sondern Arithmetik: hinter dem Reset zaehlt die API ein
+    neues Fenster ab 0, ein zwischengespeicherter Wert von davor beschreibt also
+    nichts mehr. Ihn weiter anzuzeigen ist schlimmer als '—', denn er steht
+    typischerweise zu HOCH — genau darum war der Fehler am 2026-08-05 nicht zu
+    sehen: das Deck zeigte 48 % aus dem Fenster von gestern, waehrend das laufende
+    bei 13 % stand. Eine Zahl, die plausibel aussieht, meldet sich nicht selbst.
+
+    Der Reset-Zeitpunkt ist der Prueffaden, NICHT das Datenalter: ein 20 Minuten
+    alter Wochenwert ist brauchbar, ein 20 Minuten alter Session-Wert hinter dem
+    Reset nicht. Ist kein Reset bekannt (resets_at fehlt), bleibt das Limit stehen —
+    Unwissen ist kein Grund zu entwerten.
+
+    now injizierbar (tz-aware datetime), damit Tests nicht an der Wanduhr haengen.
+    """
+    now = now or datetime.now(UTC)
+    out = []
+    for lim in limits:
+        dt = _as_utc(lim.get("resets_at"))
+        if dt is not None and (dt - now).total_seconds() <= 0:
+            lim = dict(lim, percent=None, severity="", stale=True)
+        out.append(lim)
+    return out
 
 
 def _keep_in_tooltip(lim: dict[str, Any]) -> bool:
@@ -140,7 +210,13 @@ def tooltip_text(snap: dict[str, Any], now: Any = None) -> str:
         if reset:
             line += i18n.L(f"  ·  Reset in {reset}", f"  ·  resets in {reset}")
         lines.append(line)
-    if snap.get("error"):
-        lines.append(i18n.L(f"(letzter Wert – {snap['error']})",
-                            f"(last value – {snap['error']})"))
+    # Fusszeile: Stand und/oder Fehlergrund. Sie ist die einzige Stelle, an der ein
+    # '— %' seinen Grund nennt — ohne sie sieht ein eingefrorener Wert genauso aus
+    # wie ein frischer.
+    age = fmt_age(snap.get("ts"), now)
+    err = snap.get("error")
+    if age or err:
+        note = i18n.L(f"Stand {age}", f"as of {age}") if age \
+            else i18n.L("letzter Wert", "last value")
+        lines.append(f"({note} – {err})" if err else f"({note})")
     return "\n".join(lines)

@@ -215,6 +215,27 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
   Fehler *im Aufruf* wie ein fehlendes Python. `Try-Run` senkt die Preference seither
   lokal ab und die Meldung gibt den Wortlaut mehrzeilig aus. Merksatz: **die ganze
   Ausgabe zeigen** — die Diagnose steht selten in Zeile 1.
+- **Ein gecachter Usage-Wert hinter seinem Reset ist keine Zahl mehr, sondern eine
+  Behauptung.** Der optionale gemeinsame Poller (siehe `deck/claude/usage.py`, `_shared`)
+  liefert bei HTTP 429 bewusst den **letzten** Wert weiter und vermerkt den Fehler
+  daneben — er gibt dazu `data_ts` und `error` heraus. `poll_once` las beides nicht:
+  es setzte `ts=time.time()` (das ist der Cache-*Lese*zeitpunkt, nicht der des Abrufs)
+  und `error=None`. Damit zeigte das Deck am 2026-08-05 stundenalte 48 % als frisch und
+  grün, während das laufende Fenster bei 13 % stand; der Tooltip hat für diesen Fall
+  sogar eine Zeile („letzter Wert – …"), die nie erschien. **Eine Zahl, die plausibel
+  aussieht, meldet sich nicht selbst** — hier war die Anzeige die letzte Instanz.
+  Seither entwertet `usage_view.expire_limits` jedes Limit, dessen `resets_at` vorbei
+  ist (Prozent → `None`, also graues „—"), und `_apply` reicht Datenzeit und Fehler
+  durch. Prüffaden ist der **Reset-Zeitpunkt**, nicht das Datenalter: ein 20 Minuten
+  alter Wochenwert ist brauchbar, ein Session-Wert hinter dem Reset nicht.
+
+  Zwei Anschlussregeln: Die Entwertung sitzt **nicht** in `parse_usage` (das übersetzt
+  nur — gleiche Eingabe, gleiche Ausgabe, keine Uhr), sondern beim Übernehmen in den
+  Snapshot, wo die Frage an die Uhr hingehört. Und das Deck **pollt bei altem Cache
+  nicht selbst nach**: genau dagegen existiert der gemeinsame Poller. Der Endpoint ist
+  eng limitiert — gemessen am 2026-08-05 gingen 3 Abrufe im 90-s-Takt durch, danach
+  kippte er für rund eine Stunde auf 429 (220 von 399 Abrufen im Log). Wer hier einen
+  Direktabruf „zur Sicherheit" einbaut, verlängert die Sperre, statt sie zu heilen.
 - **`SO_REUSEADDR` ist in `deck/net/broker.py` schädlich.** Unter Windows erlaubt die
   Option zwei Listener auf demselben Port; „Port belegt → still deaktiviert" greift dann
   nicht, und Extensions landen beim toten Panel. Der Guard dagegen ist

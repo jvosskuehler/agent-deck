@@ -44,7 +44,7 @@ from typing import Any
 
 from deck import i18n
 from deck.claude.usage_token import NoTokenError, read_oauth_token
-from deck.claude.usage_view import parse_usage
+from deck.claude.usage_view import expire_limits, parse_usage, session_of
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 
@@ -177,15 +177,13 @@ class UsagePoller:
                     self._fail(err or i18n.L("warte auf Daten…", "waiting for data…"),
                                hard=False)
                 return
-            # Gueltige Zahl aus dem gemeinsamen Cache (bleibt bis zum Reset korrekt,
-            # auch wenn der letzte Abruf ein 429 war).
-            parsed = parse_usage(data)
-            sess = parsed["session"]
-            self._set(state="ok",
-                      session_percent=(sess["percent"] if sess else None),
-                      session_severity=(sess["severity"] if sess else ""),
-                      session_resets_at=(sess["resets_at"] if sess else None),
-                      limits=parsed["limits"], error=None, ts=time.time())
+            # Zahl aus dem gemeinsamen Cache. Sie kann ALT sein: bei 429 laesst der
+            # gemeinsame Poller den letzten Wert stehen und vermerkt nur den Fehler.
+            # Beides gehoert darum in den Snapshot — 'data_ts' als echte Datenzeit
+            # (nicht 'jetzt', das ist nur der Cache-Lesezeitpunkt) und 'err', auch
+            # wenn Daten da sind. Wer den Fehler hier verschluckt, laesst das Deck
+            # einen eingefrorenen Wert als frisch ausgeben.
+            self._apply(data, ts=snap.get("data_ts"), error=err or None)
             return
 
         # ── Fallback: lokaler Direktabruf (shared-Modul nicht gefunden) ──
@@ -197,13 +195,7 @@ class UsagePoller:
                     data = fetch_usage(read_oauth_token(force=True))
                 else:
                     raise
-            parsed = parse_usage(data)
-            sess = parsed["session"]
-            self._set(state="ok",
-                      session_percent=(sess["percent"] if sess else None),
-                      session_severity=(sess["severity"] if sess else ""),
-                      session_resets_at=(sess["resets_at"] if sess else None),
-                      limits=parsed["limits"], error=None, ts=time.time())
+            self._apply(data, ts=time.time(), error=None)   # gerade selbst geholt
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
                 self._fail(i18n.L("Token ungueltig – 'claude auth login'",
@@ -220,6 +212,22 @@ class UsagePoller:
                               "Not signed in – run 'claude auth login'"), hard=True)
         except Exception as e:
             self._fail(f"{type(e).__name__}", hard=False)
+
+    def _apply(self, data: dict[str, Any], *, ts: float | None,
+               error: str | None) -> None:
+        """Geparste Antwort in den Snapshot legen — abgelaufene Limits entwertet.
+
+        Die Entwertung sitzt hier und nicht in parse_usage, weil parse_usage die
+        Antwort NUR uebersetzt (gleiche Eingabe, gleiche Ausgabe, keine Uhr). Ob ein
+        Wert noch gilt, ist eine Frage an die Uhr — und die stellt sich genau beim
+        Uebernehmen in den Snapshot."""
+        limits = expire_limits(parse_usage(data)["limits"])
+        sess = session_of(limits)
+        self._set(state="ok" if not error else "error",
+                  session_percent=(sess["percent"] if sess else None),
+                  session_severity=(sess["severity"] if sess else ""),
+                  session_resets_at=(sess["resets_at"] if sess else None),
+                  limits=limits, error=error, ts=ts)
 
     def _fail(self, msg: str, hard: bool) -> None:
         with self._lock:

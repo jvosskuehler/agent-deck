@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import helpers  # noqa: F401 - Import MIT Absicht: legt die Repo-Wurzel auf den
 
 # sys.path und nagelt die Deck-Sprache auf Deutsch.
+from deck.claude import usage
 from deck.claude import usage_token as utok
 from deck.claude import usage_view as uview
 
@@ -86,6 +87,106 @@ def test_usage_tooltip_text():
 def test_usage_tooltip_error():
     txt = uview.tooltip_text({"state": "error", "limits": [], "error": "nicht angemeldet"})
     assert "nicht angemeldet" in txt
+
+
+# ── Alte Werte: die Falle vom 2026-08-05 ─────────────────
+def test_usage_limit_hinter_dem_reset_verliert_seine_zahl():
+    """Der Kern des Fehlers: hinter dem Reset zaehlt die API ein neues Fenster ab 0,
+    ein gecachter Wert von davor beschreibt nichts mehr. Er darf nicht stehenbleiben —
+    er stand zu hoch (48 % von gestern statt 13 %) und sah dabei voellig normal aus."""
+    base = datetime(2026, 7, 21, 23, 30, tzinfo=UTC)      # NACH dem Session-Reset (23:00)
+    limits = uview.expire_limits(uview.parse_usage(_USAGE_SAMPLE)["limits"], base)
+    sess = uview.session_of(limits)
+    assert sess["percent"] is None, "der Wert hinter dem Reset muss weg"
+    assert sess["severity"] == "" and sess["stale"] is True
+    # Die Woche laeuft noch (Reset am 28.) -> unangetastet.
+    woche = next(lim for lim in limits if lim["kind"] == "weekly_all")
+    assert woche["percent"] == 15 and not woche.get("stale")
+
+
+def test_usage_limit_vor_dem_reset_bleibt_unangetastet():
+    base = datetime(2026, 7, 21, 21, 55, tzinfo=UTC)      # VOR dem Reset
+    limits = uview.expire_limits(uview.parse_usage(_USAGE_SAMPLE)["limits"], base)
+    assert uview.session_of(limits)["percent"] == 91
+    assert all(not lim.get("stale") for lim in limits)
+
+
+def test_usage_limit_ohne_reset_wird_nicht_entwertet():
+    """Unwissen ist kein Grund zu entwerten: fehlt resets_at, bleibt der Wert stehen.
+    (Das modell-spezifische Wochenlimit kommt ohne Reset-Zeit.)"""
+    limits = uview.expire_limits([{"kind": "weekly_scoped", "group": "weekly",
+                                   "percent": 7, "severity": "normal",
+                                   "resets_at": None, "active": True}])
+    assert limits[0]["percent"] == 7 and not limits[0].get("stale")
+    # Kaputte Zeitangabe ebenso — nicht raten.
+    kaputt = uview.expire_limits([{"kind": "session", "group": "session", "percent": 7,
+                                   "severity": "normal", "resets_at": "murks",
+                                   "active": True}])
+    assert kaputt[0]["percent"] == 7
+
+
+def test_usage_alter_erst_ab_der_schwelle():
+    """Alter ist im Normalbetrieb kein Befund (der gemeinsame Poller cacht 90 s und
+    haelt im 429-Backoff bis 10 Min.) — erst darueber nennt der Tooltip den Stand."""
+    now = 1_000_000.0
+    assert uview.fmt_age(now - 60, now) == ""                    # frisch -> nichts
+    assert uview.fmt_age(now - 300, now) == ""                    # Backoff -> noch normal
+    assert uview.fmt_age(now - 3600, now) == "vor 1 Std."
+    assert uview.fmt_age(now - 5400, now) == "vor 1 Std. 30 Min."
+    assert uview.fmt_age(None, now) == "" and uview.fmt_age("alt", now) == ""
+
+
+def test_usage_tooltip_nennt_stand_und_grund():
+    """Ohne diese Zeile sieht ein eingefrorener Wert wie ein frischer aus."""
+    base = datetime(2026, 7, 21, 21, 55, tzinfo=UTC)
+    limits = uview.parse_usage(_USAGE_SAMPLE)["limits"]
+    alt = {"state": "error", "limits": limits, "error": "Rate-Limit",
+           "ts": base.timestamp() - 3600}
+    txt = uview.tooltip_text(alt, base)
+    assert "(Stand vor 1 Std. – Rate-Limit)" in txt, txt
+    # Fehler ohne bekannte Datenzeit -> die alte Formulierung bleibt.
+    ohne_ts = uview.tooltip_text({"limits": limits, "error": "Rate-Limit"}, base)
+    assert "(letzter Wert – Rate-Limit)" in ohne_ts, ohne_ts
+    # Frische Daten ohne Fehler -> gar keine Fusszeile.
+    frisch = uview.tooltip_text({"limits": limits, "error": None,
+                                 "ts": base.timestamp()}, base)
+    assert "(" not in frisch, frisch
+
+
+def test_usage_poller_uebernimmt_datenzeit_und_fehler_des_gemeinsamen_pollers():
+    """Die Naht, an der es riss: der gemeinsame Poller laesst bei 429 den LETZTEN Wert
+    stehen und vermerkt nur den Fehler. Wer beim Uebernehmen 'data_ts' durch 'jetzt'
+    ersetzt und 'error' auf None setzt, macht daraus eine frische, falsche Zahl."""
+    jetzt = time.time()
+    vorbei = datetime.fromtimestamp(jetzt - 1800, UTC).isoformat()   # Reset vor 30 Min.
+    laeuft = datetime.fromtimestamp(jetzt + 86400, UTC).isoformat()
+    data = {"limits": [
+        {"kind": "session", "group": "session", "percent": 48, "severity": "normal",
+         "resets_at": vorbei, "is_active": True},
+        {"kind": "weekly_all", "group": "weekly", "percent": 9, "severity": "normal",
+         "resets_at": laeuft, "is_active": False}]}
+    alt_ts = jetzt - 3600
+
+    class _Attrappe:
+        @staticmethod
+        def get_usage():
+            return {"data": data, "data_ts": alt_ts, "error": "Rate-Limit"}
+
+    ruhe = usage._shared_mod
+    try:
+        usage._shared_mod = _Attrappe
+        p = usage.UsagePoller()
+        p.poll_once()
+        snap = p.snapshot()
+    finally:
+        usage._shared_mod = ruhe
+
+    assert snap["ts"] == alt_ts, "die Datenzeit muss die des ABRUFS sein, nicht jetzt"
+    assert snap["error"] == "Rate-Limit", "der Fehler darf nicht verschluckt werden"
+    assert snap["session_percent"] is None, "48 % aus dem alten Fenster sind keine Zahl"
+    assert snap["session_severity"] == ""        # -> graues '—' statt gruener Ampel
+    woche = next(lim for lim in snap["limits"] if lim["kind"] == "weekly_all")
+    assert woche["percent"] == 9, "die Woche laeuft weiter und bleibt gueltig"
 
 
 # ── claude_usage: Token der Claude-Code-CLI ──────────────
