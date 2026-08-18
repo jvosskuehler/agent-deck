@@ -50,7 +50,8 @@ from deck.ui.connect import ConnectMixin
 from deck.ui.hover import HoverMixin
 from deck.ui.layout import LayoutMixin
 from deck.ui.refresh import RefreshMixin
-from deck.ui.reorder import TileDrag
+from deck.ui.reorder import TileDrag, bind_dragging
+from deck.ui.reorder_blocks import BlockDrag
 from deck.ui.settings_dialog import SettingsDialog
 from deck.ui.ticket import TicketMixin
 from deck.ui.tile_draw import TileRenderer
@@ -85,6 +86,7 @@ class AgentDeck(
         self.slot_effort = self.store.effort      # Slot -> gemerktes Effort ("xhigh"/"ultracode")
         self.tickets = self.store.tickets         # Slot -> manuell zugewiesene Ticket-ID
         self.order = self.store.order             # {win: [slot, …]} vom Nutzer gezogene Reihenfolge
+        self.win_order = self.store.win_order     # [repo, …] gezogene Reihenfolge der Repo-Bloecke
         self._found = {}                          # Slot -> vom Agenten gemeldete ID (state/<slot>.ticket)
         self._worktrees = {}                      # Slot -> gemeldeter worktree-Pfad (state/<slot>.worktree); Ticket-Anzeige haengt daran
         self._wt_gone_since = {}                  # Slot -> ts, seit wann worktree-Marker ohne lebenden Agenten (Orphan-Grace)
@@ -293,6 +295,13 @@ class AgentDeck(
             self.root, self.deck, self.tiles, self.order, self.store,
             focus=self.focus_slot, repaint=self._paint_once,
             ordered_slots=self._ordered_slots, hide_tip=self._hide_prompt_tip)
+        # Dasselbe eine Ebene höher: die Repo-Blöcke untereinander. Griff ist der
+        # Repo-Name - Klick holt das Fenster nach vorn, Ziehen sortiert.
+        self.blocks = BlockDrag(
+            self.root, self.deck, self.win_items, self.win_order, self.store,
+            raise_window=self.show_window, repaint=self._paint_once,
+            ordered_windows=self._ordered_windows, block_key=self._block_key,
+            hide_tip=self._hide_prompt_tip)
         # Sechs Interaktionen hat eine Kachel - hier stehen sie an einer Stelle, statt in
         # tag_bind-Zeilen mitten im Zeichencode.
         self.tile_renderer = TileRenderer(
@@ -300,12 +309,10 @@ class AgentDeck(
             on_new=self.create_agent, on_close=self.close_agent,
             on_press=self.drag.press, on_menu=self._card_menu,
             on_enter=self._hover_enter, on_leave=self._hover_leave)
-        # Kachel-Drag&Drop: Motion/Release EINMAL fest am Canvas (nicht je Kachel neu),
-        # damit kein Handler-Stapel entsteht und die Events auch kommen, wenn der Zeiger
-        # die gezogene Kachel kurz verlaesst. Beide sind untaetig, solange TileDrag keinen
-        # ist. Der Press liegt als tag_bind auf jeder Kachel (siehe _draw_tile).
-        self.deck.bind("<B1-Motion>", self.drag.motion)
-        self.deck.bind("<ButtonRelease-1>", self.drag.release)
+        # Drag&Drop: Motion/Release EINMAL fest am Canvas für BEIDE Dragger (Begründung
+        # in reorder.bind_dragging). Die Press-Bindings liegen dort, wo der Griff ist -
+        # auf jeder Kachel (_draw_tile) und auf jedem Repo-Namen (_render_agents_slim).
+        bind_dragging(self.deck, (self.drag, self.blocks))
 
         # Untere Leiste: EIN durchgehender Streifen ueber die volle Breite (kein
         # freistehendes Chip-Paar mehr). Links die Claude-Nutzung (Session-Auslastung,
@@ -331,11 +338,15 @@ class AgentDeck(
 
     # ── Panel neu starten ───────────────────────────────
     def _dragging(self) -> Any:
-        """Zieht der Nutzer gerade eine Kachel? Schmale Fassade auf TileDrag.
+        """Zieht der Nutzer gerade? Schmale Fassade auf die zwei Dragger (Kacheln
+        waagerecht, Repo-Blöcke senkrecht).
 
         Vier Stellen fragen das - Hover, Layout, der Poll-Takt und das Dock über
-        app._dragging(). Keine davon soll wissen müssen, wo der Drag-Zustand liegt."""
-        return self.drag.dragging()
+        app._dragging(). Für alle vier zählt nur, DASS gezogen wird: sie halten dann ihr
+        Neuzeichnen zurück, und ein delete('all') mitten im Zug zerreißt beide Gesten
+        gleichermaßen. Keine davon soll wissen müssen, wo der Zustand liegt oder dass es
+        zwei davon gibt."""
+        return self.drag.dragging() or self.blocks.dragging()
 
     def _open_settings(self) -> None:
         """Den Einstellungs-Dialog aufmachen.

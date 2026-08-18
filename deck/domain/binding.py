@@ -21,6 +21,7 @@ EFFORT_FILE = os.path.join(_DIR, "slot_effort.json")
 SETTINGS_FILE = os.path.join(_DIR, "deck_settings.json")
 TICKET_FILE = os.path.join(_DIR, "tickets.json")
 ORDER_FILE = os.path.join(_DIR, "slot_order.json")
+WIN_ORDER_FILE = os.path.join(_DIR, "win_order.json")
 
 
 def is_placeholder_ws(ws: str | None) -> bool:
@@ -98,17 +99,20 @@ class BindStore:
 
     def __init__(self, bind_file: str = BIND_FILE, effort_file: str = EFFORT_FILE,
                  ticket_file: str = TICKET_FILE, settings_file: str = SETTINGS_FILE,
-                 order_file: str = ORDER_FILE) -> None:
+                 order_file: str = ORDER_FILE,
+                 win_order_file: str = WIN_ORDER_FILE) -> None:
         self.bind_file = bind_file
         self.effort_file = effort_file
         self.ticket_file = ticket_file
         self.settings_file = settings_file
         self.order_file = order_file
+        self.win_order_file = win_order_file
         self.bindings = self._load_bindings()   # {"A": repo, "B": repo, …}
         self.effort = self._load_effort()        # {slot: "xhigh"/"ultracode"}
         self.tickets = self._load_tickets()      # {slot: "ABC-123"}
         self.settings = self._load_settings()    # {"slim": bool, …} Panel-Einstellungen
         self.order = self._load_order()          # {"A": [slot, …]} vom Nutzer gezogene Reihenfolge
+        self.win_order = self._load_win_order()  # ["repo-b", …] gezogene Block-Reihenfolge
 
     def _load_bindings(self) -> dict[str, str]:
         raw = load_json(self.bind_file)
@@ -191,5 +195,32 @@ class BindStore:
     def save_order(self) -> None:
         try:
             save_json(self.order_file, self.order)
+        except Exception:
+            pass
+
+    def _load_win_order(self) -> list[str]:
+        """Vom Nutzer per Drag&Drop gewaehlte Reihenfolge der REPO-BLOECKE - also der
+        Bloecke untereinander, nicht der Kacheln darin (die stehen in slot_order.json).
+
+        Eine Liste von REPO-Namen, z.B. ["backend", "agent-deck"] - NICHT von
+        Fenster-Buchstaben: der Buchstabe wird beim Schliessen eines Fensters frei und neu
+        vergeben, eine Reihenfolge daraus waere nach dem naechsten Fenster-Wechsel eine
+        andere (Begruendung in ui/tiles.py, _block_key). Sie darf mehr Repos nennen, als
+        gerade offen sind - ein geschlossenes behaelt so seinen Platz - und muss nicht
+        vollstaendig sein: unbekannte haengen beim Anzeigen hinten an.
+
+        Selbstheilend: nur nicht-leere Strings, Duplikate raus."""
+        raw = load_json(self.win_order_file)
+        if not isinstance(raw, list):
+            return []
+        clean: list[str] = []
+        for w in raw:
+            if isinstance(w, str) and w and w not in clean:
+                clean.append(w)
+        return clean
+
+    def save_win_order(self) -> None:
+        try:
+            save_json(self.win_order_file, self.win_order)
         except Exception:
             pass

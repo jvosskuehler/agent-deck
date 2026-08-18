@@ -9,6 +9,7 @@ from typing import Any
 
 from deck import i18n
 from deck.domain import config as cfg
+from deck.domain import ordering
 from deck.platform import dpi
 from deck.render.glow import GLOW_RINGS
 from deck.render.kit import INK, INK_3
@@ -25,19 +26,54 @@ class TilesMixin:
         Slots haengen hinten in Melde-Reihenfolge an. So bestimmt allein das Deck die
         Anordnung – VS Code gibt die visuelle Pane-Reihenfolge nicht preis, also kann
         sie nicht gespiegelt, wohl aber hier frei getauscht werden."""
-        live = self.broker.terminals(w)
-        live_set = set(live)
-        saved = [s for s in self.order.get(w, []) if s in live_set]
-        seen = set(saved)
-        return saved + [s for s in live if s not in seen]
+        return ordering.apply_order(self.order.get(w, []), self.broker.terminals(w))
+
+    def _block_key(self, w) -> Any:
+        """Woran die Block-Reihenfolge haengt: am REPO-Namen, nicht am Fenster-Buchstaben.
+
+        Der Buchstabe ist fluechtig. Wird ein VS-Code-Fenster geschlossen, raeumt
+        _cleanup_closed_windows seine Bindung ab, und das naechste geoeffnete Repo erbt
+        ihn. Eine Reihenfolge aus Buchstaben waere also nach dem naechsten Fenster-Wechsel
+        eine andere – und dass die Reihenfolge NICHT von allein wandert, ist der ganze
+        Zweck des Ziehens.
+
+        Ohne Bindung (der kurze Moment zwischen Verbinden und _sync_bindings) gibt es
+        nichts zu merken, was einen Neustart ueberdauert -> der Buchstabe als
+        Notschluessel."""
+        return self.bindings.get(w) or w
+
+    def _ordered_windows(self) -> Any:
+        """Die Fenster-Buchstaben in der vom Nutzer gezogenen BLOCK-Reihenfolge (Drag&Drop
+        am Repo-Namen, siehe ui/reorder_blocks.py).
+
+        Gemerkt ist die Reihenfolge der Repo-NAMEN (siehe _block_key), gezeichnet wird
+        nach Buchstaben – hier werden die beiden zusammengebracht: unbekannte Repos
+        haengen hinten in cfg.WINDOWS-Reihenfolge an. `sorted` ist stabil, zwei Bloecke
+        mit demselben Schluessel behalten also ihre relative Lage.
+
+        Gefiltert wird bewusst NICHT – wer zeichnet, entscheidet selbst, welche Bloecke
+        sichtbar sind (siehe _shown_windows)."""
+        keys = [self._block_key(w) for w in cfg.WINDOWS]
+        rank = {k: i for i, k in enumerate(ordering.apply_order(self.win_order, keys))}
+        return sorted(cfg.WINDOWS, key=lambda w: rank[self._block_key(w)])
+
+    def _shown_windows(self) -> Any:
+        """Die Bloecke, die WIRKLICH gezeichnet werden, in ihrer Reihenfolge: gebunden
+        oder verbunden. Eine Stelle fuer beide Zeichenwege (_slim_extent misst, was
+        _render_agents_slim malt) – liefen sie auseinander, skalierte das Deck gegen eine
+        falsche natuerliche Groesse."""
+        return [w for w in self._ordered_windows()
+                if self.bindings.get(w) or self.broker.connected(w)]
 
     def _layout_sig(self) -> Any:
         """Signatur des gewuenschten Layouts – nur bei Aenderung neu zeichnen. Nutzt die
-        vom Nutzer gewaehlte Reihenfolge, damit ein Umsortieren einen Redraw ausloest."""
+        vom Nutzer gewaehlte Reihenfolge, damit ein Umsortieren einen Redraw ausloest –
+        die der Kacheln IN einer Reihe wie die der Bloecke untereinander (letztere steckt
+        in der Reihenfolge der Tupel selbst)."""
         return tuple(
             (w, self.bindings.get(w), self.broker.connected(w),
              tuple(self._ordered_slots(w)) if self.broker.connected(w) else ())
-            for w in cfg.WINDOWS
+            for w in self._ordered_windows()
         )
 
     def _render_agents(self) -> None:
@@ -84,7 +120,7 @@ class TilesMixin:
         RING = len(GLOW_RINGS) * 2
         name_h = nf.metrics("linespace")
         y, maxx = self._SLIM_TOP, X0 + W
-        shown = [w for w in cfg.WINDOWS if self.bindings.get(w) or self.broker.connected(w)]
+        shown = self._shown_windows()
         for i, w in enumerate(shown):
             if i:
                 y += self._SLIM_BLOCK_GAP        # Luft zum vorigen Block
@@ -146,18 +182,25 @@ class TilesMixin:
         small_font = dpi.fontpx(8, s)
         rail_x, rail_w = self._SLIM_RAIL_X * s, self._SLIM_RAIL_W * s
         y = self._SLIM_TOP * s
-        shown = [w for w in cfg.WINDOWS if self.bindings.get(w) or self.broker.connected(w)]
+        shown = self._shown_windows()
         for i, w in enumerate(shown):
             if i:
                 y += self._SLIM_BLOCK_GAP * s      # Luft zum vorigen Block
             y_top = y                              # Blockanfang – die Schiene beginnt hier
+            # Jedes Item dieses Blocks traegt zusaetzlich b_<w>. Daran zieht BlockDrag den
+            # ganzen Block als EINE Einheit senkrecht (ein c.move statt einer Liste von
+            # Item-IDs, die beim naechsten Redraw ohnehin ungueltig waere).
+            btag = "b_" + w
             repo = self.bindings.get(w) or f"{i18n.L('Fenster', 'Window')} {w}"
             connected = self.broker.connected(w)
             # EIN Text-Item je Name: verbunden hell, sonst gedimmt. (Frueher zeichenweise
             # fuer den Kopf-Schimmer – der ist raus, siehe glow_animator.)
             name = c.create_text(X0, y, anchor="nw", text=repo, font=nf,
                                  fill=INK if connected else INK_3)
-            # Klick auf den Namen holt das VS-Code-Fenster nach vorn (show_window).
+            # Der Kopf ist der Griff des Blocks: Klick holt das VS-Code-Fenster nach vorn
+            # (show_window), Ziehen sortiert die Bloecke um. Beides haengt an DIESEM einen
+            # Press – ob es ein Klick oder ein Zug war, entscheidet BlockDrag.release
+            # anhand der Bewegung (wie bei den Kacheln, siehe TileDrag).
             # Der Kopf ist die einzige Stelle im Deck, die das FENSTER meint und nicht
             # einen Agenten – bisher war er ein reines Etikett, obwohl "da hin" die
             # naheliegendste Geste darauf ist. Auch beim getrennten Block gebunden: die
@@ -165,7 +208,7 @@ class TilesMixin:
             # es _raise_window über den Titel, und der Klick hilft gerade dort).
             # tag_bind nimmt die Item-ID direkt – der Kopf ist EIN Item, ein eigener Tag
             # brächte nichts.
-            c.tag_bind(name, "<Button-1>", lambda e, k=w: self.show_window(k))
+            c.tag_bind(name, "<Button-1>", lambda e, k=w: self.blocks.press(k, e))
             c.tag_bind(name, "<Enter>", lambda e, k=w: self._head_enter(k))
             c.tag_bind(name, "<Leave>", lambda e: self._head_leave())
             # Knapp gehalten: der Kopf soll an SEINER Reihe kleben. Der Halo braucht RING,
@@ -176,22 +219,33 @@ class TilesMixin:
                 for slot in self._ordered_slots(w):
                     self.tile_renderer.draw_tile(c, slot, x, y, W, H, R,
                                                  scale=s, step=W + GAP)
+                    c.addtag_withtag(btag, self.tiles[slot]["gtag"])
                     x += W + GAP
                 # Geister-＋ am Reihenende: einziger Startweg im Slim-Modus (bewusst
                 # klein/blass statt volle ＋-Kachel wie im Vollmodus).
                 self.tile_renderer.draw_add(c, w, x, y, H, s)
+                c.addtag_withtag(btag, "slimadd_" + w)
                 y += H + RING
             else:
-                c.create_text(X0, y, anchor="nw",
-                              text=i18n.L("— nicht verbunden —", "— not connected —"),
-                              fill="#52525b", font=small_font)
+                off = c.create_text(X0, y, anchor="nw",
+                                    text=i18n.L("— nicht verbunden —", "— not connected —"),
+                                    fill="#52525b", font=small_font)
+                c.addtag_withtag(btag, off)
                 y += name_h
             # Schiene ZULETZT: erst jetzt steht die Unterkante des Blocks fest. Sie ist
             # der eigentliche Behaelter – Kopf und Kachelreihe haengen sichtbar an
             # derselben Linie, statt nur ungefaehr beieinander zu stehen.
             rail = c.create_rectangle(rail_x, y_top, rail_x + rail_w, y,
                                       fill=RAIL_IDLE, outline="")
-            self.win_items[w] = {"name": name, "rail": rail, "connected": connected}
+            for it in (name, rail):
+                c.addtag_withtag(btag, it)
+            # y/h sind die Masse, mit denen BlockDrag rechnet: Oberkante des Blocks und
+            # seine Hoehe bis zur Unterkante der Schiene. Sie stehen hier, weil hier die
+            # Wahrheit entsteht – die Bloecke sind unterschiedlich hoch (verbunden =
+            # Kopf plus Kachelreihe inkl. Halo, getrennt = zwei Zeilen), und geraten
+            # duerfte man das nicht.
+            self.win_items[w] = {"name": name, "rail": rail, "connected": connected,
+                                 "tag": btag, "y": y_top, "h": y - y_top}
         if not shown:
             c.create_text(X0, y, anchor="nw", width=220 * s, fill="#52525b",
                           font=small_font,

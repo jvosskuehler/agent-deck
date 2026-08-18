@@ -2,6 +2,10 @@
 
 VS Code gibt die Reihenfolge seiner Terminals nicht preis, darum ist die
 Reihenfolge deck-eigen und liegt in slot_order.json.
+
+Am Dateiende steht `bind_dragging` - die EINE Stelle, an der Motion und Release
+am Canvas haengen. Es gibt zwei Dragger (Kacheln waagerecht, Repo-Bloecke
+senkrecht, siehe reorder_blocks.py), aber nur ein Ereignis-Paar.
 """
 import tkinter as tk
 from typing import Any
@@ -178,3 +182,26 @@ class TileDrag:
             self.order[win] = order
             self.store.save_order()
         self._paint_once()                  # Kacheln in die (neue) Reihenfolge einrasten
+
+
+def bind_dragging(canvas, draggers) -> None:
+    """Motion und Release EINMAL fest am Canvas verdrahten, fuer alle Dragger.
+
+    Warum am Canvas und nicht je Kachel: sonst entsteht bei jedem Neuzeichnen ein
+    Handler-Stapel, und die Ereignisse kaemen nicht mehr an, sobald der Zeiger das
+    gezogene Item kurz verlaesst - beim Ziehen der Normalfall.
+
+    Warum ALLE Dragger dasselbe Ereignis bekommen: jeder ist untaetig, solange er keinen
+    Press gesehen hat, und ein Press liegt immer nur auf EINEM Griff (Kachel oder
+    Blockkopf). Die Weiche steckt also im Press, nicht hier.
+    """
+    def motion(ev) -> None:
+        for d in draggers:
+            d.motion(ev)
+
+    def release(ev) -> None:
+        for d in draggers:
+            d.release(ev)
+
+    canvas.bind("<B1-Motion>", motion)
+    canvas.bind("<ButtonRelease-1>", release)

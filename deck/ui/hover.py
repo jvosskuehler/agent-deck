@@ -30,8 +30,15 @@ class HoverMixin:
         naechsten Tick wieder ueberschrieben (und wuerde den Status-Kanal stoeren).
 
         Billig genug fuer jedes Enter (hoechstens len(cfg.WINDOWS) itemconfigs), und der
-        _hot_win-Vergleich haelt den Wechsel zwischen Geschwisterkacheln kostenlos."""
-        if win == self._hot_win:
+        _hot_win-Vergleich haelt den Wechsel zwischen Geschwisterkacheln kostenlos.
+
+        Waehrend eines Zuges faellt die Hervorhebung ganz aus – und zwar HIER, an der
+        einen Stelle, die faerbt. Beim Ziehen eines Blockkopfes verlaesst der Zeiger sein
+        Item, und beim Ziehen wandern fremde Items unter den Zeiger; jedes dieser
+        Leave/Enter-Paare wuerde sonst die angehobene Optik (BlockDrag._lift) sofort
+        wieder wegraeumen. Nach dem Ablegen wird ohnehin neu gezeichnet, dort setzt
+        _render_agents_slim auch _hot_win zurueck."""
+        if self._dragging() or win == self._hot_win:
             return
         self._hot_win = win
         for w, it in self.win_items.items():
@@ -65,7 +72,14 @@ class HoverMixin:
     def _head_leave(self) -> None:
         """Zeiger verlässt den Repo-Namen: Hervorhebung und Zeiger zurück. Sofort und
         ohne Timer – anders als bei den Kacheln gibt es hier keine gestapelten Items,
-        zwischen denen Tk ein Leave/Enter-Paar feuern könnte."""
+        zwischen denen Tk ein Leave/Enter-Paar feuern könnte.
+
+        Beim Ziehen des Blocks feuert das Leave trotzdem (der Kopf wandert unter dem
+        Zeiger weg), und dann ist es keine Aussage über den Zeiger, sondern eine Folge
+        der Bewegung – Zeigerform und Hervorhebung gehören für die Dauer des Zuges
+        BlockDrag."""
+        if self._dragging():
+            return
         self._highlight_group(None)
         self.deck.configure(cursor="")
 

@@ -13,8 +13,16 @@ import inspect
 import helpers  # noqa: F401 - setzt sys.path und die Deck-Sprache
 
 from deck.ui.reorder import TileDrag
+from deck.ui.reorder_blocks import BlockDrag
 from deck.ui.settings_dialog import SettingsDialog
 from deck.ui.tile_draw import TileRenderer
+
+
+class _Ev:
+    """Ein Maus-Ereignis, so viel davon wie die Dragger anfassen."""
+
+    def __init__(self, x, y):
+        self.x, self.y = x, y
 
 
 def test_settings_dialog_nennt_seine_abhaengigkeiten_im_konstruktor():
@@ -120,6 +128,58 @@ def test_tile_drag_haelt_seinen_zustand_selbst():
     assert d.dragging() is False            # Press allein ist noch KEIN Drag ...
     d._tile_drag["moved"] = True
     assert d.dragging() is True             # ... erst Bewegung über der Schwelle
+
+
+def _block_drag(win_items=None, win_order=None, gerufen=None):
+    """BlockDrag mit Attrappen - ohne Tk, Broker, BindStore. Genau das ist der Sinn der
+    Objekt-Form: der Zug ist ohne Panel prüfbar."""
+    gerufen = gerufen if gerufen is not None else []
+    items = win_items if win_items is not None else {}
+    return BlockDrag(
+        None, None, items, win_order if win_order is not None else [], None,
+        raise_window=lambda w: gerufen.append(("show", w)),
+        repaint=lambda: gerufen.append("paint"),
+        ordered_windows=lambda: list(items),
+        block_key=lambda w: w,
+        hide_tip=lambda: gerufen.append("hide"),
+    ), gerufen
+
+
+def test_block_drag_haelt_seinen_zustand_selbst():
+    """Wie TileDrag: der laufende Zug gehört dem Objekt, das ihn führt - nicht dem Panel
+    mit seinen fünfzig Attributen."""
+    b, _ = _block_drag()
+    assert b.dragging() is False            # ohne Press wird nicht gezogen
+    b.press("A", _Ev(5, 5))
+    assert b.dragging() is False            # Press allein ist noch KEIN Zug ...
+    b._drag["moved"] = True
+    assert b.dragging() is True             # ... erst Bewegung über der Schwelle
+
+
+def test_ein_einzelner_repo_block_wird_nicht_gezogen():
+    """Bei einem Block gibt es keine Reihenfolge. Ein Kopf, der sich unter dem Zeiger
+    löst und nirgends hin kann, sähe nach einem Fehler aus - also bleibt es beim Klick.
+
+    Der Test kommt ohne Canvas aus, und das ist die eigentliche Zusage: die Absage muss
+    fallen, BEVOR das erste Item angefasst wird (canvas ist hier None - würde er zeichnen,
+    flöge ein AttributeError)."""
+    b, gerufen = _block_drag({"A": {"tag": "b_A", "y": 0, "h": 40}})
+    b.press("A", _Ev(0, 0))
+    b.motion(_Ev(0, 40))                    # weit über der Schwelle
+    assert b.dragging() is False
+    assert gerufen == []                    # kein hide_tip, kein Anheben
+
+
+def test_das_deck_fragt_beide_dragger_ob_gezogen_wird():
+    """_dragging() ist die Fassade für BEIDE Gesten (Kacheln waagerecht, Blöcke
+    senkrecht). Fehlt einer, zeichnet der Poll-Takt mitten im Zug neu (delete('all')) und
+    zerreißt ihn - ein Fehlerbild, das man dem Rechner zuschreibt, nicht dem Code."""
+    import inspect
+
+    from deck.ui.panel import AgentDeck
+    quelle = inspect.getsource(AgentDeck._dragging)
+    assert "self.drag.dragging()" in quelle, quelle
+    assert "self.blocks.dragging()" in quelle, quelle
 
 
 def test_kein_drag_zustand_mehr_im_panel():

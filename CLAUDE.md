@@ -43,7 +43,7 @@ Datei anlegt, entscheidet zuerst, in welche Schicht sie gehört:
 
 | Schicht | Enthält | Darf importieren |
 |---|---|---|
-| `deck/domain/` | Anzeigefreie Domäne: Statusmodell, Pfade, Protokoll, Slot-Zustand, Zuordnung, Konfiguration | — |
+| `deck/domain/` | Anzeigefreie Domäne: Statusmodell, Pfade, Protokoll, Slot-Zustand, Zuordnung, Reihenfolge, Konfiguration | — |
 | `deck/platform/` | Win32: Fokus, DPI, Monitor-Arbeitsbereich | — |
 | `deck/render/` | Zeichnerei (Pillow/Canvas): Kachel, Kapsel, Welle, Glow | `domain`, `platform` |
 | `deck/net/` | Broker (TCP) und Kommando-Vokabular zur Extension | `domain` |
@@ -71,6 +71,7 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 |---|---|
 | wie eine Kachel aussieht | `ui/tile_draw.py`, Werte in `ui/theme.py` |
 | wo Kacheln liegen, Reihenfolge | `ui/tiles.py`, Ziehen in `ui/reorder.py` |
+| Reihenfolge der Repo-Blöcke | `ui/reorder_blocks.py` (Griff = der Repo-Name), Rechnung in `domain/ordering.py` |
 | Statusfarbe oder -text ändern | `ui/theme.py` (`GLOW_STYLE`, `STATUS_LABEL`) |
 | wann ein Status kippt | `domain/status_model.py` |
 | Poll-Takt, Kacheln nachziehen | `ui/refresh.py` |
@@ -236,6 +237,7 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
   eng limitiert — gemessen am 2026-08-05 gingen 3 Abrufe im 90-s-Takt durch, danach
   kippte er für rund eine Stunde auf 429 (220 von 399 Abrufen im Log). Wer hier einen
   Direktabruf „zur Sicherheit" einbaut, verlängert die Sperre, statt sie zu heilen.
+
 - **`SO_REUSEADDR` ist in `deck/net/broker.py` schädlich.** Unter Windows erlaubt die
   Option zwei Listener auf demselben Port; „Port belegt → still deaktiviert" greift dann
   nicht, und Extensions landen beim toten Panel. Der Guard dagegen ist

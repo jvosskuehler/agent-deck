@@ -86,8 +86,10 @@ Strings von Hand — wer dort etwas ändert, muss beide Seiten anfassen.
 - **Usage-Anzeige** des Kontos in der Bottom-Bar (Session · Woche · Modell-Woche),
   das Token wahlweise aus der Claude-Code-CLI oder aus Claude Desktop
 - **Per-Monitor-DPI-V2**, damit auf 150 %-Displays nichts verwaschen wirkt
-- **Drag & Drop** der Kacheln (VS Code gibt die Terminal-Reihenfolge nicht preis,
-  also führt das Deck seine eigene)
+- **Drag & Drop** in beide Richtungen (VS Code gibt keine seiner Reihenfolgen preis,
+  also führt das Deck seine eigene): Kacheln waagerecht in ihrer Reihe, ganze
+  **Repo-Blöcke** senkrecht — angefasst am Repo-Namen, der als Klick weiterhin das
+  VS-Code-Fenster nach vorn holt
 
 ## Voraussetzungen
 
@@ -213,6 +215,7 @@ Shell-Skript wohnen.
 | `protocol.py` | Wire-Vokabular (die eine Quelle der Wahrheit) |
 | `slot_state.py` | Slot-Zustände lesen |
 | `binding.py` | Bindings, Settings, Tickets, Reihenfolge |
+| `ordering.py` | Reihenfolge zusammenführen · Zielposition und Lücke beim Ziehen |
 | `config.py` | Vorgaben und Schalter |
 
 </details>
@@ -278,7 +281,8 @@ Shell-Skript wohnen.
 | `ui/panel.py` | Fenster, Aufbau, Hauptschleife (mischt 13 Mixins) |
 | `ui/theme.py` | Farben, Timings, Anzeigetexte |
 | `ui/layout.py` | Fenstergröße und Skalierung |
-| `ui/tiles.py` · `ui/tile_draw.py` · `ui/reorder.py` | Kacheln anordnen · eine Kachel zeichnen · umsortieren |
+| `ui/tiles.py` · `ui/tile_draw.py` | Kacheln anordnen · eine Kachel zeichnen |
+| `ui/reorder.py` · `ui/reorder_blocks.py` | Kacheln umsortieren (waagerecht) · Repo-Blöcke (senkrecht) |
 | `ui/refresh.py` · `ui/windows.py` | Poll-Takt · Bindungen und Fenster-Sync |
 | `ui/hover.py` · `ui/connect.py` · `ui/actions.py` | Tooltip · Fenster binden · Klick-Wirkungen |
 | `ui/ticket.py` · `ui/worktree_sweep.py` | Ticket zuweisen · worktrees abräumen |
