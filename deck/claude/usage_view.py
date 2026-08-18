@@ -92,6 +92,54 @@ def severity_color(severity: str | None, percent: float | None) -> str:
     return _RED
 
 
+def is_stale(snap: dict[str, Any], now: Any = None) -> bool:
+    """Steht im Snapshot ein Wert, der nachweislich nicht mehr frisch ist?
+
+    Prueffaden ist allein das ALTER (ab STALE_AFTER), nicht der Fehlertext: ein
+    429, der gerade eben aufgetreten ist, laesst einen 90 s alten Wert stehen —
+    der ist brauchbar. Umgekehrt faellt so auch der stille Tod auf: stirbt der
+    Poll-Thread weg, bleibt 'error' leer und nur der Zeitstempel altert.
+
+    Bewusst DERSELBE Schwellwert, den fmt_age fuers Hover benutzt: das Badge wird
+    genau dann matt, wenn der Tooltip den Stand nennt. Eine Regel, zwei Orte —
+    sonst zeigt das eine 'frisch' und das andere 'vor 20 Min.'."""
+    return bool(fmt_age(snap.get("ts"), now))
+
+
+def _dim(hex_color: str, factor: float = 0.45) -> str:
+    """Farbe abdunkeln (Richtung Leistenhintergrund). Kein Grau: die Ampel traegt
+    Information, die soll nicht verschwinden — sie soll nur nicht mehr wie ein
+    frischer Messwert leuchten."""
+    try:
+        r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    except (ValueError, IndexError):
+        return hex_color
+    return "#" + "".join(f"{int(v * factor):02x}" for v in (r, g, b))
+
+
+def badge_view(snap: dict[str, Any], now: Any = None) -> tuple[str, str]:
+    """(Text, Farbe) fuer das Nutzungs-Badge der unteren Leiste.
+
+    Das ist die Lehre vom 2026-08-05 einen Schritt weitergedacht. Damals wurde
+    ein Wert HINTER SEINEM RESET entwertet — richtig, aber es deckt nur den Fall
+    ab, in dem ein neues Fenster begonnen hat. Am 2026-08-18 stand das Badge
+    stattdessen 18 Minuten lang auf gruenen '0 %', weil der gemeinsame Cache im
+    429-Backoff eingefroren war; der Reset lag noch in der Zukunft, die
+    Entwertung griff also nicht, und live waren es laengst 3 %. Zahl plausibel,
+    Farbe beruhigend, Anzeige tot — das sieht wie ein kaputtes Programm aus.
+
+    Darum: ein alter Wert wird weiter GEZEIGT (er ist die beste vorhandene
+    Auskunft), aber matt. Warum nicht ausblenden? Weil '—' den Nutzer nichts
+    fragen laesst, waehrend eine matte Zahl zum Hover einlaedt — und dort steht
+    der Grund."""
+    pct = snap.get("session_percent")
+    color = severity_color(snap.get("session_severity"), pct)
+    text = f"{pct} %" if pct is not None else "—"
+    if pct is not None and is_stale(snap, now):
+        return text, _dim(color)
+    return text, color
+
+
 def _limit_label(lim: dict[str, Any]) -> str:
     """Menschlicher (deutscher) Name eines API-Limits fuers Hover."""
     kind = (lim.get("kind") or "").lower()

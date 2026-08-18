@@ -89,6 +89,7 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 | Einrichtung, Voraussetzungs-Prüfung | `install.ps1` — Rechnen und Urteile aber in `claude/hook_setup.py` bzw. `ops/vscode_ext.py`, damit sie getestet sind |
 | Usage: Zahlen holen | `claude/usage.py`, Token in `claude/usage_token.py` |
 | Usage: Anzeige und Ampelfarben | `claude/usage_view.py`, Balken in `ui/bottombar.py` |
+| Usage: Poll-Takt, 429-Backoff | `claude-usage-shared/usage_poller.py` (**außerhalb** des Repos, geteilt mit dem Tray-Monitor) — Diagnose: `doctor.py` |
 | Ticket zuweisen | `ui/ticket.py` |
 | worktrees abräumen | `ui/worktree_sweep.py`, Git-Teil in `ops/worktree.py` |
 | irgendetwas mit Win32 | `platform/` — neue Funktion? Signatur in `platform/win32.py` typisieren |
@@ -237,6 +238,48 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
   eng limitiert — gemessen am 2026-08-05 gingen 3 Abrufe im 90-s-Takt durch, danach
   kippte er für rund eine Stunde auf 429 (220 von 399 Abrufen im Log). Wer hier einen
   Direktabruf „zur Sicherheit" einbaut, verlängert die Sperre, statt sie zu heilen.
+
+- **Der Poll-Takt des Usage-Endpoints ist keine Konstante — er wird gelernt.** Am
+  2026-08-18 stand das Badge stundenlang auf grünen „0 %", während live 7 % anlagen.
+  Der Reset lag noch in der Zukunft, `expire_limits` griff also gar nicht: der Wert
+  war nicht *hinter seinem Fenster*, nur **alt**. Derselbe Trugschluss wie am
+  2026-08-05, eine Ebene tiefer — und wieder sah die Anzeige gesund aus.
+
+  Die Messung war der Wendepunkt. Bis zum 2026-08-17, 18 Uhr liefen **35 Abrufe
+  pro Stunde mit 100 % Erfolg**; ab 19 Uhr scheiterte bei **unverändertem** Takt fast
+  die Hälfte, auch nachts ohne Last. Das Limit hatte sich verschoben, nicht unsere
+  Last. Daraus folgen vier Regeln, alle in `claude-usage-shared/usage_poller.py` und
+  getestet (`test_usage_poller.py`, 25 Fälle, `python test_usage_poller.py`):
+
+  1. **Der Grundtakt lernt sich selbst** (`next_interval`, AIMD): 429 streckt ihn
+     ×1,5, ein Erfolg verkürzt ihn nur ×0,9, Grenzen 120–900 s. Die Asymmetrie ist
+     der Trick — von unten an die Grenze kriechen, beim ersten Nein deutlich
+     abrücken. Er steht im **gemeinsamen** Cache, also lernen Tray und Deck zusammen.
+     Jede feste Zahl an dieser Stelle wäre eine Wette auf den Stand von gestern.
+  2. **`Retry-After` schlägt die geratene Kurve** (`parse_retry_after`) — auch wenn
+     die Auskunft *kürzer* ist. Von Frist und Takt gewinnt aber immer die
+     vorsichtigere (`max`): eine abgelaufene Sperre ist keine Einladung zum Pollen,
+     unser Budget ist damit nicht erneuert.
+  3. **Ein Netzfehler ist keine Entwarnung.** Er setzte `n429` auf 0 und die
+     Wartezeit auf 25 s — also mitten in eine laufende Sperre zurück. Im Log stehen
+     22 solcher `getaddrinfo failed`, jeder hat das Limit weiter angeheizt.
+  4. **429 probiert die nächste Token-Quelle** (CLI → Desktop), bevor der Backoff
+     greift. Achtung, das ist die *kleinere* Hilfe: gemessen wurden beide Tokens im
+     selben Moment abgewiesen — das Limit hängt am **Konto**, nicht am Token. Es
+     rettet nur den Fall, in dem eine Quelle allein klemmt.
+
+  Und die Anzeige zieht nach: `usage_view.badge_view` zeigt einen alten Wert weiter,
+  aber **matt** (`_dim`), ab derselben Schwelle, ab der der Tooltip den Stand nennt
+  (`STALE_AFTER`) — eine Regel, zwei Orte. Weiterzeigen statt ausblenden, weil „—"
+  nichts zu fragen gibt, eine matte Zahl aber zum Hover einlädt, wo der Grund steht.
+  Wichtig dabei: die Frische muss **mit in die Redraw-Signatur** von
+  `ui/bottombar.py`, sonst filtert der Signaturvergleich das Mattwerden weg (Zustand,
+  Prozent und Ampel ändern sich ja nicht — der Wert altert nur still).
+
+  Was schiefgeht, sieht man ohne Rätselraten mit
+  `python claude-usage-shared/doctor.py`: Erfolgsquote je Stunde, gelernter Takt,
+  Cache-Alter, wer wirklich gepollt hat. **Kein** Netzabruf — ein Doktor, der die
+  Sperre verlängert, die er untersucht, ist keiner.
 
 - **`SO_REUSEADDR` ist in `deck/net/broker.py` schädlich.** Unter Windows erlaubt die
   Option zwei Listener auf demselben Port; „Port belegt → still deaktiviert" greift dann

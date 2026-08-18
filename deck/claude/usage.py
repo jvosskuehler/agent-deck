@@ -97,7 +97,17 @@ def _fetch_one(token: str) -> dict[str, Any]:
 
 def fetch_usage(tokens: str | list[str]) -> dict[str, Any]:
     """Probiert die Tokens der Reihe nach; nimmt das erste, das 200 liefert.
-    401/403 -> naechstes Token; alles andere (429, 5xx, Timeout) fliegt hoch."""
+    401/403/429 -> naechstes Token; 5xx und Timeout fliegen hoch.
+
+    Dass auch 429 weiterprobiert, ist kein Vorsichtsreflex, sondern gemessen: das
+    Limit dieses Endpoints haengt am TOKEN, nicht am Konto. Am 2026-08-18 lieferten
+    CLI- und Desktop-Token gleichzeitig 200, waehrend die Anzeige im 429-Backoff
+    stand — das CLI-Token teilen sich naemlich alle laufenden Claude-Code-Sessions
+    (an dem Tag 15) und pumpen es leer, das Desktop-Token liegt unbenutzt daneben.
+    Wer bei 429 abbricht, verschenkt ein intaktes zweites Budget.
+
+    Ein 5xx bleibt ein Abbruch: das ist kein Token-Problem, und alle Tokens
+    durchzuprobieren waere nur mehr Last auf einem Dienst, der schon strauchelt."""
     if isinstance(tokens, str):
         tokens = [tokens]
     last_err = None
@@ -106,7 +116,7 @@ def fetch_usage(tokens: str | list[str]) -> dict[str, Any]:
             return _fetch_one(tok)
         except urllib.error.HTTPError as e:
             last_err = e
-            if e.code in (401, 403):
+            if e.code in (401, 403, 429):
                 continue
             raise
     raise last_err if last_err else RuntimeError("Kein Token verfuegbar")

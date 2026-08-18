@@ -271,3 +271,130 @@ def test_beide_tokenquellen_werden_zusammengelegt():
     finally:
         utok._read_tokens_from_cli, utok._read_tokens_from_disk = cli, desk
         utok._token_cache = ruhe
+
+
+# ── Das Badge muss einen eingefrorenen Wert als solchen zeigen ───────────────
+# Vorgeschichte: am 2026-08-05 zeigte das Deck einen Wert hinter seinem Reset als
+# frisch (behoben durch expire_limits). Am 2026-08-18 zeigte es 18 Minuten lang
+# gruene "0 %", waehrend live 3 % anlagen — diesmal lag der Reset noch in der
+# Zukunft, die Entwertung griff also gar nicht, und der Wert war einfach nur alt.
+# Derselbe Trugschluss, eine Ebene tiefer.
+def test_usage_badge_zeigt_frischen_wert_in_ampelfarbe():
+    snap = {"session_percent": 42, "session_severity": "normal", "ts": time.time()}
+    text, color = uview.badge_view(snap)
+    assert text == "42 %", text
+    assert color == uview.severity_color("normal", 42), color
+
+
+def test_usage_badge_dimmt_einen_alten_wert():
+    alt = time.time() - (uview.STALE_AFTER + 60)
+    snap = {"session_percent": 0, "session_severity": "normal", "ts": alt,
+            "error": "Rate-Limit"}
+    text, color = uview.badge_view(snap)
+    assert text == "0 %", "die Zahl bleibt stehen – sie ist die beste Auskunft"
+    frisch = uview.severity_color("normal", 0)
+    assert color != frisch, "ein 18 Minuten alter Wert darf nicht frisch leuchten"
+    # Gedimmt heisst dunkler, nicht grau: die Ampel traegt weiter Information.
+    assert color.startswith("#") and len(color) == 7, color
+    assert sum(int(color[i:i + 2], 16) for i in (1, 3, 5)) \
+        < sum(int(frisch[i:i + 2], 16) for i in (1, 3, 5)), color
+
+
+def test_usage_badge_dimmt_auch_ohne_fehlertext():
+    # Der stille Tod: stirbt der Poll-Thread weg, bleibt 'error' leer und nur der
+    # Zeitstempel altert. Prueffaden ist darum das Alter, nicht der Fehler.
+    alt = time.time() - (uview.STALE_AFTER + 60)
+    _, color = uview.badge_view({"session_percent": 55, "session_severity": "warning",
+                                 "ts": alt, "error": None})
+    assert color != uview.severity_color("warning", 55)
+
+
+def test_usage_badge_ohne_zahl_bleibt_ein_strich():
+    text, color = uview.badge_view({"session_percent": None, "ts": None})
+    assert text == "—", text
+    assert color == uview.severity_color("", None), "ohne Wert die Grau-Farbe"
+
+
+def test_usage_badge_frische_haengt_am_selben_schwellwert_wie_das_hover():
+    # Eine Regel, zwei Orte: das Badge wird genau dann matt, wenn der Tooltip den
+    # Stand nennt. Laufen die auseinander, zeigt das eine "frisch" und das andere
+    # "vor 20 Min." – und niemand weiss, welchem man glauben soll.
+    knapp_frisch = time.time() - (uview.STALE_AFTER - 30)
+    knapp_alt = time.time() - (uview.STALE_AFTER + 30)
+    assert not uview.is_stale({"ts": knapp_frisch})
+    assert uview.is_stale({"ts": knapp_alt})
+    assert uview.fmt_age(knapp_frisch) == ""
+    assert uview.fmt_age(knapp_alt) != ""
+
+
+def test_usage_badge_ohne_zeitstempel_gilt_nicht_als_alt():
+    # Vor dem ersten Abruf gibt es keinen Stand. Das ist "noch nichts", nicht
+    # "veraltet" – und darf die Anzeige nicht vorsorglich abdunkeln.
+    assert not uview.is_stale({"ts": None})
+    assert not uview.is_stale({})
+
+
+# ── 429 muss die zweite Token-Quelle probieren ───────────────────────────────
+def test_usage_rate_limit_probiert_die_zweite_tokenquelle():
+    """Gemessen am 2026-08-18: das Limit haengt am TOKEN, nicht am Konto. Beide
+    Tokens lieferten gleichzeitig 200, waehrend die Anzeige im 429-Backoff stand,
+    weil alle 15 Claude-Code-Sessions am CLI-Token zogen. Wer bei 429 abbricht,
+    laesst ein intaktes zweites Budget liegen."""
+    import urllib.error
+    versucht = []
+
+    def fake(token):
+        versucht.append(token)
+        if token == "leer":
+            raise urllib.error.HTTPError(usage.USAGE_URL, 429, "limit", {}, None)
+        return {"ok": token}
+
+    orig = usage._fetch_one
+    usage._fetch_one = fake
+    try:
+        assert usage.fetch_usage(["leer", "frisch"]) == {"ok": "frisch"}
+        assert versucht == ["leer", "frisch"], versucht
+    finally:
+        usage._fetch_one = orig
+
+
+def test_usage_rate_limit_auf_allen_tokens_fliegt_hoch():
+    """Erst wenn ALLE Quellen abgewiesen werden, ist es wirklich das Konto — dann
+    muss der Fehler durch, damit der Backoff greift."""
+    import urllib.error
+
+    def fake(token):
+        raise urllib.error.HTTPError(usage.USAGE_URL, 429, "limit", {}, None)
+
+    orig = usage._fetch_one
+    usage._fetch_one = fake
+    try:
+        try:
+            usage.fetch_usage(["a", "b"])
+            raise AssertionError("bei 429 auf allen Tokens muss der Fehler fliegen")
+        except urllib.error.HTTPError as e:
+            assert e.code == 429
+    finally:
+        usage._fetch_one = orig
+
+
+def test_usage_serverfehler_bricht_ohne_zweiten_versuch_ab():
+    """Ein 5xx ist kein Token-Problem. Alle Tokens durchzuprobieren waere nur
+    zusaetzliche Last auf einem Dienst, der ohnehin strauchelt."""
+    import urllib.error
+    versucht = []
+
+    def fake(token):
+        versucht.append(token)
+        raise urllib.error.HTTPError(usage.USAGE_URL, 503, "down", {}, None)
+
+    orig = usage._fetch_one
+    usage._fetch_one = fake
+    try:
+        try:
+            usage.fetch_usage(["a", "b"])
+        except urllib.error.HTTPError:
+            pass
+        assert versucht == ["a"], versucht
+    finally:
+        usage._fetch_one = orig

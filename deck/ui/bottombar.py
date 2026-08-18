@@ -105,8 +105,13 @@ class BottomBar:
             return
         if self.poller is not None:
             snap = self.poller.snapshot()
+            # Die Frische gehoert MIT in die Signatur. Sie kippt, ohne dass sich
+            # Zustand, Prozent oder Ampel aendern (der Wert altert ja nur still
+            # weiter) - ohne sie im Vergleich bliebe das Badge fuer immer hell,
+            # und der ganze Sinn von badge_view waere weggefiltert.
+            from deck.claude.usage_view import is_stale
             sig = (snap.get("state"), snap.get("session_percent"),
-                   snap.get("session_severity"))
+                   snap.get("session_severity"), is_stale(snap))
             if sig != self._sig:
                 self._sig = sig
                 self._snap = snap
@@ -154,11 +159,8 @@ class BottomBar:
         # ── links: Claude-Nutzung (nur wenn ein Poller laeuft) ──
         if self.poller is not None:
             snap = self._snap
-            pct = snap.get("session_percent") if snap else None
-            sev = snap.get("session_severity") if snap else ""
-            from deck.claude.usage_view import severity_color
-            color = severity_color(sev, pct)
-            value = f"{pct} %" if pct is not None else "—"
+            from deck.claude.usage_view import badge_view
+            value, color = badge_view(snap or {})
             wl = self._lbl_font.measure("Claude")
             wv = self._val_font.measure(value)
             inner = DOT + GAP + wl + GAP + wv
