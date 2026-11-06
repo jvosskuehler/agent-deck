@@ -5,6 +5,7 @@ wie sie im Fenstertitel stehen (der Teil vor " - Visual Studio Code"). Die
 brauchen wir nur noch, um beim Fokussieren das richtige der 2 Fenster nach vorn
 zu holen - die Auswahl des einzelnen Terminals (Pane) macht die Extension.
 """
+import os
 
 # Fenster-Buchstabe -> Textstueck, das eindeutig im jeweiligen Fenstertitel vorkommt
 # (i.d.R. der Projekt-Ordnername). Wird gross/klein-unabhaengig gesucht.
@@ -155,6 +156,33 @@ TICKET_PROMPT = (
     "actually needs to be done. If you cannot reach Jira, tell me so and show the ticket "
     "key instead of inventing its content. Then get started with: {task}"
 )
+# Dasselbe fuer einen Block, der NICHT in einem Repo laeuft, sondern im Ordner ueber
+# allen Repos (Heimat-Block, config.TERMINAL_HOME). Dort gibt es kein
+# `git rev-parse --show-toplevel`; der Agent muss erst am Ticket ablesen, welche Repos
+# es betrifft, und legt die Worktrees nach dem Schema der CLAUDE.md in diesem Ordner an
+# (`wt-<Nummer>-<Kuerzel>`, Branch nach der Regel des jeweiligen Repos).
+# Bewusst OHNE Marker-Datei: das Deck raeumt markierte Worktrees beim Schliessen des
+# Agenten mit `git worktree remove --force` weg - auch mit offenen Aenderungen. Die
+# wt-*-Worktrees leben aber bis zum Merge und gehoeren nicht dem einzelnen Agenten.
+# Platzhalter: {jira_key} {number} {root} {task}. Einzeilig, wie TICKET_PROMPT.
+TICKET_PROMPT_HUB = (
+    "You are assigned Jira ticket {jira_key}. You are running in {root}, the folder that "
+    "holds ALL repositories; it is not a git repository itself, and its CLAUDE.md has the "
+    "repo map and the worktree convention. Set yourself up first: look up {jira_key} with "
+    "your Atlassian/Jira integration (e.g. the Jira MCP getJiraIssue) and read its "
+    "summary, description and acceptance criteria. Decide which repositories the ticket "
+    "touches. For EACH of them, work in a git worktree next to the repos named "
+    "`{root}/wt-{number}-<short>` (short name as in the CLAUDE.md, e.g. api, ui, dotnet, "
+    "client) on a branch that follows that repository's own convention from its "
+    "CLAUDE.md (typically `<type>/{jira_key}-<slug>` from the default branch). If such a "
+    "worktree or branch already exists, reuse it instead of creating a new one. From now "
+    "on work ONLY inside those worktrees; never touch the main checkouts or the worktrees "
+    "of other tickets, and never remove a worktree yourself. Then give me a SHORT "
+    "briefing: worktree path(s) and branch(es), the ticket's title, type, status and, in "
+    "2-4 bullet points, what actually needs to be done. If you cannot reach Jira, tell me "
+    "so and show the ticket key instead of inventing its content. Then get started with: "
+    "{task}"
+)
 # Fallback-Task, wenn du kein Aufgaben-Text mitgibst (nur Ticket-ID eingegeben).
 TICKET_TASK_FALLBACK = "Then wait for my next instruction."
 
@@ -191,6 +219,8 @@ TICKET_SEARCH_PROMPT = (
 # angenommenen aktuellen zum Ziel-Modus zu kommen -> die Buttons setzen gezielt.
 # ZUVERLAESSIG, solange du den Modus NUR ueber diese Buttons aenderst (nicht
 # zusaetzlich von Hand per Shift+Tab im Terminal) und der Chat mit MODE_START startet.
+# Steht Bypass als Startmodus in settings.json, schiebt das Deck "bypass" selbst
+# hinter "plan" ein (status_model.mode_cycle); hier also NICHT eintragen.
 MODE_CYCLE = ["manual", "accept", "plan", "auto"]
 MODE_START = "manual"   # Modus, in dem ein frischer Chat startet
 MODE_BUTTONS = [        # (Label, Ziel-Modus aus MODE_CYCLE)
@@ -284,6 +314,23 @@ VSCODE_MARKER = "Visual Studio Code"
 # agentDeck.host / agentDeck.port-Settings der Extension passen.
 BROKER_HOST = "127.0.0.1"
 BROKER_PORT = 8765
+
+# Der Heimat-Block: ein Windows-Terminal-Block ueber dem Ordner, in dem alle Repos
+# liegen (dort steht eine CLAUDE.md mit der Landkarte). Er ist immer da und steht immer
+# oben, auch ohne offenen Agenten; erst ＋ oeffnet das Fenster mit dem ersten Agenten.
+# VS-Code-Fenster kommen wie gehabt darunter dazu. Ueberschreibbar per
+# deck_settings.json ("terminal_home"); ein Ordner, den es nicht gibt, schaltet ihn ab.
+TERMINAL_HOME = os.path.join(os.path.expanduser("~"), "Repos")
+
+# Sprung-Taste: holt von ueberall das Pane nach vorn, das am laengsten auf dich wartet -
+# erst Rueckfragen, dann ungelesene Antworten, nochmal druecken = der naechste
+# (domain/attention.py). Ueberschreibbar per deck_settings.json ("jump_hotkey"),
+# leerer Text schaltet sie ab. Strg+<: linke Strg-Taste und die <-Taste (links neben Y
+# auf der deutschen Tastatur) liegen direkt uebereinander, einhaendig mit links, ohne
+# Windows-Taste. NICHT Strg+Y: das ist in fast jedem Programm "Wiederholen", eine
+# globale Taste naehme es ueberall weg. Frei geprueft 2026-11-06 (belegt waren
+# Strg+Alt+Leertaste und Win+Alt+Leertaste).
+JUMP_HOTKEY = "ctrl+<"
 
 # Unterstuetzte VS-Code-Fenster (je ein Buchstabe), bewusst mit Reserve: ist KEIN
 # Buchstabe mehr frei, erscheint ein neu geoeffnetes Fenster STILL nicht im Deck

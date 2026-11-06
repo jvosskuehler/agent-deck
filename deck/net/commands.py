@@ -43,13 +43,28 @@ class BrokerCommands:
             payload["repeat"] = repeat
         return self.broker.send_window(slot[0], payload)
 
-    def create_agent(self, win: str, model: str | None = None) -> bool:
+    def create_agent(self, win: str, model: str | None = None, *,
+                     slot: str | None = None, args: str | None = None,
+                     cwd: str | None = None) -> bool:
         """Die Extension oeffnet ein weiteres Claude-Terminal im Fenster. model (optional)
         -> die Extension startet `claude --model <model>`, erzwingt also das Wunsch-Modell
-        per CLI-Flag (schlaegt das zuletzt in ~/.claude.json gemerkte Modell)."""
-        payload = {"cmd": protocol.CMD_CREATE_AGENT}
+        per CLI-Flag (schlaegt das zuletzt in ~/.claude.json gemerkte Modell).
+
+        Die drei Schluesselwort-Felder gehoeren dem Neustart (ops/vscode_restart):
+        `args` ist eine FERTIGE Flag-Zeile (domain/restart_plan.flags, enthaelt dann auch
+        --model) und hat Vorrang vor `model`; `cwd` ist das Arbeitsverzeichnis des neuen
+        Terminals - beim Wiederaufnehmen Pflicht, weil Claude eine Session ueber ihr
+        Projektverzeichnis findet und ein Ticket-Agent im worktree lief; `slot` ist ein
+        Wunschname, damit die Kacheln nach dem Neustart wieder dieselben Chats zeigen."""
+        payload: dict[str, Any] = {"cmd": protocol.CMD_CREATE_AGENT}
         if model:
             payload["model"] = model
+        if args:
+            payload["args"] = args
+        if cwd:
+            payload["cwd"] = cwd
+        if slot:
+            payload["slot"] = slot
         return self.broker.send_window(win, payload)
 
     def reload(self, win: str) -> bool:
@@ -63,3 +78,9 @@ class BrokerCommands:
     def close_window(self, win: str) -> bool:
         """Das ganze VS-Code-Fenster schliessen (inkl. aller Agenten darin)."""
         return self.broker.send_window(win, {"cmd": protocol.CMD_CLOSE_WINDOW})
+
+    def save_all(self, win: str) -> bool:
+        """Alle Editoren dieses Fensters speichern. Vor dem Schliessen: eine
+        ungespeicherte Datei verwandelt closeWindow in einen modalen Dialog, und der
+        haelt einen automatischen Ablauf still an, bis jemand hinsieht."""
+        return self.broker.send_window(win, {"cmd": protocol.CMD_SAVE_ALL})

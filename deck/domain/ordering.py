@@ -140,3 +140,16 @@ def move_to(order: Sequence[str], item: str, target: int) -> list[str]:
     rest = [x for x in order if x != item]
     t = max(0, min(target, len(rest)))
     return [*rest[:t], item, *rest[t:]]
+
+
+def pin_first(order: Sequence[str], item: str | None) -> list[str]:
+    """<item> an die Spitze, der Rest in seiner Reihenfolge.
+
+    Fuer den Heimat-Block (das Windows-Terminal-Fenster ueber dem Ordner aller Repos,
+    siehe config.TERMINAL_HOME): er steht immer oben, egal wie die anderen Bloecke
+    gezogen wurden. Fehlt <item> (kein Heimat-Block), bleibt alles, wie es ist."""
+    out = list(order)
+    if item is not None and item in out:
+        out.remove(item)
+        out.insert(0, item)
+    return out

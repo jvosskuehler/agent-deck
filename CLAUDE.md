@@ -1,7 +1,35 @@
 # Agent Deck
 
-Dashboard für parallel laufende Claude-Code-Agents in VS Code. Eine Kachel je Chat,
-Farbe = Zustand; dockt am Bildschirmrand an. Windows-only, Python 3.12+ / tkinter.
+Dashboard für parallel laufende Claude-Code-Agents in VS Code **oder Windows Terminal**.
+Eine Kachel je Chat, Farbe = Zustand; dockt am Bildschirmrand an. Windows-only,
+Python 3.12+ / tkinter.
+
+## Zwei Hosts: VS Code und Windows Terminal
+
+Ein Repo-Block (Buchstabe) lebt entweder in einem VS-Code-Fenster (Broker + Extension)
+oder in Windows Terminal: dort hat jeder Agent ein eigenes Fenster `deck-<Slot>`, und das
+Deck legt die Fenster eines Blocks gleich groß nebeneinander (`ops/wt_tiles.py`). Das
+Panel merkt davon nichts: `self.broker` ist der Verteiler `ui/hosts.py`, der je
+Buchstabe an `net/broker.py` oder `ops/wt_host.py` weitergibt;
+beide beantworten dieselben Fragen (`connected`, `terminals`, `send_window`, …).
+Angelegt wird ein WT-Block über Einstellungen → „▤ Repo öffnen …“.
+
+Was der WT-Host statt der Extension tut, und warum (erprobt 2026-11-06, WT 1.24):
+
+| Aufgabe | Weg | Datei |
+|---|---|---|
+| Agent anlegen | `wt -w deck-A3 new-tab`: eigenes Fenster je Agent, Titel = Slot, festgenagelt. **Kein `split-pane`**: WT kann Panes nur halbieren und hat keinen Befehl zum Angleichen (gemessen 2026-11-06: 48 / 24 / 12 / 12 % der Fläche) | `domain/wt.py`, `ops/wt_host.py` |
+| Fenster kacheln | sobald ein Agent dazukommt oder geht: alle Fenster des Blocks gleich groß, so viele nebeneinander, dass jedes mindestens 600 Punkte breit bleibt (höchstens 4), dann Reihen; Monitor = der des ältesten Fensters, minimierte bleiben liegen | `ops/wt_tiles.py`, Raster in `domain/arrange.tile_grid`, Win32 in `platform/arrange.place_window` |
+| `AGENT_SLOT` + „lebt der Slot?" | Startskript im Pane setzt die Variable und schreibt `state/<slot>.wtpid` (Shell-PID + Startzeit) | `ops/wt_agent.ps1` |
+| Agent fokussieren | Fenster mit dem Slot als Titel nach vorn. UI Automation nur noch als Rückfall für Panes in alten, geteilten Fenstern | `ops/wt_tiles.hwnd_of`, `platform/wt_uia.py` |
+| Text/Tasten senden | `WriteConsoleInputW` in die Konsole der Pane-Shell, in einem **Wegwerfprozess** (eine fremde Konsole, die zugeht, nimmt ihren angehängten Prozess mit) | `platform/console_input.py` |
+| Agent schließen | `taskkill /T` auf die Pane-Shell; das versteckte WT-Profil „Agent Deck" (`closeOnExit: always`) schließt dann das Pane | `platform/procs.kill_tree` |
+| „gesehen" | Vordergrundfenster der Klasse `CASCADIA_HOSTING_WINDOW_CLASS` mit einem Slot als Titel | `ops/wt_host.drain_seen` |
+| Fokus-Rahmen | oranger Ring auf der Außenkante des vordersten Agentenfensters, Tab-Leiste eingeschlossen: ein eigenes, durchklickbares Fenster des Decks (nie aktiv, nie im Fokus). Agentenfenster bekommen dazu eckige Ecken. **Kein WT-Pixel-Shader**: der malt nur in die Textfläche, und die liegt hinter Innenabstand und Scrollleiste (verworfen 2026-11-06) | `ui/focus_frame.py`, `platform/overlay.py`, Bild in `render/focus_ring.py` |
+
+Der VS-Code-Neustart (`ops/vscode_restart`) bekommt den **rohen** Broker und fasst
+WT-Blöcke nicht an. Windows Terminal holt sich beim Öffnen selbst nach vorn;
+das ist beim Klick auf ＋ gewollt, in Tests mit echtem wt.exe also sofort minimieren.
 
 ## Kommandos
 
@@ -83,6 +111,7 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 | Griff: Verhalten | `dock/handle.py`, Schwappen in `dock/wave.py` |
 | ein neues Kommando an die Extension | `domain/protocol.py` **und** `extension/extension.js` |
 | wen `Ctrl+Alt+K` zum Abschießen anbietet | `extension/killable.js` (getestet), Dialog in `extension/extension.js` |
+| wie die Extension den Prozessbaum holt | `extension/psworker.js`: ein PowerShell-Prozess je Fenster statt einer neuen `powershell.exe` je Scan (getestet) |
 | Hook-Verhalten (was gemeldet wird) | `claude/hooks/report.py` |
 | welche Hooks **eingetragen** werden | `claude/hook_setup.py` (`HOOKS`) — und `docs/SETUP.md`-Anhang nachziehen |
 | ob VS Code die Extension überhaupt **lädt** | `ops/vscode_ext.py` (Eintrag in `extensions.json`) — der Ordner allein beweist nichts |
@@ -90,6 +119,9 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 | Usage: Zahlen holen | `claude/usage.py`, Token in `claude/usage_token.py` |
 | Usage: Anzeige und Ampelfarben | `claude/usage_view.py`, Balken in `ui/bottombar.py` |
 | Usage: Poll-Takt, 429-Backoff | `claude-usage-shared/usage_poller.py` (**außerhalb** des Repos, geteilt mit dem Tray-Monitor) — Diagnose: `doctor.py` |
+| Agentenfenster in Windows Terminal anordnen | `ops/wt_tiles.py` — Raster in `domain/arrange.tile_grid`, Spaltenzahl `max_cols_for` (`MIN_TILE_W`, `MAX_COLS`) |
+| alle VS-Code-Fenster auf den Hauptmonitor holen | `ops/window_gather.py` — Regeln in `domain/arrange.py`, Win32 in `platform/arrange.py` |
+| VS Code neu starten, Chats wieder aufnehmen | `ops/vscode_restart.py` — Plan (Slot ↔ Session) in `domain/restart_plan.py`, Prozess-Blick in `platform/procs.py`, Knopf in `ui/settings_dialog.py` |
 | Ticket zuweisen | `ui/ticket.py` |
 | worktrees abräumen | `ui/worktree_sweep.py`, Git-Teil in `ops/worktree.py` |
 | irgendetwas mit Win32 | `platform/` — neue Funktion? Signatur in `platform/win32.py` typisieren |
@@ -182,7 +214,7 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
    „Developer: Reload Window", pro Fenster.
 
    Derselbe blinde Fleck eine Ebene tiefer: die Extension ist **mehr als eine Datei**
-   (`extension.js`, `detect.js`, `killable.js`). Fehlt eines der Nebenmodule, ist das
+   (`extension.js`, `detect.js`, `killable.js`, `psworker.js`). Fehlt eines der Nebenmodule, ist das
    kein Teilausfall — `require` wirft beim Aktivieren, und VS Code lädt die Extension
    **gar nicht**, samt Panel-Brücke. `install.ps1 -Check` vergleicht darum seit
    2026-08-03 **jede** Datei des Ordners, nicht mehr nur `extension.js`; die
@@ -199,7 +231,55 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
    Blocker sucht. Wer die Regeln lockert, macht aus einem Werkzeug einen Fußschuss —
    ein zu enger Filter kostet nur einen Blick in den Task-Manager.
 
+9. **Ein Neustart, der die Chats behält, hängt an vier Dingen** — und drei davon sind
+   am Ergebnis nicht zu sehen, wenn sie fehlen. Der Ablauf steht in
+   `ops/vscode_restart.py`, die Rechnung in `domain/restart_plan.py`.
+
+   - **`session_id` UND `cwd`.** `claude --resume <id>` findet eine Unterhaltung nur
+     über ihr Projektverzeichnis (`~/.claude/projects/<kodiertes cwd>/<id>.jsonl`).
+     Ein Ticket-Agent lief im `git worktree` — mit der Repo-Wurzel als `cwd` findet er
+     nichts. Beides schreibt `claude/hooks/report.py` je Slot mit; ohne
+     `--fork-session` behält die Session ihre ID, der nächste Hook meldet also weiter
+     auf dieselbe Kachel.
+   - **Eine ID ist kein Beweis.** `state\<slot>.json` überlebt das Aufräumen in
+     `~/.claude/projects`. Nachgesehen am 2026-08-22: von sechs Zustandsdateien nannte
+     eine eine Session, zu der kein Transcript mehr existierte. `--resume` startet
+     darauf **gar nicht** — die Kachel käme mit einer Fehlermeldung statt mit einem
+     Chat zurück. Darum prüft der Plan-Bau das nach (`can_resume`) und startet sonst
+     leer.
+   - **Ein geschlossenes Fenster ist kein beendeter VS Code.** Startet `Code.exe`,
+     während der alte Prozess noch aufräumt, meldet es sich bei **ihm** an statt eine
+     frische Instanz zu werden — der „Neustart" wäre ein Reload mit Extra-Schritten,
+     und genau die Renderer, wegen derer man ihn wollte, lebten weiter. Darum wird
+     **nachgesehen** (`platform/procs.py`) und nicht gewartet; bleiben Prozesse übrig,
+     wird abgebrochen. Eine unlesbare Prozessliste (`None`) gilt dabei als Nein — „ich
+     weiß es nicht" ist keine Entwarnung.
+   - **Terminals vor Fenstern schließen.** VS Code stellt Terminals beim nächsten Start
+     als leere Hüllen mit denselben Namen (`A1`, `A2`, …) wieder her. Die Extension
+     sammelt sie als Slots ein, und die Namensvergabe verbiegt: der wiederaufgenommene
+     Chat landet auf einer anderen Kachel.
+
+   Dazu eine Pflicht auf der Panel-Seite: solange `Restarter.busy()` gilt, setzt
+   `ui/refresh.py` seine Aufräumarbeiten **aus**. `_cleanup_closed_windows` vergisst
+   nach `cfg.STALE_WINDOW_S` (3 s) die Bindungen — dann bekäme ein Fenster einen
+   anderen Buchstaben als im Plan —, und der worktree-Sweep hielte jeden Ticket-
+   Arbeitsbaum für verwaist, weil zu keinem Slot mehr ein Agent lebt. Der Plan liegt
+   deshalb **vor** dem ersten Schließen in `restart_plan.json`; derselbe Knopf setzt
+   einen abgebrochenen Lauf fort, statt einen leeren Plan darüber zu schreiben.
+
 ## Fallen, die schon einmal wehgetan haben
+
+- **Die Testsuite hat VS Code beendet.** `Restarter` holt sich seine Eskalation per
+  Default-Argument: `close_editors` (WM_CLOSE an **jedes** VS-Code-Fenster) und
+  `kill_editors` (`taskkill /F /T /IM Code.exe`). Die Attrappe in
+  `tests/test_ops_vscode_restart.py` ersetzte beide nicht, und
+  `test_laufende_prozesse_lassen_den_lauf_abbrechen_statt_blind_zu_starten` läuft genau
+  bis zur Notbremse. Am 2026-11-06 hat `python tests/run.py` so zweimal das VS Code
+  beendet, in dessen Terminal er lief: kein Crash-Dump, keine Zeile im VS-Code-Log, es
+  sah aus wie ein Absturz. Seither stellt `tests/helpers.py` ein **Schutzgitter** auf
+  (`taskkill`, `code`, `Stop-Process`, `arrange.post_close`, `arrange.place_window`,
+  `overlay.create` und `overlay.square_corners` werfen), und die Attrappe fälscht beide Stufen. Wer einer Klasse einen neuen echten Eingriff als Default gibt,
+  ergänzt die Attrappe **und** das Gitter.
 
 - **Keine `"` in ein `python -c`-Snippet in `install.ps1`.** Windows PowerShell 5.1
   entfernt sie beim Weitergeben an ein natives Programm — aus `print("%d")` wird
@@ -280,6 +360,17 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
   `python claude-usage-shared/doctor.py`: Erfolgsquote je Stunde, gelernter Takt,
   Cache-Alter, wer wirklich gepollt hat. **Kein** Netzabruf — ein Doktor, der die
   Sperre verlängert, die er untersucht, ist keiner.
+
+- **Ein maximiertes Fenster klebt an seinem Monitor.** `SetWindowPlacement` mit
+  `showCmd = SW_SHOWMAXIMIZED` und einem `rcNormalPosition` auf dem Zielmonitor ist der
+  naheliegende Weg, VS-Code-Fenster einzusammeln — der Aufruf meldet Erfolg, und das
+  Fenster bleibt liegen, wo es war (gemessen am 2026-08-19: Rechteck vorher und nachher
+  identisch). Windows hält für ein maximiertes Fenster den Maximierungs-Monitor fest;
+  `rcNormalPosition` sagt nur, wohin es beim Wiederherstellen zurückfällt. Es braucht
+  darum ZWEI Schritte — erst `SW_SHOWNORMAL` auf die Zielfläche, dann maximieren —, und
+  genau die stehen in `platform/arrange.move_maximized`. Dieselbe Eigenschaft ist beim
+  Zurückstellen ein Werkzeug: das gemerkte Rechteck lässt sich nachtragen, ohne die
+  Maximierung anzufassen.
 
 - **`SO_REUSEADDR` ist in `deck/net/broker.py` schädlich.** Unter Windows erlaubt die
   Option zwei Listener auf demselben Port; „Port belegt → still deaktiviert" greift dann

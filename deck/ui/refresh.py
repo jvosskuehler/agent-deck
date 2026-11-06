@@ -37,6 +37,11 @@ class RefreshMixin:
         zerlegt (jeweils unten)."""
         self._beat()        # VOR jedem vorzeitigen return: sonst gilt ein langes
                             # Kachel-Ziehen dem Waechter als haengendes Panel
+        # Laeuft ein VS-Code-Neustart, wird er hier mitgeschoben - auch dann, wenn
+        # dieser Poll gleich vorzeitig aussteigt (siehe unten). `step()` ist
+        # idempotent und entscheidet selbst, ob sein Zeitfenster offen ist.
+        self.restarter.step()
+        restarting = self.restarter.busy()
         if self._dragging():
             # Waehrend eines laufenden Kachel-Drags NICHT neu zeichnen (c.delete("all")
             # wuerde das Ziehen zerreissen). Poll pausiert kurz; _tile_release zeichnet
@@ -63,7 +68,12 @@ class RefreshMixin:
         # nachziehen (zeichnet selbst neu und passt die Fenstergroesse an).
         self._sync_ui_scale()
         self._sync_bindings()
-        self._cleanup_closed_windows()
+        # Waehrend eines Neustarts NICHT abraeumen: die Fenster sind absichtlich weg.
+        # _cleanup_closed_windows wuerde nach cfg.STALE_WINDOW_S die Bindungen
+        # vergessen - dann bekaeme ein Fenster einen anderen Buchstaben als im Plan,
+        # und die Chats landeten auf fremden Kacheln.
+        if not restarting:
+            self._cleanup_closed_windows()
         sig = self._layout_sig()
         if sig != self._last_sig:                 # nur bei Aenderung neu zeichnen (Flackern)
             self._render_agents()
@@ -75,9 +85,13 @@ class RefreshMixin:
         self._found = dc.read_found_tickets()   # vom Agenten gemeldete Ticket-IDs (Such-Modus)
         self._worktrees = dc.read_found_worktrees()  # gemeldete worktree-Pfade (Ticket-Anzeige + Orphan-Sweep haengen daran)
         now = time.time()
-        cycle = cfg.MODE_CYCLE
-        self._sweep_orphan_worktrees(now)       # (marker-getrieben) worktrees ohne lebenden Agenten abraeumen
-        self._sweep_disk_worktrees(now, states) # (fs-getrieben) verwaiste '<repo>.wt'-worktrees OHNE Marker abraeumen
+        cycle = self._mode_cycle()
+        if not restarting:
+            # Gleiche Begruendung wie oben, mit hoeherem Preis: waehrend eines Neustarts
+            # lebt zu KEINEM Slot ein Agent, der Sweep hielte also jeden Ticket-worktree
+            # fuer verwaist und wuerde ihn loeschen - samt der Arbeit darin.
+            self._sweep_orphan_worktrees(now)       # (marker-getrieben) worktrees ohne lebenden Agenten abraeumen
+            self._sweep_disk_worktrees(now, states) # (fs-getrieben) verwaiste '<repo>.wt'-worktrees OHNE Marker abraeumen
         self._adopt_hook_modes(states, cycle)
         self._apply_pending_auto(states, now, cycle)
         self._update_tiles(states, live, now, cycle)
@@ -133,6 +147,13 @@ class RefreshMixin:
             st = states.get(slot)
             if st and st.get("status") == "done":
                 dc.write_state(slot, "idle")
+        # Die Kachel des Panes, das du gerade vorgeholt hast, wird zur ausgewaehlten -
+        # so zeigt das Deck immer, wo deine Tastatur gerade ist, auch wenn du direkt im
+        # Terminal gewechselt hast statt ueber die Kachel. Bei mehreren Meldungen in
+        # einem Takt gewinnt eine bekannte Kachel; die Reihenfolge ist dann egal.
+        shown = [s for s in sorted(seen) if s in self.tiles]
+        if shown:
+            self.active_slot = shown[-1]
 
     def _update_tiles(self, states, live, now, cycle) -> None:
         """Pro Kachel den Status interpretieren (status_model) und die Optik setzen:
@@ -142,7 +163,10 @@ class RefreshMixin:
         for slot, ids in self.tiles.items():
             st = states.get(slot)
             lv = live.get(slot) or {}
-            status = st.get("status") if st else "idle"   # gerenderte Kachel = verbundener Agent -> hell
+            # Ohne Meldung heisst gerendert = verbundener Agent -> "idle" (hell). Nur bei
+            # einem Remote-Fenster nicht: dessen Hooks schreiben drueben, hier kaeme auch
+            # eine Rueckfrage nie an -> "unbekannt" statt einer beruhigenden Behauptung.
+            status = sm.initial_status(st, bool(self.broker.remote(slot[0])))
             fresh = sm.is_fresh(st, now, cfg.STALE_S)
             status = sm.normalize_status(status, fresh, GLOW_STYLE)
             lost = sm.is_lost(status, fresh, self.broker.connected(slot[0]))

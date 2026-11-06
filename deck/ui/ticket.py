@@ -19,8 +19,27 @@ from deck.render import kit as ck
 from deck.render.kit import BG, INK, INK_2
 
 
+def _hub_prompt(jira: str, root: str, task: str) -> str:
+    """Ticket-Prompt fuer einen Block, der im Ordner ueber allen Repos laeuft. {number}
+    ist die reine Ticketnummer (ORPH-4116 -> 4116) fuer den Worktree-Namen wt-4116-<kurz>."""
+    digits = "".join(ch for ch in jira.split("-")[-1] if ch.isdigit()) or jira
+    return cfg.TICKET_PROMPT_HUB.format(jira_key=jira, number=digits,
+                                        root=root.replace("\\", "/"), task=task)
+
+
 class TicketMixin:
     """Wird in AgentDeck eingemischt (siehe panel.py)."""
+
+    def _hub_root(self, slot) -> str | None:
+        """Ordner des Blocks, wenn er in Windows Terminal ueber einem Ordner OHNE eigenes
+        Git-Repo laeuft (Heimat-Block ueber allen Repos), sonst None. Dort fuehrt der
+        normale Ticket-Prompt ins Leere: `git rev-parse --show-toplevel` hat nichts zu
+        finden."""
+        wt = getattr(self, "wt", None)
+        folder = wt.hosts.get(slot[0]) if (wt and slot) else None
+        if not folder or os.path.exists(os.path.join(folder, ".git")):
+            return None
+        return folder
 
     def assign_ticket(self, slot) -> None:
         """Einem laufenden Agenten ein Ticket umhaengen und ihn anweisen, in einem eigenen
@@ -96,6 +115,10 @@ class TicketMixin:
         wt_marker = dp.worktree_marker_path(slot).replace("\\", "/")
         task = " ".join(str(task or "").split()) or getattr(
             cfg, "TICKET_TASK_FALLBACK", "Then wait for my next instruction.")
+        root = self._hub_root(slot)
+        if root:
+            # Block ueber allen Repos: eigene Vorlage, ohne Marker (Begruendung in config).
+            return _hub_prompt(jira, root, task)
         tmpl = cfg.TICKET_PROMPT
         try:
             return tmpl.format(ticket=ticket, jira_key=jira, branch=branch, slug=slug,

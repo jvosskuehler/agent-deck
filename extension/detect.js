@@ -86,6 +86,28 @@ function parseProcList(jsonText) {
   return data ? [data] : [];
 }
 
+// Welche Slot-Namen zeigen auf ein Terminal, das VS Code nicht mehr fuehrt?
+// entries = Map-Eintraege [[name, terminal], ...], live = vscode.window.terminals.
+//
+// Verglichen wird die IDENTITAET des Terminal-Objekts, denn am Objekt selbst ist
+// nichts zu sehen: ein geschlossenes Terminal bleibt eine gueltige Referenz, man
+// darf es weiter anfassen - es passiert nur nichts mehr. Ob es noch lebt, weiss
+// allein VS Codes eigene Liste.
+function deadSlots(entries, live) {
+  // Keine Auskunft ist kein Todesurteil: kommt statt der Liste etwas anderes
+  // herein, wird NICHT abgeraeumt. Dieselbe Vorsicht wie im Panel bei der
+  // Fenster-Enumeration - lieber eine tote Kachel stehen lassen als eine
+  // lebende faelschlich loeschen. Ein LEERES Array ist dagegen eine echte
+  // Auskunft ("dieses Fenster fuehrt kein Terminal mehr") und zaehlt.
+  if (!Array.isArray(live)) return [];
+  const alive = new Set(live);
+  const out = [];
+  for (const e of entries || []) {
+    if (e && !alive.has(e[1])) out.push(e[0]);
+  }
+  return out;
+}
+
 // Naechster freier Index fuer <window> aus den vorhandenen Slot-Namen (A1, A2, ...).
 function nextIndex(slotNames, window) {
   let max = 0;
@@ -100,4 +122,5 @@ function nextIndex(slotNames, window) {
 module.exports = {
   isClaudeCommand, looksLikeClaudeName, isClaudeProc,
   hasClaudeDescendant, claudeDescendantPid, parseProcList, nextIndex,
+  deadSlots,
 };

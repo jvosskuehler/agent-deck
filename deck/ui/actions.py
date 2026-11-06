@@ -4,12 +4,17 @@ schließen, Fenster neu laden.
 Vor jedem sendText wird die Pane fokussiert - sonst landet der Text im
 gerade aktiven statt im angeklickten Chat.
 """
+import os
 import time
 import tkinter as tk
 from typing import Any
 
+from deck import i18n
 from deck.claude import settings as cset
+from deck.claude import summarize as cs
+from deck.domain import attention
 from deck.domain import config as cfg
+from deck.domain import restart_plan as rp
 from deck.domain import slot_state as dc
 from deck.domain import status_model as sm
 from deck.platform import focus as wf
@@ -20,10 +25,13 @@ class ActionsMixin:
     """Wird in AgentDeck eingemischt (siehe panel.py)."""
 
     def _raise_window(self, win_key) -> Any:
-        """Das verknuepfte VS-Code-Fenster per Win32 nach vorn holen."""
+        """Das verknuepfte Fenster nach vorn holen: VS Code per Win32-Titelsuche, ein
+        Windows-Terminal-Block ueber seinen Host (der kennt das Fenster ueber die Panes)."""
         repo = self.bindings.get(win_key)
         if not repo:
             return False
+        if self.broker.is_wt(win_key):
+            return self.wt.raise_window(win_key)
         hwnd = wf.find_window(repo, cfg.VSCODE_MARKER)
         if not hwnd:
             return False
@@ -70,8 +78,9 @@ class ActionsMixin:
         st = dc.read_all().get(slot)
         if st and st.get("status") == "done":
             dc.write_state(slot, "idle")
-        self._raise_window(win)              # verknuepftes VS-Code-Fenster nach vorn (Win32)
-        self.cmds.focus_pane(slot)
+        if not self.broker.is_wt(win):
+            self._raise_window(win)          # verknuepftes VS-Code-Fenster nach vorn (Win32)
+        self.cmds.focus_pane(slot)           # in Windows Terminal holt das Fenster UND Pane
 
     def _set_slot_mode(self, slot, target, cycle, current=None) -> Any:
         """Permission-Mode eines BESTIMMTEN Slots gezielt setzen: so viele Shift+Tab vom
@@ -109,9 +118,110 @@ class ActionsMixin:
         if not self.broker.connected(win):
             return
         model = self.settings.get("model") or cset.MODEL_CHOICES[0][1]
+        before = set(self.broker.terminals(win))
         if self.cmds.create_agent(win, model):
             # Ausgangsbestand merken -> neu hinzugekommenen Slot in refresh() auto-fokussieren.
-            self._await_new = (win, set(self.broker.terminals(win)), time.time())
+            self._await_new = (win, before, time.time())
+
+    def jump_to_waiting(self) -> None:
+        """Sprung-Taste (config.JUMP_HOTKEY): das Pane nach vorn holen, das am laengsten
+        auf dich wartet; steht man schon bei einem Wartenden, der naechste (reihum).
+        Wartet niemand, passiert nichts. Rechnung in domain/attention.py."""
+        slot = attention.next_slot(dc.read_all(), list(self.tiles), self.active_slot)
+        if slot:
+            self.focus_slot(slot)
+
+    def open_repo_in_terminal(self, folder) -> str:
+        """Ein Repo als Windows-Terminal-Block oeffnen (Knopf in den Einstellungen) und
+        gleich den ersten Agenten darin starten. Rueckgabe: Text fuer die Statuszeile.
+
+        Steht das Repo schon als WT-Block da, kommt nur ein Agent dazu. Haengt es an
+        einem VS-Code-Fenster OHNE Agenten, wird diese Bindung geloest - sonst stuende
+        derselbe Repo-Name zweimal im Deck. Mit laufenden Agenten bleibt sie stehen:
+        die laufen in VS Code weiter, und das Deck soll sie nicht aus den Augen
+        verlieren."""
+        folder = os.path.normpath(folder or "")
+        repo = os.path.basename(folder)
+        if not repo or not os.path.isdir(folder):
+            return i18n.L("Kein Ordner gewählt.", "No folder chosen.")
+        for w, r in list(self.bindings.items()):
+            if (r or "").lower() != repo.lower():
+                continue
+            if self.broker.is_wt(w):
+                self.create_agent(w)
+                return i18n.L(f"„{repo}“: weiterer Agent im Terminal.",
+                              f"“{repo}”: another agent in the terminal.")
+            if not self.broker.terminals(w):
+                self.forget_window(w)
+        free = next((w for w in cfg.WINDOWS if not self.bindings.get(w)), None)
+        if not free:
+            return i18n.L("Kein Buchstabe mehr frei.", "No letter left.")
+        self.wt.open_repo(free, folder)
+        self.bindings[free] = repo
+        self.store.save_bindings()
+        self._last_sig = None
+        self.create_agent(free)
+        return i18n.L(f"„{repo}“ öffnet sich in Windows Terminal.",
+                      f"“{repo}” opens in Windows Terminal.")
+
+    def restart_vscode(self, report=None) -> bool:
+        """VS Code komplett neu starten und die Chats wieder aufnehmen (Knopf in den
+        Einstellungen). Der Ablauf steckt in ops/vscode_restart; hier wird er nur
+        angestossen und getickt.
+
+        `report(text, ok)` bekommt jeden Fortschritt (der Dialog schreibt ihn in seine
+        Statuszeile). Rueckgabe: False = es gab nichts zu tun."""
+        if not self.restarter.start(report):
+            return False
+        self.root.after(200, self._tick_restart)
+        return True
+
+    def _tick_restart(self) -> None:
+        """Den Neustart weiterschieben, bis er fertig ist.
+
+        Ein EIGENER, dichterer Takt als der Poll: dessen 400 ms warten waehrend eines
+        Kachel-Drags oder einer Dock-Bewegung, und ein Ablauf, der die eigene
+        Arbeitsumgebung schliesst, soll nicht daran haengen, ob gerade jemand eine
+        Kachel in der Hand hat. refresh() tickt zusaetzlich - `step()` ist idempotent
+        und prueft selbst, ob sein Zeitfenster schon offen ist."""
+        self.restarter.step()
+        if self.restarter.busy():
+            self.root.after(300, self._tick_restart)
+
+    def _restart_snapshot(self):
+        """Der Plan fuer den Neustart: was der Broker ueber die Fenster weiss, mit den
+        Slot-Zustaenden (session_id + cwd) und der gezogenen Kachel-Reihenfolge
+        verheiratet. Gerechnet wird in domain/restart_plan - hier stehen nur die
+        Zutaten, die das Panel besitzt."""
+        return rp.build(self.broker.client_info(), dc.read_all(), self.order,
+                        model=self.settings.get("model"),
+                        slot_effort=self.slot_effort,
+                        can_resume=self._has_transcript)
+
+    def foreign_vscode_windows(self) -> list:
+        """Offene VS-Code-Fenster, die das Deck NICHT kennt - nach Repo benannt.
+
+        Der Neustart schliesst sie mit (sonst waere „am Ende ist VS Code beendet" nicht
+        wahr), und genau darum muessen sie VORHER im Bestaetigungstext stehen: in einem
+        fremden Fenster hat das Deck nichts gespeichert und nichts gemerkt. Leere Liste
+        heisst auch „konnte nicht nachsehen" - die Warnung ist eine Zugabe, kein Tor."""
+        try:
+            titles = wf.list_titles(cfg.VSCODE_MARKER)
+        except Exception:
+            return []
+        return rp.foreign_repos(titles, list(self.bindings.values()))
+
+    @staticmethod
+    def _has_transcript(session_id, cwd) -> bool:
+        """Gibt es zu dieser Session noch ein Transcript? Nur dann laesst sich sie
+        wiederaufnehmen - eine ID in der Zustandsdatei ueberlebt das Aufraeumen in
+        ~/.claude/projects, und `claude --resume` auf eine verschwundene Unterhaltung
+        startet gar nicht erst."""
+        try:
+            return bool(cs.transcript_path(session_id, cwd))
+        except Exception:
+            return True     # im Zweifel probieren: ein Fehlversuch ist sichtbar,
+                            # ein stillschweigend geleerter Chat nicht
 
     def reload_window(self, win) -> None:
         """Loest 'Developer: Reload Window' im VS-Code-Fenster dieses Buchstabens aus."""

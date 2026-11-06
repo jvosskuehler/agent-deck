@@ -2,10 +2,21 @@
   "name": "agent-deck-bridge",
   "displayName": "Agent Deck Bridge",
   "description": "Bruecke zwischen dem Agent-Deck-Panel und den Claude-Code-Terminals in diesem VS-Code-Fenster.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "local",
   "engines": { "vscode": "^1.85.0" },
   "activationEvents": ["onStartupFinished"],
+  "//extensionKind": [
+    "PFLICHT, nicht Geschmack: ohne dieses Feld stuft VS Code eine Extension mit",
+    "'main' als 'workspace' ein und sucht sie in einem Remote-Fenster (SSH, WSL,",
+    "Dev Container) auf der GEGENSTELLE - wo sie nicht installiert ist. Sie wird dann",
+    "gar nicht geladen, ohne Fehlermeldung: das Fenster bleibt im Deck einfach",
+    "unsichtbar. 'ui' haelt sie im LOKALEN Extension-Host, wo sie hingehoert - der",
+    "Broker lauscht auf 127.0.0.1 DIESES Rechners und die pidmap liegt in DESSEN",
+    "LOCALAPPDATA. Kein 'workspace' als Zweitwahl: eine Instanz drueben faende weder",
+    "das eine noch das andere und wuerde nur halb funktionieren."
+  ],
+  "extensionKind": ["ui"],
   "main": "./extension.js",
   "contributes": {
     "commands": [

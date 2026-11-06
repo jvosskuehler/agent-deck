@@ -7,7 +7,6 @@ sonst rutscht der Griff aus dem Bild.
 import time
 from typing import Any
 
-from deck.domain import config as cfg
 from deck.domain import slot_state as dc
 from deck.platform import dpi
 
@@ -49,7 +48,7 @@ class LayoutMixin:
         states = dc.read_all()
         live = dc.read_live()
         self._found = dc.read_found_tickets()
-        cycle = cfg.MODE_CYCLE
+        cycle = self._mode_cycle()
         self._update_tiles(states, live, time.time(), cycle)
 
     def _sync_ui_scale(self, redraw=True) -> Any:

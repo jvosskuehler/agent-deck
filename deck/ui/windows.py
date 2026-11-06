@@ -9,6 +9,7 @@ Ein neuer Agent bekommt seinen Startmodus NICHT nach dem Prinzip feuern-und-verg
 erst ein Readiness-Gate (der erste Hook muss da sein), dann Bestaetigen und Nachfassen -
 sonst bleibt er auf dem Weg haengen.
 """
+import os
 import time
 from typing import Any
 
@@ -18,11 +19,39 @@ from deck.domain import paths as dp
 from deck.domain import status_model as sm
 from deck.domain.binding import is_placeholder_ws as _is_placeholder_ws
 from deck.domain.binding import repo_from_title as _repo_from_title
+from deck.domain.binding import strip_remote_tag as _strip_remote_tag
 from deck.platform import focus as wf
 
 
 class WindowSyncMixin:
     """Wird in AgentDeck eingemischt (siehe panel.py)."""
+
+    def _ensure_home_terminal(self) -> None:
+        """Den Heimat-Block sicherstellen (config.TERMINAL_HOME): einen Windows-Terminal-
+        Block ueber dem Ordner aller Repos, der beim Start schon da ist - ohne offenen
+        Agenten, das Fenster oeffnet erst das ＋. Gibt es ihn schon (wt_hosts.json), wird
+        er wiederverwendet und behaelt seinen Buchstaben; sonst bekommt er den ersten
+        freien. Laeuft einmal beim Start: wer ihn per Rechtsklick vergisst, ist ihn bis
+        zum naechsten Start los."""
+        self.home_win = None
+        folder = self.settings.get("terminal_home") or cfg.TERMINAL_HOME
+        if not folder or not os.path.isdir(folder):
+            return
+        folder = os.path.normpath(folder)
+        key = os.path.normcase(folder)
+        win = next((w for w, f in self.wt.hosts.items()
+                    if os.path.normcase(os.path.normpath(f)) == key), None)
+        if win is None:
+            win = next((w for w in cfg.WINDOWS
+                        if not self.bindings.get(w) and not self.wt.has(w)), None)
+            if win is None:
+                return
+            self.wt.open_repo(win, folder)
+        name = os.path.basename(folder)
+        if self.bindings.get(win) != name:
+            self.bindings[win] = name
+            self.store.save_bindings()
+        self.home_win = win
 
     def _sync_bindings(self) -> None:
         """Auto-Verknuepfung + Auto-Bind: eine gemerkte Extension bekommt ihren
@@ -86,7 +115,10 @@ class WindowSyncMixin:
         changed = False
         for w in pending:
             repo = self.bindings.get(w)
-            if repo and repo.lower() in open_repos:
+            # Gebundener Name traegt das Remote-Tag, die Titelliste ist nackt (beide
+            # Tags entstehen unabhaengig) -> hier abstreifen, sonst gilt ein lebendes
+            # Remote-Fenster nach STALE_WINDOW_S als geschlossen und die Kachel geht.
+            if repo and _strip_remote_tag(repo).lower() in open_repos:
                 self._gone_since.pop(w, None)       # Fenster lebt (z.B. Reload) -> Uhr ruecksetzen
                 continue
             t0 = self._gone_since.get(w)
@@ -234,6 +266,19 @@ class WindowSyncMixin:
             elif self._set_slot_mode(slot, target, cycle, current=cycle.index(rmode)):
                 p["sent_ts"] = now                  # kurz gelandet -> vom Ist-Modus nachtreiben
                 p["tries"] += 1
+
+    def _mode_cycle(self) -> list[str]:
+        """Shift+Tab-Reihenfolge der Agenten. Steht Bypass als Startmodus in
+        settings.json, starten neue Agenten darin, und Claude Code nimmt Bypass in ihre
+        Reihenfolge auf (sm.mode_cycle). Wechselt die Reihenfolge, zeigen die gemerkten
+        Modus-Nummern auf die falschen Namen: dann vergessen, _adopt_hook_modes holt sie
+        aus den letzten Hook-Meldungen neu."""
+        cycle = sm.mode_cycle(cfg.MODE_CYCLE, cset.default_mode() == cset.BYPASS_MODE)
+        if cycle != getattr(self, "_last_cycle", cycle):
+            self.slot_mode.clear()
+            self._mode_ts.clear()
+        self._last_cycle = cycle
+        return cycle
 
     def _adopt_hook_modes(self, states, cycle) -> None:
         """Ist-Permission-Mode aus den Hooks uebernehmen (self-correcting): jeder

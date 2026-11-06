@@ -94,6 +94,23 @@ def test_adopt_hook_mode():
     assert sm.adopt_hook_mode(0, {"ts": 5}, _CYCLE) is None                   # kein Modus
 
 
+def test_bypass_steht_im_zyklus_direkt_hinter_plan():
+    assert sm.mode_cycle(_CYCLE, True) == ["manual", "accept", "plan", "bypass", "auto"]
+    assert sm.mode_cycle(_CYCLE, False) == _CYCLE
+    # Doppelt eingefuegt wird nie, und ohne 'plan' fehlt der Anker -> unveraendert.
+    assert sm.mode_cycle(sm.mode_cycle(_CYCLE, True), True).count("bypass") == 1
+    assert sm.mode_cycle(["manual", "auto"], True) == ["manual", "auto"]
+    # Die Eingabe bleibt unangetastet (MODE_CYCLE ist eine Modul-Konstante).
+    assert _CYCLE == ["manual", "accept", "plan", "auto"]
+
+
+def test_aus_bypass_ist_auto_ein_schritt_und_manual_zwei():
+    cyc = sm.mode_cycle(_CYCLE, True)
+    assert sm.mode_steps(cyc.index("bypass"), "auto", cyc, "manual") == (1, 4)
+    assert sm.mode_steps(cyc.index("bypass"), "manual", cyc, "manual") == (2, 0)
+    assert sm.mode_steps(cyc.index("plan"), "bypass", cyc, "manual") == (1, 3)
+
+
 def test_mode_steps():
     # Unbekannter aktueller Modus (None) -> vom Start-Modus 'manual' (Index 0) aus rechnen.
     assert sm.mode_steps(None, "auto", _CYCLE, "manual") == (3, 3)   # manual->accept->plan->auto

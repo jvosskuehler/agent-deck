@@ -116,3 +116,30 @@ def test_heartbeat_frische_und_pid_muessen_passen():
         si.BEAT_PATH = alt
         import shutil
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_neustart_startet_den_einsprungpunkt_und_nicht_das_panel_modul():
+    """Im laufenden Panel zeigt sys.argv[0] auf deck/ui/panel.py (runpy, alter_sys).
+    Von dort aus startet kein Panel: ModuleNotFoundError 'deck', unter pythonw ohne
+    Spur - so ist der Neustart-Knopf bis 2026-11-06 gestorben. Gestartet werden muss
+    agent_deck.py, mit der Neustart-Markierung, und zuerst abgekoppelt vom Job."""
+    import subprocess
+    from deck.ops import watchdog as wd
+
+    calls = []
+
+    class _Fake:
+        def __init__(self, argv, **kw):
+            calls.append((argv, kw))
+
+    echt = subprocess.Popen
+    subprocess.Popen = _Fake
+    try:
+        assert wd.start_panel(env={"AGENT_DECK_RESTART": "1"}, args=["--x"])
+    finally:
+        subprocess.Popen = echt
+    (argv, kw), = calls
+    assert argv[1] == wd.PANEL and argv[1].endswith("agent_deck.py")
+    assert argv[2:] == ["--x"]
+    assert kw["env"] == {"AGENT_DECK_RESTART": "1"} and kw["cwd"] == wd.HERE
+    assert kw["creationflags"] & wd.CREATE_BREAKAWAY_FROM_JOB

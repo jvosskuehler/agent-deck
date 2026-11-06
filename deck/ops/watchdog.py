@@ -145,16 +145,24 @@ def last_end() -> str:
             "Aufraeum-Tool, Abmeldung), kein Programmfehler")
 
 
-def start_panel() -> bool:
-    """Panel abgekoppelt starten. True bei Erfolg."""
+def start_panel(*, env: dict | None = None, args: tuple | list = ()) -> bool:
+    """Panel abgekoppelt starten. True bei Erfolg. Gebraucht vom Waechter UND vom
+    Neustart-Knopf (ui/panel.restart, der `env` mit RESTART_ENV mitgibt).
+
+    Gestartet wird IMMER der Einsprungpunkt PANEL (agent_deck.py) - nie sys.argv[0].
+    Im laufenden Panel zeigt sys.argv[0] auf deck/ui/panel.py, weil agent_deck.py das
+    Modul per runpy.run_module(alter_sys=True) startet; von deck/ui aus findet Python
+    das Paket `deck` nicht. Genau daran ist der Neustart-Knopf seit der Umstellung auf
+    den Einsprungpunkt gestorben: ModuleNotFoundError noch vor log.install, unter
+    pythonw ohne Konsole, also ohne jede Spur (gefunden 2026-11-06)."""
     exe = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     if not os.path.isfile(exe):
         exe = sys.executable
     flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
     for creationflags in (flags, DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP):
         try:
-            subprocess.Popen([exe, PANEL], cwd=HERE, creationflags=creationflags,
-                             close_fds=True)
+            subprocess.Popen([exe, PANEL, *args], cwd=HERE, creationflags=creationflags,
+                             close_fds=True, env=env)
             return True
         except OSError:
             # Breakaway ist nicht immer erlaubt (Job ohne BREAKAWAY_OK -> Fehler 5):

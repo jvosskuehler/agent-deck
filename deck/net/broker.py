@@ -18,11 +18,19 @@ from deck.domain import protocol
 
 
 class _Client:
-    __slots__ = ("slots", "sock", "window", "workspace")
+    __slots__ = ("folder", "remote", "slots", "sock", "window", "workspace")
 
     def __init__(self, sock: socket.socket) -> None:
         self.sock = sock
         self.workspace: str | None = None
+        # Ordnerpfad des Fensters (bzw. seine .code-workspace-Datei). Der Workspace-NAME
+        # identifiziert ein Fenster, aber er oeffnet keines wieder - dafuer braucht es
+        # den Pfad (ops/vscode_restart).
+        self.folder: str | None = None
+        # Remote-Name ("ssh-remote", "wsl", ...) oder None fuer ein lokales Fenster.
+        # Entscheidet, ob eine stumme Kachel "idle" heissen darf: bei einem Fenster auf
+        # der Gegenstelle kommt hier nie ein Hook an, "idle" waere dort geraten.
+        self.remote: str | None = None
         self.window: str | None = None
         self.slots: list[str] = []
 
@@ -81,6 +89,10 @@ class Broker:
                     with self._lock:
                         if msg.get("workspace"):
                             cl.workspace = msg["workspace"]
+                        if msg.get("folder"):
+                            cl.folder = msg["folder"]
+                        if "remote" in msg:
+                            cl.remote = msg["remote"] or None
                         if "window" in msg:
                             # Explizit null (nach cmd:unassign) MUSS den Buchstaben
                             # loeschen – sonst bliebe eine vergessene Kachel haengen,
@@ -156,6 +168,15 @@ class Broker:
     def connected(self, window: str) -> bool:
         return self._find(window=window) is not None
 
+    def remote(self, window: str) -> str | None:
+        """Remote-Name des Fensters ("ssh-remote", "wsl", ...) oder None – None auch
+        fuer ein nicht verbundenes Fenster. Wer damit rechnet, fragt eine EIGENSCHAFT
+        des Fensters ab, keine Verbindung: ein abgerissener Client heisst hier "lokal",
+        und das ist die harmlosere Antwort (die Kachel wird ohnehin schon als getrennt
+        gezeichnet, is_lost)."""
+        cl = self._find(window=window)
+        return cl.remote if cl else None
+
     def drain_seen(self) -> set[str]:
         """Slots, deren Pane seit dem letzten Aufruf in VS Code fokussiert wurde
         (Extension meldet type:'seen'), zurueckgeben UND den Puffer leeren. Das
@@ -176,6 +197,15 @@ class Broker:
         Terminals schon tragen (Slot-Namen wie 'C1') -> stabile Zuordnung."""
         cl = self._find(workspace=workspace)
         return list(cl.slots) if cl else []
+
+    def client_info(self) -> list[dict[str, Any]]:
+        """Was der Broker ueber jedes verbundene Fenster weiss: Buchstabe, Workspace-
+        Name, Ordnerpfad, gemeldete Slots. Eine Momentaufnahme als schlichte Dicts -
+        der Aufrufer (Neustart-Plan) soll nicht an _Client haengen und nicht am Lock."""
+        with self._lock:
+            return [{"window": cl.window, "workspace": cl.workspace,
+                     "folder": cl.folder, "remote": cl.remote, "slots": list(cl.slots)}
+                    for cl in self._clients]
 
     def workspaces(self) -> list[str]:
         """Aktuell verbundene Workspace-Namen (fuer die Anzeige/Diagnose)."""

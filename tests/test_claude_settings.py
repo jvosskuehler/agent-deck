@@ -80,6 +80,39 @@ def test_claude_settings_label_value_mapping():
     assert cset.value_to_label(cset.LANG_CHOICES, "english", contains=True) == "Englisch"
 
 
+def test_bypass_ist_waehlbar_und_bleibt_beim_speichern_erhalten():
+    """Fehlte Bypass in der Liste, machte das Einstellungs-Fenster beim naechsten
+    Speichern still 'Auto' daraus (unbekannter Wert -> erster Eintrag)."""
+    assert cset.value_to_label(cset.MODE_CHOICES, "bypassPermissions") == "Bypass"
+    assert cset.label_to_value(cset.MODE_CHOICES, "Bypass") == cset.BYPASS_MODE
+    assert cset.BYPASS_MODE == "bypassPermissions"   # Schreibweise laut `claude --help`
+
+
+def test_default_mode_liest_neu_nur_nach_aenderung_und_haelt_den_letzten_guten_stand():
+    import shutil
+    import tempfile
+    base = tempfile.mkdtemp(prefix="csettings3_")
+    p = os.path.join(base, "settings.json")
+    try:
+        assert cset.default_mode(path=p) is None                    # Datei fehlt
+        cset.write_values(mode="bypassPermissions", path=p)
+        assert cset.default_mode(path=p) == "bypassPermissions"
+        # Halb geschrieben: letzter guter Stand gilt weiter, statt auf None zu fallen.
+        with open(p, "w", encoding="utf-8") as f:
+            f.write('{"permissions": {"defaultMo')
+        os.utime(p, (1000, 1000))
+        assert cset.default_mode(path=p) == "bypassPermissions"
+        cset.write_values(mode="auto", path=p)
+        os.utime(p, (2000, 2000))
+        assert cset.default_mode(path=p) == "auto"
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({"model": "fable"}, f)
+        os.utime(p, (3000, 3000))
+        assert cset.default_mode(path=p) is None                    # Schluessel fehlt
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def test_model_choices_stay_version_free():
     """Damit das Deck IMMER das neueste Modell startet, duerfen weder Wert noch Label
     eine Modellversion einfrieren: `claude --model` loest die nackten Aliasse

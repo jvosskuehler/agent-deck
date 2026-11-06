@@ -22,7 +22,6 @@ automatisch auf den bisherigen Polygon-Weg zurueck und laeuft normal weiter.
 """
 import os
 import queue
-import subprocess
 import sys
 import threading
 import tkinter as tk
@@ -40,13 +39,19 @@ from deck.net.commands import BrokerCommands
 from deck.ops import instance as si
 from deck.ops import log
 from deck.ops import vscode_glow as rg
+from deck.ops import watchdog as wd
+from deck.ops.vscode_restart import Restarter
+from deck.ops.wt_host import WtHost
 from deck.platform import dpi
 from deck.platform import focus as wf
+from deck.platform.hotkey import GlobalHotkey
 from deck.render import kit as ck
 from deck.render.glow import GlowAnimator
 from deck.render.kit import BG
 from deck.ui.actions import ActionsMixin
 from deck.ui.connect import ConnectMixin
+from deck.ui.focus_frame import FocusFrame
+from deck.ui.hosts import HostRouter
 from deck.ui.hover import HoverMixin
 from deck.ui.layout import LayoutMixin
 from deck.ui.refresh import RefreshMixin
@@ -101,9 +106,24 @@ class AgentDeck(
         self._bind_deadline = 0
         self._gone_since = {}          # Fenster -> ts, seit wann getrennt UND VS-Code-Fenster zu (Auto-Abraeumen)
 
-        self.broker = Broker(cfg.BROKER_HOST, cfg.BROKER_PORT)
+        # Zwei Hosts hinter einer Schnittstelle: VS Code ueber Broker + Extension, Windows
+        # Terminal ueber ops/wt_host. self.broker ist der Verteiler (ui/hosts.py) - das
+        # Panel fragt und sendet wie bisher, ohne zu wissen, wo ein Agent laeuft.
+        vscode = Broker(cfg.BROKER_HOST, cfg.BROKER_PORT)
+        self.wt = WtHost()
+        self.broker = HostRouter(vscode, self.wt)
         self.broker.start()
         self.cmds = BrokerCommands(self.broker)   # typisierte Fassade fuers Senden
+        # VS Code komplett neu starten und die Sessions wieder aufnehmen. Liegt als
+        # eigenes Objekt daneben, nicht als Mixin: es braucht vom Panel genau drei
+        # Dinge (Senden, Fragen, Plan) und ist so ohne Tk pruefbar - ein Ablauf, den
+        # man nicht "mal ausprobiert", weil jeder Probelauf die Arbeitsumgebung zumacht.
+        # Er bekommt den ROHEN Broker: Windows-Terminal-Bloecke schliesst er nicht.
+        self.restarter = Restarter(BrokerCommands(vscode), vscode,
+                                   snapshot=self._restart_snapshot)
+        # Der Heimat-Block (Windows Terminal ueber dem Ordner aller Repos) ist ab dem
+        # Start da und steht oben - noch ohne Agenten, das Fenster oeffnet erst ＋.
+        self._ensure_home_terminal()
 
         # HiDPI: MUSS vor dem ersten Tk-Aufruf stehen. Ohne das zeichnet Tk in
         # logischen Pixeln und Windows streckt das fertige Fensterbild auf die
@@ -193,7 +213,15 @@ class AgentDeck(
         self.root.update_idletasks()
         self.refresh()
         self._ui_pump()          # Ergebnisse der Hintergrund-Threads abholen (Queue)
+        # Sprung-Taste: von ueberall zum Agenten, der auf dich wartet. Der Rueckruf kommt
+        # auf dem Hotkey-Thread an und geht ueber _post auf den Tk-Thread.
+        self.hotkey = GlobalHotkey(self.settings.get("jump_hotkey", cfg.JUMP_HOTKEY),
+                                   lambda: self._post(self.jump_to_waiting))
+        self.hotkey.start()
         self.anim.start()        # schneller Timer: Farbton-Crossfade + Glow-Atmen
+        # Oranger Rahmen auf der Aussenkante des WT-Agentenfensters, in das getippt wird.
+        self.focus_frame = FocusFrame(self.root, lambda t: bool(self.wt.slot_of_title(t)))
+        self.focus_frame.start()
         self._glow_self_heal()   # Ring nach VS-Code-Update ggf. still neu einspielen
         # Am-Rand-andocken (Auto-Hide): gespeicherten Rand anwenden; ist einer gesetzt,
         # klappt das Deck sofort auf den Griff-Balken ein.
@@ -356,6 +384,9 @@ class AgentDeck(
         man lesen kann."""
         SettingsDialog(self.root, self.settings, self.store, self.dock,
                        set_modal=self._set_modal, restart=self.restart,
+                       restart_vscode=self.restart_vscode,
+                       foreign_windows=self.foreign_vscode_windows,
+                       open_terminal=self.open_repo_in_terminal,
                        place=self._place_dialog).show()
 
     def restart(self) -> None:
@@ -363,17 +394,18 @@ class AgentDeck(
         und denselben Argumenten starten, dann die aktuelle beenden. Erst wenn der neue
         Prozess erfolgreich gestartet ist, wird der Broker-Socket geschlossen (Port 8765
         frei) und os._exit gerufen – so bleibt bei einem Fehlstart die laufende Instanz
-        heil. Persistente Dateien (bindings/effort) ueberleben den Neustart."""
-        script = os.path.abspath(sys.argv[0])
+        heil. Persistente Dateien (bindings/effort) ueberleben den Neustart.
+
+        Gestartet wird ueber watchdog.start_panel: dort steht der EINSPRUNGPUNKT
+        (agent_deck.py) - sys.argv[0] zeigt hier auf deck/ui/panel.py, und von dort aus
+        startet kein Panel (Begruendung in start_panel) -, und das Kind wird vom Job des
+        Panels abgekoppelt, wie beim Waechter."""
         # RESTART_ENV im Kind setzen -> der Single-Instance-Guard erkennt das als
         # Neustart-Uebergabe (alt+neu leben kurz gleichzeitig) und tritt NICHT als
         # vermeintlicher Doppelstart zurueck.
         env = dict(os.environ)
         env[si.RESTART_ENV] = "1"
-        try:
-            subprocess.Popen([sys.executable, script, *sys.argv[1:]],
-                             cwd=os.path.dirname(script), env=env)
-        except Exception:
+        if not wd.start_panel(env=env, args=sys.argv[1:]):
             return          # Fehlstart -> laufende Instanz heil lassen (Port bleibt belegt)
         # Neuer Prozess laeuft -> Port sofort freigeben und alte Instanz hart beenden.
         self.broker.stop()

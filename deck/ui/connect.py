@@ -12,6 +12,7 @@ from deck.claude import settings as cset
 from deck.domain import config as cfg
 from deck.domain.binding import is_placeholder_ws as _is_placeholder_ws
 from deck.domain.binding import repo_from_title as _repo_from_title
+from deck.domain.binding import window_from_title as _window_from_title
 from deck.platform import focus as wf
 
 
@@ -36,10 +37,12 @@ class ConnectMixin:
         title = wf.title_of(fg)
         if fg and int(fg) != int(self.my_hwnd) and cfg.VSCODE_MARKER in title:
             group = self.binding_group
-            repo = _repo_from_title(title)
+            # MIT Tag binden (das meldet die Extension auch), aber OHNE Tag pruefen:
+            # ein Remote-Fenster ohne Ordner hat nur das Tag im Titel.
+            repo = _window_from_title(title)
             # Fenster ohne Ordner hat als Titel nur den Marker ("Visual Studio Code")
             # -> kein Projektname; nicht binden (sonst Dauer-Phantom, das nie verbindet).
-            if _is_placeholder_ws(repo) or repo == cfg.VSCODE_MARKER:
+            if _is_placeholder_ws(_repo_from_title(title)) or repo == cfg.VSCODE_MARKER:
                 self.binding_group = None
                 return
             # Denselben Repo-Namen nicht an zwei Buchstaben haengen (sonst Doppel-
@@ -114,8 +117,12 @@ class ConnectMixin:
         """Bestaetigungsmenue zum Schliessen des ganzen VS-Code-Fensters (inkl. aller
         Agenten darin) – ausgeloest vom ✕ im Fensterkopf."""
         repo = self.bindings.get(win) or f"{i18n.L('Fenster', 'Window')} {win}"
+        label = (i18n.L("Ja, alle Agenten im Terminal beenden",
+                        "Yes, end all agents in the terminal")
+                 if self.broker.is_wt(win) else
+                 i18n.L("Ja, VS-Code-Fenster schließen", "Yes, close the VS Code window"))
         self._confirm_menu(i18n.L(f"„{repo}“ schließen?", f"Close “{repo}”?"),
-                           i18n.L("Ja, VS-Code-Fenster schließen", "Yes, close the VS Code window"),
+                           label,
                            lambda g=win: self.close_window(g))
 
     def _card_menu(self, slot, ev) -> None:
@@ -160,7 +167,7 @@ class ConnectMixin:
         m.add_cascade(label="Effort", menu=em)
 
         # ── Mode: gezielt per Shift+Tab in den Ziel-Permission-Mode (siehe _set_slot_mode)
-        cycle = cfg.MODE_CYCLE
+        cycle = self._mode_cycle()
         om = tk.Menu(m, tearoff=0)
         for md in cycle:
             om.add_command(label=md.capitalize(),

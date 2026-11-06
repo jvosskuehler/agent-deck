@@ -61,6 +61,10 @@ _decl(user32, "IsWindow", wintypes.BOOL, _HWND)
 _decl(user32, "ShowWindow", wintypes.BOOL, _HWND, ctypes.c_int)
 _decl(user32, "BringWindowToTop", wintypes.BOOL, _HWND)
 _decl(user32, "SetForegroundWindow", wintypes.BOOL, _HWND)
+# PostMessageW statt SendMessageW: der Aufruf kehrt sofort zurueck. SendMessage wartet,
+# bis das FREMDE Fenster geantwortet hat - und haengt damit genau dann, wenn es haengt.
+_decl(user32, "PostMessageW", wintypes.BOOL, _HWND, wintypes.UINT,
+      ctypes.c_void_p, ctypes.c_void_p)
 _decl(user32, "AttachThreadInput", wintypes.BOOL, wintypes.DWORD, wintypes.DWORD,
       wintypes.BOOL)
 _decl(user32, "GetWindowThreadProcessId", wintypes.DWORD, _HWND,

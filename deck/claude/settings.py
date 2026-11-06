@@ -3,7 +3,8 @@
 Das Einstellungs-Fenster des Decks steuert damit die vier Defaults fuer NEU
 gestartete Claude-Agenten:
   • model            -> Modell (Opus / Fable; immer als Alias = neueste Version)
-  • permissions.defaultMode -> Start-Permission-Modus (auto/default/acceptEdits/plan)
+  • permissions.defaultMode -> Start-Permission-Modus (auto/default/acceptEdits/plan/
+                               bypassPermissions)
   • effortLevel      -> Reasoning-Effort (low/medium/high/xhigh)
   • language         -> Antwortsprache (english/german)
 
@@ -36,7 +37,13 @@ SETTINGS_PATH = os.path.join(os.path.expanduser("~"), ".claude", "settings.json"
 MODEL_CHOICES = [("Opus (1M)", "opus[1m]"), ("Fable", "fable"),
                  ("Sonnet", "sonnet"), ("Haiku", "haiku")]
 MODE_CHOICES = [("Auto", "auto"), ("Standard", "default"),
-                ("Accept Edits", "acceptEdits"), ("Plan", "plan")]
+                ("Accept Edits", "acceptEdits"), ("Plan", "plan"),
+                ("Bypass", "bypassPermissions")]
+# Bypass = Claude Code fragt nie nach einer Erlaubnis. Beim ersten Start in diesem
+# Modus zeigt Claude Code einmal einen Warnhinweis, den der Mensch selbst bestaetigt
+# (danach steht skipDangerousModePermissionPrompt in settings.json). Das Deck schreibt
+# diesen Schluessel bewusst NICHT: die Zustimmung gehoert dem Menschen.
+BYPASS_MODE = "bypassPermissions"
 LANG_CHOICES = [("Englisch", "english"), ("Deutsch", "german")]
 
 # Effort ist ein Sonderfall: "ultracode" ist KEIN effortLevel-Wert, sondern der
@@ -81,6 +88,34 @@ def load(path: str | None = None) -> dict[str, Any]:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+# Pfad -> (st_mtime_ns, defaultMode) fuer default_mode().
+_MODE_CACHE: dict[str, tuple[int, Any]] = {}
+
+
+def default_mode(path: str | None = None) -> Any:
+    """permissions.defaultMode (fehlt -> None), fuer den Panel-Takt: neu gelesen wird
+    nur, wenn sich die Datei geaendert hat. Ist sie gerade halb geschrieben (Claude
+    Code und das Deck schreiben beide hinein), gilt weiter der letzte gute Stand, statt
+    fuer einen Takt auf None zu fallen; der naechste Takt liest erneut."""
+    path = path or SETTINGS_PATH
+    try:
+        stamp = os.stat(path).st_mtime_ns
+    except OSError:
+        return None
+    hit = _MODE_CACHE.get(path)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return hit[1] if hit else None
+    perms = data.get("permissions") if isinstance(data, dict) else None
+    mode = perms.get("defaultMode") if isinstance(perms, dict) else None
+    _MODE_CACHE[path] = (stamp, mode)
+    return mode
 
 
 def save(data: dict[str, Any], path: str | None = None) -> None:

@@ -20,6 +20,23 @@ def is_fresh(st: dict[str, Any] | None, now: float, stale_s: float) -> bool:
     return now - st.get("ts", 0) <= stale_s
 
 
+def initial_status(st: dict[str, Any] | None, remote: bool) -> str:
+    """Ausgangsstatus einer Kachel, bevor normalize_status greift.
+
+    Ohne Meldung gilt eine Kachel als 'idle' – sie wird ja gezeichnet, also gibt es
+    den Agenten, er hat nur (noch) nichts gesagt. Bei einem REMOTE-Fenster stimmt
+    dieser Schluss nicht: der Agent laeuft auf der Gegenstelle, seine Hooks schreiben
+    in DEREN Zustandsordner, und hier kaeme auch dann nichts an, wenn er gerade eine
+    Rueckfrage stellt. 'idle' waere da keine Beobachtung mehr, sondern eine
+    Behauptung – und zwar eine beruhigende, was sie schlimmer macht. Also 'unknown'.
+
+    Eine ECHTE Meldung gewinnt weiterhin, auch bei remote: wer den Weg von drueben
+    hierher gebaut hat, soll seine Farben sehen."""
+    if st:
+        return st.get("status") or "idle"
+    return "unknown" if remote else "idle"
+
+
 def normalize_status(status: str, fresh: bool, valid: Container[str]) -> str:
     """Status fuer die Anzeige normalisieren: 'thinking'/'running' ohne frische
     Meldung gilt als eingeschlafen (idle); ein unbekannter Status ebenfalls idle.
@@ -39,7 +56,10 @@ def is_lost(status: str, fresh: bool, connected: bool) -> bool:
 
 # Rangfolge der Kachel-Status fuer den Griff-Balken (Neon): wichtig -> unwichtig.
 # 'lost' ist kein gemeldeter Status, sondern der im Panel berechnete Verbindungsverlust.
-DECK_PRIORITY = ("waiting", "done", "lost", "thinking", "idle", "none")
+# 'unknown' steht hinter 'idle': eine Kachel, ueber die wir nichts wissen, ist kein
+# Grund, den Griff aufleuchten zu lassen – aber sehr wohl ein Grund, ihn nicht als
+# "kein Agent" (none) auszugeben, solange dort einer laeuft.
+DECK_PRIORITY = ("waiting", "done", "lost", "thinking", "idle", "unknown", "none")
 # 'running' und 'thinking' sind derselbe Zustand ("denkt", gleiche Farbe) -> gleicher
 # Rang und derselbe kanonische Name. Sonst blitzte der Griff bei jedem Wechsel
 # zwischen den beiden Meldungen auf, obwohl sich sichtbar nichts aendert.
@@ -94,6 +114,18 @@ def mode_steps(remembered: int | None, target: str, cycle: Sequence[str],
         cycle.index(start) if start in cycle else 0)
     tgt = cycle.index(target)
     return (tgt - cur) % len(cycle), tgt
+
+
+def mode_cycle(cycle: Sequence[str], bypass: bool) -> list[str]:
+    """Shift+Tab-Reihenfolge einer Session. 'bypass' kommt darin nur vor, wenn die
+    Session im Bypass-Modus gestartet wurde, und zwar direkt nach 'plan' (gelesen am
+    Moduswechsel von Claude Code 2.1.319: default -> acceptEdits -> plan ->
+    bypassPermissions -> auto -> default). Ohne 'plan' im Zyklus fehlt der Anker:
+    dann lieber unveraendert, als an falscher Stelle einzufuegen."""
+    if not bypass or "bypass" in cycle or "plan" not in cycle:
+        return list(cycle)
+    i = list(cycle).index("plan") + 1
+    return [*cycle[:i], "bypass", *cycle[i:]]
 
 
 def adopt_hook_mode(prev_ts: float, st: dict[str, Any],

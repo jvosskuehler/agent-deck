@@ -31,6 +31,17 @@ const path = require("path");
 const os = require("os");
 const detect = require("./detect");
 const killable = require("./killable");
+const psworker = require("./psworker");
+
+// Ist dieses Fenster eine REMOTE-Session (SSH, WSL, Dev Container, Tunnel)? Dann
+// laeuft zwar diese Extension lokal (package.json: extensionKind "ui"), die
+// Terminals darin aber auf der Gegenstelle. Der Unterschied ist an einem Terminal
+// nicht zu sehen und zieht sich durch die ganze Datei: eine PID von drueben ist
+// hier eine FREMDE Zahl, der Prozessbaum von hier sagt ueber sie nichts, und die
+// Shell drueben ist praktisch nie PowerShell. Was daran haengt, steht jeweils an
+// Ort und Stelle - Anker ist diese eine Konstante.
+// null = lokales Fenster, sonst der Remote-Name ("ssh-remote", "wsl", ...).
+const REMOTE = vscode.env.remoteName || null;
 
 let sock = null;
 let reconnectTimer = null;
@@ -51,8 +62,15 @@ function stateDir() {
 }
 
 // pidmap dieses Fensters atomar schreiben: { "<claudePid>": "A1", ... }.
+//
+// In einem REMOTE-Fenster gar nicht: die PIDs kaemen von der Gegenstelle, die
+// Datei liegt aber im LOCALAPPDATA dieses Rechners, und report.py liest sie hier.
+// Eine Remote-PID darin ist keine harmlose Nullnummer, sondern eine Verwechslung
+// mit Ansage - dieselbe Zahl gehoert hier zu einem beliebigen Windows-Prozess, und
+// ein LOKALER Hook, dessen Ahnenreihe zufaellig darueber laeuft, meldete seinen
+// Status auf die Kachel eines fremden Fensters.
 function writePidMap() {
-  if (!myWindow) return;
+  if (!myWindow || REMOTE) return;
   try {
     const dir = stateDir();
     fs.mkdirSync(dir, { recursive: true });
@@ -73,7 +91,7 @@ function removePidMap() {
 // und die pidmap aktualisieren. Gedrosselt, weil der Scan (PowerShell) teuer ist.
 let _lastPidRefresh = 0;
 async function refreshPids() {
-  if (!myWindow || !slots.size) return;
+  if (!myWindow || !slots.size || REMOTE) return;  // Remote: siehe writePidMap
   const now = Date.now();
   if (now - _lastPidRefresh < 8000) return; // hoechstens alle 8s
   _lastPidRefresh = now;
@@ -100,14 +118,63 @@ function cfg() {
   };
 }
 
+// VS Codes Remote-Anhaengsel im Fenstertitel ("jorrit [SSH: 10.8.0.10]") gibt die
+// API nicht als String heraus - wir bauen es aus der Authority nach. Es gehoert IN
+// den Namen, weil der Ordnername allein zwei Gegenstellen nicht unterscheidet:
+// /home/jorrit heisst auf jedem Server so. Nur Marker verwenden, die
+// domain/binding._REMOTE_TAG auch wieder abstreifen kann - der Titel-Abgleich im
+// Panel laeuft ueber den NACKTEN Namen, das Tag ist reine Identitaet/Anzeige.
+const REMOTE_LABELS = {
+  "ssh-remote": "SSH",
+  "wsl": "WSL",
+  "dev-container": "Dev Container",
+  "attached-container": "Attached Container",
+  "codespaces": "Codespaces",
+  "tunnel": "Tunnel",
+};
+
+function remoteTag(uri) {
+  if (!REMOTE) return "";
+  const label = REMOTE_LABELS[REMOTE] || "Remote";
+  // "ssh-remote+10.8.0.10" -> "10.8.0.10". Bei Dev Containers steckt dahinter
+  // hex-kodiertes JSON: dann lieber nur das Label als eine Zeichenwueste. Weicht
+  // der Text damit vom echten Titel ab, ist das unschaedlich (siehe oben).
+  const rest = String((uri && uri.authority) || "").split("+").slice(1).join("+");
+  const host = /^[0-9a-f]{16,}$/i.test(rest) ? "" : rest;
+  return host ? ` [${label}: ${host}]` : ` [${label}]`;
+}
+
 function workspaceName() {
   const f = vscode.workspace.workspaceFolders;
-  if (f && f.length) return f[0].name;
+  if (f && f.length) return f[0].name + remoteTag(f[0].uri);
   // Kein Ordner offen (leeres Fenster ODER ein .code-workspace ohne Ordner) ->
   // KEIN echter Projektname. Bewusst NICHT auf vscode.workspace.name zurueckfallen:
   // das liefert sonst "Untitled (Workspace)" o.ae. und wuerde – wie frueher das
   // literale "unknown" – als Phantom-Kachel gebunden und persistiert. null = das
   // Panel ignoriert so ein Fenster (bis ein Ordner geoeffnet wird).
+  return null;
+}
+
+// Der ORDNERPFAD dieses Fensters - das, was man wieder oeffnet, wenn man das Fenster
+// neu aufmachen will (ops/vscode_restart). Der Workspace-NAME identifiziert ein Fenster,
+// aber er oeffnet keines: aus "orpheus-client-electron" laesst sich kein Pfad raten.
+// Ein .code-workspace hat Vorrang - bei einer Mehr-Ordner-Ansicht ist die Datei das
+// Fenster, der erste Ordner darin nur ein Teil davon. null = nichts zu oeffnen.
+function workspaceFolder() {
+  const wf = vscode.workspace.workspaceFile;
+  if (wf && wf.scheme === "file") return wf.fsPath;
+  // Eine .code-workspace-Datei auf der GEGENSTELLE bleibt bewusst aussen vor: zu
+  // --folder-uri gibt es kein Workspace-Gegenstueck, und stattdessen ihren ersten
+  // Ordner zu oeffnen waere ein ANDERES Fenster als das, das der Neustart zumacht.
+  // Lieber ehrlich als uebersprungen gemeldet werden (restart_plan: skipped).
+  if (wf && wf.scheme === "vscode-remote") return null;
+  const f = vscode.workspace.workspaceFolders;
+  const u = (f && f.length) ? f[0].uri : null;
+  if (u && u.scheme === "file") return u.fsPath;
+  // Remote: kein Pfad, den DIESER Rechner kennt - aber eine Adresse, unter der VS
+  // Code das Fenster wieder aufmacht (`code --folder-uri vscode-remote://…`). Das
+  // Panel unterscheidet Pfad und Adresse am Schema (domain/restart_plan.open_args).
+  if (u && u.scheme === "vscode-remote") return u.toString();
   return null;
 }
 
@@ -186,14 +253,41 @@ function send(obj) {
   }
 }
 
+// Slots verwerfen, deren Terminal VS Code nicht mehr fuehrt. Der Normalweg ist
+// onDidCloseTerminal - der reicht aber nicht: syncClaude() und createAgent()
+// arbeiten nach langen await-Pausen (Prozess-Scan bis 6 s, Split bis 3 s) mit einer
+// Terminalliste von VORHER und tragen ein inzwischen geschlossenes Terminal sonst
+// wieder ein. Zu dem feuert danach kein Close-Event mehr: die Kachel bliebe fuer
+// immer stehen - und weil ihr Chat weg ist, laesst sie sich auch nicht mehr
+// schliessen. Darum vor JEDER Meldung ans Panel aufraeumen; damit heilt sich ein
+// solcher Rest spaetestens beim naechsten Sync-Tick von selbst.
+function pruneDeadSlots() {
+  const gone = detect.deadSlots([...slots], vscode.window.terminals);
+  for (const name of gone) {
+    const term = slots.get(name);
+    slots.delete(name);
+    slotPid.delete(name);
+    if (term) {
+      termSlot.delete(term);
+      claudeByExec.delete(term);
+      procChecked.delete(term);
+    }
+  }
+  if (gone.length) writePidMap(); // tote Session auch aus der Status-Bruecke nehmen
+  return gone.length;
+}
+
 function announce() {
-  send({ type: "terminals", window: myWindow, workspace: workspaceName(), slots: [...slots.keys()] });
+  pruneDeadSlots();
+  send({ type: "terminals", window: myWindow, workspace: workspaceName(),
+         folder: workspaceFolder(), remote: REMOTE, slots: [...slots.keys()] });
 }
 
 function connect() {
   const { host, port } = cfg();
   sock = net.createConnection({ host, port }, () => {
-    send({ type: "hello", workspace: workspaceName(), window: myWindow, slots: [...slots.keys()] });
+    send({ type: "hello", workspace: workspaceName(), folder: workspaceFolder(),
+           window: myWindow, remote: REMOTE, slots: [...slots.keys()] });
   });
   let buf = "";
   sock.on("data", (d) => {
@@ -245,10 +339,15 @@ function handle(msg) {
       for (const term of slots.values()) term.sendText(msg.text || "", msg.execute !== false);
       break;
     case "createAgent":
-      createAgent(msg.model);
+      createAgent(msg);
       break;
     case "createAgents":
       createAgents(msg.model);
+      break;
+    case "saveAll":
+      // Vor dem Schliessen (Neustart): ungespeicherte Editoren machen aus closeWindow
+      // einen modalen Dialog, der einen automatischen Ablauf still anhaelt.
+      vscode.commands.executeCommand("workbench.action.files.saveAll");
       break;
     case "reload":
       vscode.commands.executeCommand("workbench.action.reloadWindow");
@@ -258,6 +357,11 @@ function handle(msg) {
       // laufende Claude-Session). onDidCloseTerminal raeumt Slot/pidmap auf und
       // meldet die neue Terminalliste ans Panel -> die Kachel verschwindet.
       if (t) t.dispose();
+      // Und in JEDEM Fall neu melden: kennt die Extension den Slot nicht (mehr),
+      // zeigt das Panel eine Kachel ohne Chat. Dann gibt es zwar nichts zu
+      // schliessen, aber etwas richtigzustellen - sonst bliebe sie stehen,
+      // unerreichbar ausgerechnet fuer den Knopf, der sie wegraeumen soll.
+      announce();
       break;
     case "closeWindow":
       // Ganzes VS-Code-Fenster schliessen (schliesst zwangslaeufig alle Agenten
@@ -269,9 +373,22 @@ function handle(msg) {
 }
 
 // ── Slot-Zuordnung ────────────────────────────────────────
+// Gibt den Slot-Namen zurueck - oder null, wenn es nichts mehr zu benennen gibt.
 function ensureSlot(term, preferred) {
   if (termSlot.has(term)) return termSlot.get(term);
-  const name = preferred || `${myWindow}${detect.nextIndex([...slots.keys()], myWindow)}`;
+  // Zwischen dem Einfangen des Terminals und diesem Aufruf liegen await-Pausen.
+  // Wer in der Zwischenzeit geschlossen wurde, bekommt KEINE Kachel mehr: sie
+  // waere eine Leiche, die kein Close-Event je wieder abraeumt (pruneDeadSlots).
+  if (!vscode.window.terminals.includes(term)) return null;
+  pruneDeadSlots();   // erst aufraeumen, dann fragen, welcher Name frei ist
+  // Einen SCHON VERGEBENEN Namen nicht ueberschreiben: slots.set wuerde das andere
+  // Terminal aus der Map draengen, waehrend termSlot es weiter kennt - es haette
+  // damit keine Kachel mehr, wuerde von syncClaude nie wieder gefunden (es gilt als
+  // bekannt) und sein Schliessen loeschte die Kachel des Verdraengers.
+  let name = preferred;
+  if (!name || slots.has(name)) {
+    name = `${myWindow}${detect.nextIndex([...slots.keys()], myWindow)}`;
+  }
   slots.set(name, term);
   termSlot.set(term, name);
   _lastPidRefresh = 0; // neues Terminal -> PID gleich beim naechsten Tick aufloesen
@@ -285,10 +402,15 @@ function preferredName(term) {
 }
 
 // ── Terminals anlegen ─────────────────────────────────────
-async function createAgent(model) {
+// opts: { model, args, cwd, slot } - siehe protocol.py (CMD_CREATE_AGENT). Nimmt auch
+// noch einen nackten Modell-String an: so wurde die Funktion vorher gerufen, und die
+// Kommando-Registrierung reicht bei Aufruf ueber die Palette `undefined` durch.
+async function createAgent(opts) {
   if (!myWindow) return warnNotConnected();
+  const o = (opts && typeof opts === "object") ? opts : { model: opts };
   const { autostart } = cfg();
-  const slot = `${myWindow}${detect.nextIndex([...slots.keys()], myWindow)}`;
+  const slot = wantedSlot(o.slot) ||
+    `${myWindow}${detect.nextIndex([...slots.keys()], myWindow)}`;
   const all = [...slots.values()];
   const anchor = all[all.length - 1]; // LETZTES Panel -> neuer Chat reiht sich hinten ein
 
@@ -299,9 +421,15 @@ async function createAgent(model) {
   }
   if (!term) {
     // Erster Chat (kein Anker) oder Split fehlgeschlagen -> eigenstaendiges Terminal.
-    term = vscode.window.createTerminal({ name: slot, env: { AGENT_SLOT: slot } });
+    term = vscode.window.createTerminal({
+      name: slot, env: { AGENT_SLOT: slot }, cwd: o.cwd || undefined });
   }
-  ensureSlot(term, slot);
+  if (!ensureSlot(term, slot)) {
+    // Direkt wieder zugemacht, bevor wir ueberhaupt loslegen konnten. Nichts
+    // starten - aber melden, damit das Panel denselben Stand sieht wie wir.
+    announce();
+    return;
+  }
   claudeByExec.add(term);
   procChecked.delete(term);
   term.show(false);
@@ -309,15 +437,36 @@ async function createAgent(model) {
     await new Promise((r) => setTimeout(r, 600)); // pty kurz Zeit geben
     // Split-Kommando kann kein env uebergeben -> AGENT_SLOT in der Shell setzen,
     // damit die Hooks (report.py) den Status dieser Kachel melden koennen.
-    if (viaSplit) term.sendText(slotEnvCommand(slot));
-    // Wunsch-Modell per CLI-Flag ERZWINGEN (`claude --model "<model>"`): das Flag hat
-    // hoechste Prioritaet und schlaegt das zuletzt per /model gewaehlte, in
-    // ~/.claude.json gemerkte Modell. Ohne Flag -> das "zuletzt verwendete Modell".
+    if (viaSplit) {
+      term.sendText(slotEnvCommand(slot));
+      // ... und aus demselben Grund auch kein cwd: ein Split erbt das Verzeichnis
+      // seines Ankers. Ein wiederaufgenommener Chat muss aber in SEINEM starten -
+      // Claude findet eine Session ueber ihr Projektverzeichnis, und ein Ticket-Agent
+      // lief im git worktree, nicht in der Repo-Wurzel.
+      if (o.cwd) term.sendText(`cd "${o.cwd}"`);
+    }
+    // Fertige Flag-Zeile vom Panel (Neustart: `--resume "<id>" --model "…"`, gebaut und
+    // geprueft in domain/restart_plan.flags) hat Vorrang. Sonst wie bisher das
+    // Wunsch-Modell per CLI-Flag ERZWINGEN: das Flag hat hoechste Prioritaet und
+    // schlaegt das zuletzt per /model gewaehlte, in ~/.claude.json gemerkte Modell.
     // Anfuehrungszeichen halten das '[1m]'-Suffix in PowerShell/bash literal.
-    const cmd = model ? `${autostart} --model "${model}"` : autostart;
-    term.sendText(cmd, true);
+    const extra = (typeof o.args === "string" && o.args.trim())
+      ? ` ${o.args.trim()}`
+      : (o.model ? ` --model "${o.model}"` : "");
+    term.sendText(autostart + extra, true);
   }
   announce();
+}
+
+// Wunschname aus dem Panel (Neustart, damit die Kacheln wieder dieselben Chats zeigen).
+// Gilt nur, wenn er zu DIESEM Fenster gehoert und noch frei ist; sonst null -> die
+// Extension zaehlt selbst weiter. Ein von VS Code doch wiederhergestelltes Terminal
+// fuehrt so nicht zu zwei Kacheln mit demselben Namen.
+function wantedSlot(name) {
+  if (typeof name !== "string" || !/^[A-Za-z]\d+$/.test(name)) return null;
+  const up = name.toUpperCase();
+  if (up[0] !== String(myWindow).toUpperCase()) return null;
+  return slots.has(up) ? null : up;
 }
 
 // Zuverlaessiger Split (VS-Code-Bug #205254: createTerminal({location:{parentTerminal}})
@@ -341,13 +490,18 @@ async function splitBeside(anchor) {
 function slotEnvCommand(slot) {
   const tmpl = cfg().slotEnvCommand;
   if (tmpl) return tmpl.replace(/\{slot\}/g, slot);
-  // Default nach Plattform: Windows -> PowerShell, sonst POSIX-Shell.
-  return process.platform === "win32" ? `$env:AGENT_SLOT='${slot}'` : `export AGENT_SLOT='${slot}'`;
+  // Default nach Plattform: Windows -> PowerShell, sonst POSIX-Shell. Gefragt ist
+  // die Shell des TERMINALS, nicht die des Extension-Hosts: in einem Remote-Fenster
+  // laeuft diese Extension auf Windows (extensionKind "ui"), das Terminal aber
+  // drueben - und Gegenstellen sind SSH/WSL/Container, also POSIX. Ein Windows-Host
+  // am anderen Ende ist der seltene Fall und wird per agentDeck.slotEnvCommand gesetzt.
+  const posix = REMOTE || process.platform !== "win32";
+  return posix ? `export AGENT_SLOT='${slot}'` : `$env:AGENT_SLOT='${slot}'`;
 }
 
 async function createAgents(model) {
   if (!myWindow) return warnNotConnected();
-  for (let i = 0; i < 4; i++) await createAgent(model); // 4x den zuverlaessigen Einzel-Split
+  for (let i = 0; i < 4; i++) await createAgent({ model }); // 4x den zuverlaessigen Einzel-Split
 }
 
 function warnNotConnected() {
@@ -358,17 +512,23 @@ function warnNotConnected() {
 // ── Claude-Sessions erkennen ──────────────────────────────
 let _procs = [];
 let _lastScan = 0;
+// EIN PowerShell-Prozess fuer alle Scans dieses Fensters, statt einer neuen
+// powershell.exe je Scan (Kosten und Messung in psworker.js). Erst beim ersten
+// Scan gestartet, also nie in einem Remote-Fenster.
+let procWorker = null;
 
 function scanProcs() {
   // Nur Windows; sonst greifen Name + Shell-Integration.
-  if (process.platform !== "win32") return Promise.resolve([]);
-  return new Promise((resolve) => {
-    const psCmd = "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress";
-    cp.execFile("powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", psCmd],
-      { maxBuffer: 32 * 1024 * 1024, windowsHide: true, timeout: 6000 },
-      (err, stdout) => resolve(err ? [] : detect.parseProcList(stdout)));
-  });
+  // Und NICHT in einem Remote-Fenster: term.processId liefert dort eine PID von der
+  // Gegenstelle. Dieselbe Zahl gibt es hier auch - sie gehoert nur einem voellig
+  // anderen Prozess. Ein Baum-Vergleich damit beantwortet nicht die gestellte Frage,
+  // er beantwortet eine zufaellige. Bleiben Name und Shell-Integration.
+  if (REMOTE || process.platform !== "win32") return Promise.resolve([]);
+  if (!procWorker) procWorker = new psworker.PsWorker();
+  // null = Worker gescheitert oder Zeitlimit: wie frueher ein Fehler von execFile
+  // eine leere Liste, also "nichts gefunden" statt eines halben Baums.
+  return procWorker.run(psworker.PROC_SCAN, 6000)
+    .then((out) => (out === null ? [] : detect.parseProcList(out)));
 }
 
 async function getProcs(force) {
@@ -416,6 +576,13 @@ async function syncClaude() {
 // ── Port-Blocker abraeumen (Ctrl+Alt+K) ───────────────────
 // Braucht das Panel NICHT: der Befehl steht auch dann bereit, wenn das Deck gar
 // nicht laeuft - er soll ja gerade dann helfen, wenn nichts hochkommt.
+//
+// Er sieht dabei immer nur DIESEN Rechner (der Scan laeuft ueber lokales
+// PowerShell). In einem Remote-Fenster ist das nicht falsch, aber leicht
+// misszuverstehen: wer dort einen belegten Port sucht, meint den der Gegenstelle -
+// und die Liste zeigte ihm stattdessen seinen eigenen Dev-Server zum Abschiessen.
+// Also dazusagen, worauf man gerade schaut, statt es raten zu lassen.
+const LOKAL_HINWEIS = REMOTE ? ` · nur dieser Rechner, nicht ${REMOTE}` : "";
 
 function ps(script, timeout) {
   return new Promise((resolve) => {
@@ -498,7 +665,8 @@ async function killPortBlockers(all) {
     // (Docker, ein Dienst, ein Terminal von gestern). Statt „nichts gefunden" also
     // den naechsten Schritt anbieten.
     const wahl = await vscode.window.showInformationMessage(
-      "Agent Deck: Unter diesem VS Code haelt kein Prozess einen Port.",
+      "Agent Deck: Unter diesem VS Code haelt kein Prozess einen Port." +
+      (REMOTE ? ` (Gescannt wurde dieser Rechner – die ${REMOTE}-Gegenstelle sieht der Befehl nicht.)` : ""),
       "Alle Port-Lauscher zeigen");
     if (wahl) await killPortBlockers(true);
     return;
@@ -508,7 +676,8 @@ async function killPortBlockers(all) {
     canPickMany: true,
     matchOnDescription: true,
     matchOnDetail: true,
-    title: all ? "Port-Lauscher beenden (ALLE Prozesse)" : "Port-Blocker unter VS Code beenden",
+    title: (all ? "Port-Lauscher beenden (ALLE Prozesse)"
+                : "Port-Blocker unter VS Code beenden") + LOKAL_HINWEIS,
     placeHolder: all
       ? "Vorsicht: hier stehen auch Dienste ausserhalb von VS Code"
       : "Mehrfachauswahl mit Leertaste · Claude-Sessions sind ausgenommen",
@@ -558,7 +727,8 @@ function activate(ctx) {
   syncClaude();
 
   ctx.subscriptions.push(
-    vscode.commands.registerCommand("agentDeck.createAgent", createAgent),
+    // Ueber Palette/Tastenkombi kommt ein VS-Code-eigenes Argument an -> leer aufrufen.
+    vscode.commands.registerCommand("agentDeck.createAgent", () => createAgent({})),
     vscode.commands.registerCommand("agentDeck.createAgents", createAgents),
     // Ohne Argument aufgerufen (Tastenkombi/Palette) reicht VS Code `undefined`
     // durch -> enger Modus. Der weite kommt nur aus dem Rueckfrage-Button.
@@ -614,6 +784,7 @@ function activate(ctx) {
 function deactivate() {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   if (scanTimer) clearInterval(scanTimer);
+  if (procWorker) { procWorker.dispose(); procWorker = null; }
   removePidMap(); // pidmap dieses Fensters aufraeumen
   if (sock) sock.destroy();
 }

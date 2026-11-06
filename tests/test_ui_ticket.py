@@ -34,3 +34,28 @@ def test_ticket_search_prompt_single_line_and_filled():
     s = cfg.TICKET_SEARCH_PROMPT.format(prefix="ticket/", marker=marker,
                                         wt_marker=wt, task="mach was")
     _assert_clean_prompt(s, ["ticket/", marker, wt, "mach was", "Jira"])
+
+
+def test_heimat_block_bekommt_den_prompt_ueber_allen_repos_ohne_marker():
+    """Im Ordner ueber allen Repos gibt es kein git rev-parse: der Agent bestimmt die
+    Repos am Ticket und legt wt-<Nummer>-<Kuerzel> an. KEINE Marker-Datei - sonst
+    raeumte das Deck die Worktrees beim Schliessen per --force weg."""
+    from deck.ui.ticket import _hub_prompt
+    p = _hub_prompt("ORPH-4116", r"C:\Users\x\Repos", "mach was")
+    _assert_clean_prompt(p, ["ORPH-4116", "C:/Users/x/Repos/wt-4116-", "mach was", "Jira"])
+    assert ".worktree" not in p and "git rev-parse" not in p
+
+
+def test_nur_ein_block_ohne_eigenes_repo_gilt_als_heimat():
+    import os
+    import tempfile
+    from deck.ui.ticket import TicketMixin
+
+    hub = tempfile.mkdtemp(prefix="hub_")
+    repo = tempfile.mkdtemp(prefix="repo_")
+    os.mkdir(os.path.join(repo, ".git"))
+    t = TicketMixin()
+    t.wt = type("W", (), {"hosts": {"B": hub, "C": repo}})()
+    assert t._hub_root("B1") == hub
+    assert t._hub_root("C1") is None            # WT-Block in einem echten Repo
+    assert t._hub_root("A1") is None            # VS-Code-Block

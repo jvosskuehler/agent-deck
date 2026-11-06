@@ -83,6 +83,14 @@ Strings von Hand — wer dort etwas ändert, muss beide Seiten anfassen.
   dem der Agent wirklich sitzt (der ist sonst nirgends sichtbar)
 - **Ticket → Worktree**: Ticket per Rechtsklick zuweisen, der Agent legt sich selbst
   einen `git worktree` an; beim Schließen der Kachel wird er wieder abgeräumt
+- **Fenster einsammeln**: ein Knopf in den Einstellungen holt *alle* VS-Code-Fenster
+  auf den Windows-Hauptbildschirm und maximiert sie dort — nach jedem Wechsel an die
+  Dockingstation liegen sie sonst auf dem Laptop-Schirm und müssen einzeln gezogen werden
+- **VS Code neu starten**: ein Knopf in den Einstellungen schließt *alle* verbundenen
+  Fenster, wartet, bis wirklich kein Code-Prozess mehr läuft, öffnet sie wieder — und
+  nimmt in jeder Kachel ihren Chat per `claude --resume` auf. Für den Fall, in dem ein
+  Reload nicht mehr reicht (hängende Renderer, blockierter Port, frische Extension),
+  man aber die laufenden Unterhaltungen nicht verlieren will
 - **Usage-Anzeige** des Kontos in der Bottom-Bar (Session · Woche · Modell-Woche),
   das Token wahlweise aus der Claude-Code-CLI oder aus Claude Desktop
 - **Per-Monitor-DPI-V2**, damit auf 150 %-Displays nichts verwaschen wirkt
@@ -231,6 +239,7 @@ Shell-Skript wohnen.
 | `platform/clip.py` | Fenster an der Bildschirmkante beschneiden |
 | `platform/timing.py` | Timer-Auflösung und Bildwiederholrate |
 | `platform/dpi.py` · `platform/monitor.py` | DPI-Skalierung · Fenster im Monitor halten |
+| `platform/arrange.py` | fremde Fenster auf einen Monitor holen und maximieren |
 | `render/kit.py` | Palette, Zeichen-Primitive, pure Farb-/Text-Helfer |
 | `render/card.py` | Kachelfläche und Halo (Pillow, Masken-Cache) |
 | `render/capsule.py` | Griff-Kapsel einfärben und zusammensetzen |
@@ -293,6 +302,8 @@ Shell-Skript wohnen.
 | `ops/instance.py` · `ops/watchdog.py` | Zweitstart-Guard · Neustart-Wächter |
 | `ops/worktree.py` | verwaiste `git worktree`s abräumen |
 | `ops/vscode_glow.py` | Custom-CSS nach einem VS-Code-Update neu injizieren |
+| `ops/window_gather.py` | alle VS-Code-Fenster auf den Hauptmonitor holen |
+| `ops/vscode_restart.py` | VS Code neu starten und die Claude-Sessions wieder aufnehmen |
 | `deck/i18n.py` | Deutsch/Englisch (Querschnitt, liegt auf der Paketwurzel) |
 
 </details>
@@ -303,7 +314,7 @@ Die anzeigefreie Logik ist unit-getestet — Statusmodell, Ticket-/PR-Erkennung,
 Farb- und Text-Helfer, Worktree-Parsing, Usage-Auswertung, Watchdog-Urteile:
 
 ```powershell
-python tests/run.py                   # alle 191 Tests, kein pytest nötig
+python tests/run.py                   # alle Tests, kein pytest nötig
 python tests/test_dock_animation.py   # eine Datei allein läuft auch
 python -m pytest tests/               # geht ebenfalls
 ```

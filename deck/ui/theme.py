@@ -30,6 +30,11 @@ STATUS_LABEL = {
     "idle": ("idle", "idle"), "done": ("ungelesen", "unread"),
     "thinking": ("denkt", "thinking"), "running": ("denkt", "thinking"),
     "waiting": ("Rückfrage", "needs input"), "none": ("—", "—"),
+    # Kein gemeldeter Status, sondern das ehrliche Eingeständnis eines Remote-Fensters:
+    # dessen Hooks schreiben auf der Gegenstelle, hier kommt nichts an (status_model.
+    # initial_status). Bewusst ein eigenes Wort statt "idle" – die Kachel ist da und
+    # bedienbar, nur ihr Zustand ist von hier aus nicht zu sehen.
+    "unknown": ("unbekannt", "unknown"),
 }
 
 
@@ -45,6 +50,7 @@ GLOW_STYLE = {
     "thinking": ("#7ecbff", 1.00, True,  0.28),  # cyan  – denkt (atmet)
     "running":  ("#7ecbff", 1.00, True,  0.28),  # cyan  – arbeitet (atmet)
     "waiting":  ("#ffc48a", 1.00, True,  0.30),  # amber – braucht dich (atmet)
+    "unknown":  ("#8b8b99", 0.08, False, 0.02),  # grau, matt – Status nicht zu sehen
     "none":     ("#8b8b99", 0.00, False, 0.00),  # kein Glow, kein Farbton
 }
 LOST_FILL = 0.30   # Füll-Tönung für "getrennt" (rot)

@@ -265,8 +265,13 @@ def ghost_btn(c: Any, x: float, y: float, text: str, cmd: Any, *, size: int = 11
 
 
 def btn(parent: Any, text: str, cmd: Any) -> Any:
-    """Kleiner Standard-tk.Button im Deck-Look (fuer Dialoge)."""
-    tk.Button(parent, text=text, command=cmd, bg="#3f3f46", fg="#fafafa",
-              activebackground="#52525b", activeforeground="#fff",
-              relief="flat", font=("Segoe UI", 9), padx=8, pady=4
-              ).pack(side="left", padx=3)
+    """Kleiner Standard-tk.Button im Deck-Look (fuer Dialoge).
+
+    Gibt das Widget zurueck - Aufrufer, die ihren Knopf spaeter umbenennen (die
+    zweistufige Bestaetigung im Einstellungs-Dialog), brauchen ihn in der Hand.
+    """
+    b = tk.Button(parent, text=text, command=cmd, bg="#3f3f46", fg="#fafafa",
+                  activebackground="#52525b", activeforeground="#fff",
+                  relief="flat", font=("Segoe UI", 9), padx=8, pady=4)
+    b.pack(side="left", padx=3)
+    return b

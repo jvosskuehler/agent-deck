@@ -165,3 +165,10 @@ def test_drop_index_und_reflow_passen_zusammen():
             for i, y in tops.items():
                 assert y + _H[i] <= gap_top or y >= gap_top + _H[frm], (frm, tgt, i)
             assert ordering.drop_index(_H, _GAP, _TOP, frm, gap_top) == tgt, (frm, tgt)
+
+
+def test_der_heimat_block_steht_immer_oben():
+    assert ordering.pin_first(["A", "B", "C"], "C") == ["C", "A", "B"]
+    assert ordering.pin_first(["A", "B"], "A") == ["A", "B"]
+    assert ordering.pin_first(["A", "B"], None) == ["A", "B"]
+    assert ordering.pin_first(["A", "B"], "Z") == ["A", "B"]

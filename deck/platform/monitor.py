@@ -79,6 +79,18 @@ def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
         return None
 
 
+def primary_work_area() -> tuple[int, int, int, int] | None:
+    """Arbeitsfläche des HAUPTMONITORS (Windows: „Hauptanzeige").
+
+    Gefragt wird über den Punkt (0, 0), und das ist keine Näherung: im virtuellen
+    Bildschirmraum liegt die linke obere Ecke des Hauptmonitors per Definition auf
+    (0, 0) — die anderen Monitore ordnen sich mit positiven oder negativen
+    Koordinaten darum an. Nachgemessen an drei Monitoren: (0, 0) trifft den mit dem
+    Flag MONITORINFOF_PRIMARY.
+    """
+    return work_area(0, 0)
+
+
 # Zuletzt gemessene Dekorationsmaße (Rand + Titelleiste). Sie hängen am Windows-Thema,
 # nicht am einzelnen Fenster – ein einmal gemessener Wert taugt darum als Vorabschätzung
 # für den nächsten, noch unsichtbaren Dialog.

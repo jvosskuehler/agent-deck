@@ -32,3 +32,55 @@ def test_is_real_query():
     assert report._is_real_query({"message": "Claude needs your permission to use Bash"}) is True
     assert report._is_real_query({"message": "Claude is waiting for your input"}) is False
     assert report._is_real_query({}) is False                                    # nichts -> keine Rueckfrage
+
+
+def test_statuszeile_beginnt_mit_slot_und_ticket():
+    """Nebeneinander zeigt Windows Terminal nur den Titel des aktiven Panes - die
+    Statuszeile steht in jedem, also gehoeren Slot und Ticket dorthin."""
+    import os
+    import tempfile
+    from deck.claude.hooks import statusline as sl
+
+    rec = {"model": "opus", "effort": "xhigh", "ctx_pct": 41.2, "cost_usd": 1.5,
+           "session_name": "Schrift-Einstellung im Client"}
+    head, body = sl._line(rec, "B2 · ORPH-4116").split("\n")
+    assert "B2 · ORPH-4116 · Schrift-Einstellung im Client" in head
+    assert head.startswith("\x1b[1m")                    # fett abgesetzt
+    assert body.startswith("opus")
+    # Ohne Slot und ohne Ueberschrift bleibt es bei der einen Zahlenzeile.
+    assert sl._line({"model": "opus"}) == "opus"
+    # Lange Ueberschriften werden gekuerzt, damit die Zeile im schmalen Pane bleibt.
+    lang = sl._line({"session_name": "x" * 200}, "B1")
+    assert len(lang) < 100 and "…" in lang
+    base = tempfile.mkdtemp(prefix="sl_")
+    with open(os.path.join(base, "Z9.ticket"), "w", encoding="utf-8") as fh:
+        fh.write("ORPH-1\n")
+    assert sl._label("Z9", base) == "Z9 · ORPH-1"    # vom Agenten gemeldet
+    assert sl._label("Z8", base) == "Z8"             # ohne Ticket nur der Slot
+    assert sl._label(None, base) == ""
+
+
+def test_statuszeile_kommt_als_utf8_an_auch_mit_umlauten():
+    """Claude Code liest die Statuszeile als UTF-8. Ueber sys.stdout schrieb Python
+    unter Windows cp1252 - aus "für" wurde "f◆r". Echt als Prozess geprueft, weil genau
+    die Kodierung der Pipe der Fehler war."""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    data = json.dumps({"model": {"display_name": "Opus"},
+                       "session_name": "Eigenes Terminal für Claude Code"})
+    import tempfile
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONIOENCODING", "PYTHONUTF8", "AGENT_SLOT")}
+    # Zustandsordner umlenken: ueber die Prozesskette faende der Hook sonst den Slot
+    # der Session, in der die Tests laufen, und ueberschriebe deren echte Live-Datei.
+    env["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="sl_state_")
+    out = subprocess.run([sys.executable, os.path.join(root, "statusline.py")],
+                         input=data.encode("utf-8"), capture_output=True, env=env,
+                         cwd=root, timeout=30).stdout
+    text = out.decode("utf-8")                       # wirft, wenn es kein UTF-8 ist
+    assert "Eigenes Terminal für Claude Code" in text and "Opus" in text

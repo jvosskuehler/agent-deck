@@ -55,7 +55,9 @@ class TilesMixin:
         sichtbar sind (siehe _shown_windows)."""
         keys = [self._block_key(w) for w in cfg.WINDOWS]
         rank = {k: i for i, k in enumerate(ordering.apply_order(self.win_order, keys))}
-        return sorted(cfg.WINDOWS, key=lambda w: rank[self._block_key(w)])
+        wins = sorted(cfg.WINDOWS, key=lambda w: rank[self._block_key(w)])
+        # Der Heimat-Block (Windows Terminal ueber allen Repos) steht immer oben.
+        return ordering.pin_first(wins, getattr(self, "home_win", None))
 
     def _shown_windows(self) -> Any:
         """Die Bloecke, die WIRKLICH gezeichnet werden, in ihrer Reihenfolge: gebunden

@@ -31,12 +31,14 @@ def test_settings_dialog_nennt_seine_abhaengigkeiten_im_konstruktor():
     sig = inspect.signature(SettingsDialog.__init__)
     params = [p for p in sig.parameters if p != "self"]
     assert params == ["root", "settings", "store", "dock",
-                      "set_modal", "restart", "place"], params
-    # Die drei Rückrufe sind keyword-only: beim Aufruf steht damit am Aufrufort, WAS
-    # verdrahtet wird, statt vier gleich aussehender Positionsargumente.
+                      "set_modal", "restart", "restart_vscode",
+                      "foreign_windows", "place", "open_terminal"], params
+    # Die Rückrufe sind keyword-only: beim Aufruf steht damit am Aufrufort, WAS
+    # verdrahtet wird, statt gleich aussehender Positionsargumente.
     kwonly = [p for p, v in sig.parameters.items()
               if v.kind is inspect.Parameter.KEYWORD_ONLY]
-    assert kwonly == ["set_modal", "restart", "place"], kwonly
+    assert kwonly == ["set_modal", "restart", "restart_vscode",
+                      "foreign_windows", "place", "open_terminal"], kwonly
 
 
 def test_settings_dialog_baut_ohne_panel():
@@ -53,6 +55,8 @@ def test_settings_dialog_baut_ohne_panel():
         dock=None,
         set_modal=lambda v: gerufen.append(("modal", v)),
         restart=lambda: gerufen.append("restart"),
+        restart_vscode=lambda report=None: gerufen.append("restart-code"),
+        foreign_windows=lambda: ["fremdes-repo"],
         place=lambda w: gerufen.append("place"),
     )
     assert dlg.settings["jira_prefix"] == "PROJ"
@@ -60,8 +64,10 @@ def test_settings_dialog_baut_ohne_panel():
     # existiert - der Dialog kann also isoliert geprüft werden.
     dlg._set_modal(True)
     dlg.restart()
+    dlg.restart_vscode()
+    assert dlg.foreign_windows() == ["fremdes-repo"]
     dlg.store.save_settings()
-    assert gerufen == [("modal", True), "restart", "save"]
+    assert gerufen == [("modal", True), "restart", "restart-code", "save"]
 
 
 def test_kein_mixin_mehr_fuer_den_dialog():

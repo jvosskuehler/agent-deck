@@ -1,12 +1,16 @@
 """Der Einstellungs-Dialog: Sprache, Modell, Effort, Ring um den Chat,
-Jira-Präfix, Andocken - und der Panel-Neustart.
+Jira-Präfix, Andocken, Fenster einsammeln, VS Code neu starten - und der
+Panel-Neustart.
 """
+import os
 import tkinter as tk
+from tkinter import filedialog
 
 from deck import i18n
 from deck.claude import settings as cset
 from deck.domain import config as cfg
 from deck.ops import vscode_glow as rg
+from deck.ops import window_gather as wg
 from deck.render import kit as ck
 from deck.render.kit import BG, INK, INK_2, INK_3
 
@@ -24,14 +28,18 @@ class SettingsDialog:
     andere Herkunft.
     """
 
-    def __init__(self, root, settings, store, dock, *, set_modal, restart, place) -> None:
+    def __init__(self, root, settings, store, dock, *, set_modal, restart,
+                 restart_vscode, foreign_windows, place, open_terminal=None) -> None:
         self.root = root            # Tk-Root (Elternfenster des Dialogs)
         self.settings = settings    # Deck-Einstellungen (Dict, wird in place mutiert)
         self.store = store          # BindStore - speichert die Einstellungen
         self.dock = dock            # EdgeDock, für die Andock-Auswahl
         self._set_modal = set_modal    # pausiert den Auto-Fokus, solange offen
         self.restart = restart         # Panel-Neustart (Knopf im Dialog)
+        self.restart_vscode = restart_vscode   # VS-Code-Neustart mit Session-Resume
+        self.foreign_windows = foreign_windows # offene VS-Code-Fenster ohne Deck-Bindung
         self._place_dialog = place     # platziert das Fenster auf dem richtigen Monitor
+        self.open_terminal = open_terminal     # Ordner -> Repo-Block in Windows Terminal
 
     def show(self) -> None:
         """Frost-gestyltes Einstellungs-Fenster (⚙ in der unteren Leiste). Steuert die
@@ -103,7 +111,7 @@ class SettingsDialog:
         # Statuszeile (von Speichern UND dem Ring-Schalter genutzt) – vor beiden anlegen.
         status = tk.Label(dlg, text="", bg=BG, fg=INK_3, justify="left",
                           font=("Segoe UI", 9))
-        status.grid(row=10, column=0, columnspan=2, sticky="w", padx=16, pady=(8, 0))
+        status.grid(row=12, column=0, columnspan=2, sticky="w", padx=16, pady=(8, 0))
 
         # ── Ring um Chat (VS-Code-Glow) ──────────────────────────────────────
         # Eigene Deck-Einstellung (deck_settings.json 'glow'), KEIN Claude-Setting:
@@ -212,6 +220,154 @@ class SettingsDialog:
             pass
         dock_om.grid(row=8, column=1, sticky="w", padx=(0, 16), pady=4)
 
+        # ── VS-Code-Fenster einsammeln ───────────────────────────────────────
+        # Keine Einstellung, sondern eine Handlung: holt ALLE VS-Code-Fenster auf den
+        # Windows-Hauptbildschirm und maximiert sie dort. Gedacht für den
+        # Arbeitsplatzwechsel – nach dem Andocken liegen sie sonst auf dem
+        # Laptop-Schirm, und jedes einzeln hinüberzuziehen ist Handarbeit für nichts.
+        # Gerechnet und verschoben wird in ops/window_gather (dort auch die Regel,
+        # WELCHE Fenster gemeint sind); hier steht nur die Rückmeldung.
+        def _gather() -> None:
+            try:
+                done, total, err = wg.gather_to_primary()
+            except Exception as e:
+                status.configure(
+                    text=i18n.L(f"Fenster: Fehler – {e}", f"Windows: error – {e}"),
+                    fg="#ff6b6b")
+                return
+            if not done:
+                status.configure(
+                    text=err or i18n.L("Kein Fenster verschoben.", "No window moved."),
+                    fg="#ff6b6b")
+                return
+            msg = i18n.L(f"{done} VS-Code-Fenster auf den Hauptmonitor geholt.",
+                         f"Moved {done} VS Code window(s) to the primary monitor.")
+            status.configure(text=f"{msg} {err}" if err else msg,
+                             fg=("#ff6b6b" if err else "#6ee7a8"))
+
+        tk.Label(dlg, text=i18n.L("VS-Code-Fenster einsammeln  (auf den Hauptmonitor, "
+                                  "maximiert)",
+                                  "Gather VS Code windows  (to the primary monitor, "
+                                  "maximized)"), bg=BG,
+                 fg=INK_2, font=("Segoe UI", 10)).grid(
+                     row=9, column=0, sticky="w", padx=(16, 10), pady=4)
+        gather_box = tk.Frame(dlg, bg=BG)
+        gather_box.grid(row=9, column=1, sticky="w", padx=(0, 16), pady=4)
+        # ⧉ statt eines Monitor-Emojis: 🖥 rendert in Segoe UI als winziger,
+        # kaum erkennbarer Klotz (nachgesehen im Bild), ⧉ zeigt zwei
+        # übereinanderliegende Fenster – genau das, was der Knopf tut.
+        ck.btn(gather_box, i18n.L("⧉ Einsammeln", "⧉ Gather"), _gather)
+
+        # ── VS Code neu starten (mit Session-Resume) ─────────────────────────
+        # Auch keine Einstellung, sondern die grösste Handlung in diesem Fenster:
+        # schliesst ALLE verbundenen VS-Code-Fenster, wartet, bis wirklich kein
+        # Code-Prozess mehr läuft, öffnet sie wieder und nimmt in jeder Kachel ihren
+        # Chat per `claude --resume` auf. Der Ablauf steht in ops/vscode_restart; hier
+        # steht die Bestätigung und die Rückmeldung.
+        #
+        # Zwei Klicks, weil ein Fehlklick die gesamte Arbeitsumgebung zumacht. Der
+        # zweite muss innerhalb von REARM_MS kommen, sonst fällt der Knopf zurück —
+        # ein dauerhaft „scharfer" Knopf wäre nach fünf Minuten wieder eine Falle.
+        REARM_MS = 8000
+        armed = {"on": False, "timer": None}
+
+        def _disarm() -> None:
+            armed["on"] = False
+            if armed["timer"]:
+                try:
+                    dlg.after_cancel(armed["timer"])
+                except tk.TclError:
+                    pass
+                armed["timer"] = None
+            try:
+                rst_btn.configure(text=i18n.L("⟲ Neu starten", "⟲ Restart"))
+            except tk.TclError:
+                pass
+
+        def _progress(text, ok=None) -> None:
+            """Fortschritt des Ablaufs in die Statuszeile. Wirft absichtlich weiter,
+            wenn der Dialog inzwischen zu ist (TclError) — der Ablauf nimmt das als
+            „niemand schaut mehr hin" und meldet nur noch ins Log."""
+            status.configure(text=text,
+                             fg=("#6ee7a8" if ok else "#ff6b6b" if ok is False else INK_2))
+
+        def _restart_code() -> None:
+            if not armed["on"]:
+                armed["on"] = True
+                rst_btn.configure(text=i18n.L("Wirklich? Alles schließen",
+                                              "Really? Close everything"))
+                # Fremde Fenster NAMENTLICH nennen. Der Neustart schließt sie mit -
+                # er muss, sonst läuft VS Code weiter -, aber das Deck hat dort nichts
+                # gespeichert und nichts gemerkt. Wer das erst hinterher erfährt, hat
+                # die Warnung zu spät bekommen.
+                fremd = []
+                try:
+                    fremd = self.foreign_windows() or []
+                except Exception:
+                    fremd = []
+                text = i18n.L(
+                    "Schließt ALLE VS-Code-Fenster – bis kein Prozess mehr läuft – und "
+                    "öffnet sie wieder. Nochmal klicken.",
+                    "Closes ALL VS Code windows – until no process is left – and "
+                    "reopens them. Click again.")
+                if fremd:
+                    text += i18n.L(
+                        f"\nAuch ohne Deck-Verbindung offen: {', '.join(fremd[:4])}"
+                        f"{' …' if len(fremd) > 4 else ''} – dort erst speichern!",
+                        f"\nAlso open without a deck connection: "
+                        f"{', '.join(fremd[:4])}{' …' if len(fremd) > 4 else ''} – "
+                        f"save your work there first!")
+                status.configure(text=text, fg="#f6c667")
+                armed["timer"] = dlg.after(REARM_MS, _disarm)
+                return
+            _disarm()
+            try:
+                self.restart_vscode(_progress)
+            except Exception as e:
+                status.configure(
+                    text=i18n.L(f"Neustart: Fehler – {e}", f"Restart: error – {e}"),
+                    fg="#ff6b6b")
+
+        tk.Label(dlg, text=i18n.L("VS Code neu starten  (alle Fenster, Chats werden "
+                                  "wieder aufgenommen)",
+                                  "Restart VS Code  (all windows, chats are resumed)"),
+                 bg=BG, fg=INK_2, font=("Segoe UI", 10)).grid(
+                     row=10, column=0, sticky="w", padx=(16, 10), pady=4)
+        rst_box = tk.Frame(dlg, bg=BG)
+        rst_box.grid(row=10, column=1, sticky="w", padx=(0, 16), pady=4)
+        rst_btn = ck.btn(rst_box, i18n.L("⟲ Neu starten", "⟲ Restart"), _restart_code)
+
+        # ── Repo in Windows Terminal öffnen ──────────────────────────────────
+        # Legt einen Repo-Block an, dessen Agenten in Windows Terminal laufen
+        # (ops/wt_host): ein Fenster je Repo, jeder Agent ein Pane daneben. Der erste
+        # Agent startet sofort; weitere kommen wie gewohnt über das ＋ im Block.
+        def _open_terminal() -> None:
+            start = os.path.join(os.path.expanduser("~"), "Repos")
+            folder = filedialog.askdirectory(
+                parent=dlg, mustexist=True,
+                initialdir=start if os.path.isdir(start) else os.path.expanduser("~"),
+                title=i18n.L("Repo für Windows Terminal wählen",
+                             "Choose a repo for Windows Terminal"))
+            if not folder:
+                return
+            try:
+                msg = self.open_terminal(folder)
+                status.configure(text=msg, fg="#6ee7a8")
+            except Exception as e:
+                status.configure(text=i18n.L(f"Terminal: Fehler – {e}",
+                                             f"Terminal: error – {e}"), fg="#ff6b6b")
+
+        if self.open_terminal:
+            tk.Label(dlg, text=i18n.L("Repo in Windows Terminal öffnen  (Agenten "
+                                      "nebeneinander, ohne VS Code)",
+                                      "Open a repo in Windows Terminal  (agents side "
+                                      "by side, without VS Code)"),
+                     bg=BG, fg=INK_2, font=("Segoe UI", 10)).grid(
+                         row=11, column=0, sticky="w", padx=(16, 10), pady=4)
+            term_box = tk.Frame(dlg, bg=BG)
+            term_box.grid(row=11, column=1, sticky="w", padx=(0, 16), pady=4)
+            ck.btn(term_box, i18n.L("▤ Repo öffnen …", "▤ Open repo …"), _open_terminal)
+
         def _save() -> None:
             try:
                 # Deck-eigene Werte zuerst persistieren (unabhaengig von den Claude-
@@ -244,7 +400,7 @@ class SettingsDialog:
                     fg="#ff6b6b")
 
         btns = tk.Frame(dlg, bg=BG)
-        btns.grid(row=11, column=0, columnspan=2, sticky="e", padx=12, pady=(10, 12))
+        btns.grid(row=13, column=0, columnspan=2, sticky="e", padx=12, pady=(10, 12))
         ck.btn(btns, i18n.L("💾 Speichern", "💾 Save"), _save)
         ck.btn(btns, i18n.L("⟳ Panel neu starten", "⟳ Restart panel"), self.restart)
         ck.btn(btns, i18n.L("Schließen", "Close"), dlg.destroy)

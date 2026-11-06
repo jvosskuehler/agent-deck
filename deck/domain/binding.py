@@ -36,15 +36,45 @@ def is_placeholder_ws(ws: str | None) -> bool:
     return not ws or str(ws).strip().lower() in ("", "unknown")
 
 
-def repo_from_title(title: str) -> str:
-    """Aus 'file - repo - Visual Studio Code' den Repo-/Ordnernamen ziehen."""
-    t = title.replace("●", " ").strip()
+# Remote-Anhaengsel im Fenstertitel: VS Code haengt an den Ordnernamen die Gegenstelle
+# ("agent-deck [SSH: 10.8.0.10]", "[WSL: Ubuntu]", "[Dev Container: api]"). Die Extension
+# meldet aber den NACKTEN Namen ("agent-deck") – ohne Abstreifen findet _cleanup_closed_
+# windows ein lebendes Remote-Fenster im Titel nicht wieder und raeumt seine Bindung ab,
+# und foreign_repos haelt es fuer ein fremdes Fenster, das den Neustart blockiert.
+#
+# Das Muster ist bewusst ENG: nur die bekannten Marker, nicht jede eckige Klammer. Ein
+# Ordner darf "release [alt]" heissen, ohne dass ihm die Haelfte seines Namens abhanden
+# kommt – der Preis waere derselbe Fehler, nur andersherum.
+_REMOTE_TAG = re.compile(
+    r"\s*\[(?:SSH|WSL|Dev Container|Container|Codespaces|Remote|Tunnel|Attached Container)\b[^]]*\]$",
+    re.IGNORECASE)
+
+
+def strip_remote_tag(name: str) -> str:
+    """'agent-deck [SSH: host]' -> 'agent-deck'. Ohne Marker unveraendert."""
+    return _REMOTE_TAG.sub("", str(name or "")).strip()
+
+
+def window_from_title(title: str) -> str:
+    """Aus 'file - repo - Visual Studio Code' den Namen ziehen, unter dem das Panel
+    dieses Fenster FUEHRT: Ordnername MIT Remote-Anhaengsel ('jorrit [SSH: 10.8.0.10]'),
+    genau wie die Extension ihn meldet. Er ist die Identitaet und steht auf dem
+    Block-Griff - denn '/home/jorrit' heisst auf jeder Gegenstelle so."""
+    t = str(title or "").replace("●", " ").strip()
     parts = [p.strip() for p in t.split(" - ") if p.strip()]
     if cfg.VSCODE_MARKER in parts:
         i = parts.index(cfg.VSCODE_MARKER)
         if i >= 1:
             return parts[i - 1]
     return parts[-1] if parts else ""
+
+
+def repo_from_title(title: str) -> str:
+    """Wie window_from_title, aber OHNE Remote-Anhaengsel - der nackte Ordnername.
+    Diese Form gehoert in jeden Abgleich Titel <-> gebundener Name: VS Code baut das
+    Tag im Titel selbst, die Extension baut es nur nach, und beide muessen sich
+    darum nicht aufs Zeichen gleichen (siehe _REMOTE_TAG)."""
+    return strip_remote_tag(window_from_title(title))
 
 
 def ticket_slug(ticket: str) -> str:

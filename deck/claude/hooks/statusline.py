@@ -59,12 +59,51 @@ def _extract(data: dict[str, Any]) -> dict[str, Any]:
         "ctx_pct": _num(cw.get("used_percentage")),
         "msg_tokens": _msg_tokens(cw),
         "cost_usd": _num(cost.get("total_cost_usd")),
+        "session_name": data.get("session_name") if isinstance(data.get("session_name"), str) else None,
         "ts": time.time(),
     }
 
 
-def _line(rec: dict[str, Any]) -> str:
-    """Kompakte Statuszeile fuers Terminal."""
+SEP = "  ·  "
+TITLE_MAX = 70
+
+
+def _label(slot: str | None, base: str) -> str:
+    """'B2 · ORPH-4116': welche Kachel dieses Pane ist und woran es arbeitet. Ticket: im
+    Deck zugewiesen (tickets.json) oder vom Agenten selbst gemeldet (state/<slot>.ticket)."""
+    if not slot:
+        return ""
+    ticket = (paths.load_json(os.path.join(paths.REPO_ROOT, "tickets.json"), {})
+              or {}).get(slot) or ""
+    if not ticket:
+        try:
+            with open(os.path.join(base, slot + ".ticket"), encoding="utf-8") as f:
+                ticket = (f.read().strip().splitlines() or [""])[0][:40]
+        except OSError:
+            ticket = ""
+    return f"{slot} · {ticket}" if ticket else slot
+
+
+def _header(label: str, title: Any) -> str:
+    """Die Kopfzeile des Chats: 'B2 · ORPH-4116 · Ueberschrift', fett.
+
+    Gewuenscht war sie OBEN ueber jedem Chat. Das geht heute nirgends: Claude Code hat
+    oben keinen Platz fuer eigene Zeilen (die Statuszeile sitzt immer unten), und
+    Windows Terminal zeigt den Titel nur fuer das aktive Pane im Tab (Kopfzeilen je
+    Pane sind dort in Arbeit, PR #20068, Stand 2026-11). Die Statuszeile steht dagegen
+    in JEDEM Pane, also bekommt sie eine eigene erste Zeile. Die Ueberschrift ist
+    `session_name`: der Titel, den Claude aus dem Gespraech erzeugt, oder /rename."""
+    t = " ".join(str(title or "").split())
+    if len(t) > TITLE_MAX:
+        t = t[:TITLE_MAX - 1] + "…"
+    text = " · ".join(p for p in (label, t) if p)
+    return f"\x1b[1m{text}\x1b[0m" if text else ""
+
+
+def _line(rec: dict[str, Any], label: str = "") -> str:
+    """Statuszeile fuers Terminal: erst die Kopfzeile (Slot, Ticket, Ueberschrift),
+    darunter die Zahlen. Ohne Slot und ohne Ueberschrift nur die Zahlenzeile."""
+    head = _header(label, rec.get("session_name"))
     parts = []
     if rec.get("model"):
         parts.append(str(rec["model"]))
@@ -74,7 +113,8 @@ def _line(rec: dict[str, Any]) -> str:
         parts.append(f"ctx {round(rec['ctx_pct'])}%")
     if rec.get("cost_usd") is not None:
         parts.append(f"${rec['cost_usd']:.2f}")
-    return "  ·  ".join(parts)
+    body = SEP.join(parts)
+    return f"{head}\n{body}" if head else body
 
 
 def main() -> None:
@@ -91,15 +131,30 @@ def main() -> None:
 
     rec = _extract(data)
 
+    label = ""
     try:
         base = resolve.state_dir()
         slot = os.environ.get("AGENT_SLOT") or resolve.slot_from_procs(base)
         if slot:
             paths.save_json(os.path.join(base, slot + ".live.json"), rec)
+            label = _label(slot, base)
     except Exception:
         pass  # Deck-State ist Beiwerk -> niemals die Statuszeile kaputt machen
 
-    sys.stdout.write(_line(rec))
+    _emit(_line(rec, label))
+
+
+def _emit(text: str) -> None:
+    """Als UTF-8-BYTES ausgeben, nie ueber sys.stdout.write. Unter Windows schreibt
+    Python in eine Pipe mit der ANSI-Codepage (cp1252), Claude Code liest aber UTF-8:
+    aus "·" und "für" wurde so "◆" und "f◆r" (gesehen 2026-11-06, sobald die
+    Kopfzeile Umlaute aus der Chat-Ueberschrift zeigte). Gegenstueck zur Regel fuer
+    stdin (CLAUDE.md, Vertrag 5)."""
+    try:
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.flush()
+    except (AttributeError, OSError):
+        sys.stdout.write(text)
 
 
 if __name__ == "__main__":

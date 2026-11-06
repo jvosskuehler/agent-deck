@@ -76,6 +76,18 @@ def title_of(hwnd: int) -> str:
     return _title(hwnd) if hwnd else ""
 
 
+user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+
+
+def class_of(hwnd: int) -> str:
+    """Fensterklasse zu einem HWND (leerer String, wenn keine). Windows Terminal etwa
+    heisst immer CASCADIA_HOSTING_WINDOW_CLASS - verlaesslicher als jeder Titel."""
+    if not hwnd:
+        return ""
+    buf = ctypes.create_unicode_buffer(256)
+    return buf.value if user32.GetClassNameW(hwnd, buf, 256) else ""
+
+
 # ── Tk-Fensterhandle aufloesen ──────────────────────────
 _GA_ROOT = 2
 user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]

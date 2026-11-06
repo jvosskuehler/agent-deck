@@ -9,6 +9,11 @@ slot_order.json
 win_order.json
 slot_effort.json
 tickets.json
+# Welche Buchstaben in Windows Terminal leben ({Buchstabe: Repo-Ordner}, ops/wt_host).
+wt_hosts.json
+# Der Neustart-Plan (welche Kachel welche Claude-Session hatte). Lebt nur zwischen
+# "alle Fenster zu" und "alle Chats zurueck"; ein geglueckter Lauf loescht ihn.
+restart_plan.json
 
 # Lokale Claude-Code-Freigaben des jeweiligen Mitwirkenden (Pfade, erlaubte
 # Kommandos). Gehen niemanden sonst etwas an; die geteilten Projektregeln stehen

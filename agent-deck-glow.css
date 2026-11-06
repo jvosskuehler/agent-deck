@@ -4,11 +4,15 @@
  *   Zuenden: der GANZE Rand leuchtet gleichzeitig auf (weicher Bloom) UND die
  *            beiden Lichtfronten fahren mit einem schnellen Schwung los
  *            (~1 s, stark abbremsend) - Bewegung ab dem ersten Frame.
- *   Danach:  der Schwung geht NAHTLOS in ein ruhiges Treiben ueber: zwei
- *            gegenlaeufige Fronten (13 s vs. 20 s). Weil sich die Perioden nie
- *            synchronisieren, buendelt und verblasst das Licht an wandernden
- *            Stellen -> ein ruhiges Plasma-Schimmern, das sich sichtbar nie
- *            wiederholt und nie blinkt.
+ *   Danach:  der Ring steht still, beide Fronten bleiben auf ihrem Endwinkel.
+ *
+ * Warum kein Dauer-Treiben mehr? Bis 2026-10-14 liefen die Fronten danach endlos
+ * weiter (13 s / 20 s). Animierte @property-Winkel kann der Compositor nicht
+ * uebernehmen: jeder Frame hiess Style + Paint der beiden Ringschichten (eine
+ * davon mit blur) im Renderer-Hauptthread, also in dem Thread, der auch Tippen
+ * und Scrollen bedient. Gemessen zog der Renderer im Leerlauf 0,19 Kerne, und auf
+ * einem ausgelasteten Rechner wurde VS Code davon spuerbar traege. Ein stehender
+ * Ring wird einmal gemalt und kostet danach nichts.
  *
  * Warum nur am Rand? VS Codes Terminal malt den Inhalt auf einem <canvas>, der
  * die Mittelflaeche opak ueberdeckt -> CSS erreicht zuverlaessig nur den Rand-Ring.
@@ -21,7 +25,10 @@
  *
  * Farbe aendern: die drei Stopps #7ecbff (Cyan), #4de0c0 (Teal) und #a98bff
  * (Violett) anpassen; #a98bff -> #ff9b54 laesst es eher wie Lava statt Aurora wirken.
- * Tempo: Ruhe ueber 13s/20s regeln, den Anfangsschwung ueber die pt-in*-Winkel.
+ * Tempo: den Anfangsschwung ueber die pt-in*-Winkel und die Dauer (1 s) regeln.
+ * Wer wieder Bewegung will: nur Einmaliges (endliche Dauer) oder Compositor-
+ * taugliches (transform, opacity), nie wieder etwas mit `infinite` auf diesen
+ * Verlaeufen.
  */
 
 /* Zwei Houdini-Winkel, damit die beiden konischen Verlaeufe sauber (interpoliert
@@ -31,13 +38,11 @@
 
 .terminal.focus { position:relative; }
 
-/* Gemeinsame Ring-Geometrie + die beiden treibenden Verlaeufe.
+/* Gemeinsame Ring-Geometrie + die beiden Verlaeufe.
  * ::before = scharfe Schicht, ::after = weiche Glueh-Schicht darunter.
  *
- * Bewegung = schneller Einlauf (pt-in*) -> ruhiges Treiben (pt-spin*):
- * pt-in* laeuft einmal ab (both, haelt seinen Endwinkel); pt-spin* startet mit
- * exakt diesem Winkel (delay = Einlaufdauer) und steht in der Liste dahinter,
- * gewinnt also den Winkel ab Sekunde 1 -> kein Sprung, nie Stillstand. */
+ * Bewegung = nur der schnelle Einlauf (pt-in*): er laeuft einmal ab und haelt
+ * dank `both` seinen Endwinkel. Danach animiert hier nichts mehr. */
 .terminal.focus::before,
 .terminal.focus::after {
   content:"";
@@ -55,34 +60,29 @@
           mask-composite: exclude;
   animation:
     pt-in1   1s   cubic-bezier(.1,.7,.3,1) both,
-    pt-in2   1s   cubic-bezier(.1,.7,.3,1) both,
-    pt-spin1 13s  linear 1s infinite,
-    pt-spin2 20s  linear 1s infinite;
+    pt-in2   1s   cubic-bezier(.1,.7,.3,1) both;
 }
 
 /* Scharfe Schicht oben. */
 .terminal.focus::before { z-index:41; }
 
 /* Weiche Glueh-Schicht darunter; traegt zusaetzlich den einmaligen Zuend-Bloom.
- * Der Bloom animiert nur filter/opacity -> keine Kollision mit der Rotation. */
+ * Der Bloom animiert nur filter/opacity -> keine Kollision mit der Rotation.
+ * Nach .9 s steht auch er: der blur bleibt, wird aber nur noch einmal gemalt. */
 .terminal.focus::after {
   z-index:40;
   filter: blur(4px) saturate(1.25);
   animation:
     pt-in1   1s   cubic-bezier(.1,.7,.3,1) both,
     pt-in2   1s   cubic-bezier(.1,.7,.3,1) both,
-    pt-spin1 13s  linear 1s infinite,
-    pt-spin2 20s  linear 1s infinite,
     pt-bloom .9s  ease-out both;
 }
 
-/* Front 1 (im Uhrzeigersinn): schneller Schwung, dann +360deg/Runde. */
+/* Front 1 (im Uhrzeigersinn): schneller Schwung, bleibt bei 210deg stehen. */
 @keyframes pt-in1   { from { --pt-a1:0deg; }    to { --pt-a1:210deg; } }
-@keyframes pt-spin1 { from { --pt-a1:210deg; }  to { --pt-a1:570deg; } }
 
 /* Front 2 (gegen den Uhrzeigersinn): eigener, groesserer Schwung -> asymmetrisch. */
 @keyframes pt-in2   { from { --pt-a2:0deg; }    to { --pt-a2:-250deg; } }
-@keyframes pt-spin2 { from { --pt-a2:-250deg; } to { --pt-a2:-610deg; } }
 
 /* Zuenden: aus hell + stark verwaschen weich in den ruhigen Halo einlaufen. */
 @keyframes pt-bloom {
@@ -90,7 +90,7 @@
   100% { opacity:.8; filter: blur(4px)  brightness(1)   saturate(1.25); }
 }
 
-/* Bewegung respektiert die System-Einstellung: kein Treiben, nur ein ruhiger Ring. */
+/* Bewegung respektiert die System-Einstellung: kein Einlauf, nur ein ruhiger Ring. */
 @media (prefers-reduced-motion: reduce) {
   .terminal.focus::before,
   .terminal.focus::after { animation:none; }
