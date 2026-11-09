@@ -306,3 +306,7 @@ pub fn read_cache(path: &Path) -> Option<Value> {
 #[cfg(test)]
 #[path = "shared_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "shared_format_tests.rs"]
+mod format_tests;
