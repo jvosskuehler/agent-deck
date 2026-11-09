@@ -9,7 +9,7 @@ import { TooltipCard } from "./TooltipCard";
 import "../../styles/tooltip.css";
 
 /** Luft um die Karte für den Schatten (px), Teil der gemeldeten Größe. */
-export const TIP_GUTTER = 8;
+const TIP_GUTTER = 8;
 
 export function TooltipView() {
   const tip = useTooltip();

@@ -8,9 +8,9 @@ import type { Status } from "../bindings/Status";
 import { PALETTES, toneOf, type Scheme } from "./palette";
 
 /** Wie laut eine Karte ist: atmend, ruhig getönt, gar nicht getönt. */
-export type Attention = "strong" | "soft" | "none";
+type Attention = "strong" | "soft" | "none";
 
-export function attentionOf(status: Status): Attention {
+function attentionOf(status: Status): Attention {
   switch (status) {
     case "waiting":
     case "thinking":
@@ -24,7 +24,7 @@ export function attentionOf(status: Status): Attention {
 }
 
 /** Alles, was die Fläche einer Karte braucht, fertig als CSS-Werte. */
-export interface TileLook {
+interface TileLook {
   /** Statustext oben links. */
   ink: string;
   /** Tönung über dem Kartengrund; bei einer ruhigen Karte deckend in deren Fläche. */
@@ -104,7 +104,7 @@ export function bloomFill(status: Status, scheme: Scheme): string {
 }
 
 /** Aussehen des Griffs aus dem dringlichsten Zustand (`null` = alles ruhig). */
-export interface HandleLook {
+interface HandleLook {
   color: string;
   glow: string;
   breathe: boolean;
@@ -130,7 +130,7 @@ export function metaLine(model: string, effort: string): string {
 }
 
 /** Periode des Atmens in ms (DESIGN.md: 3 s). */
-export const BREATHE_MS = 3000;
+const BREATHE_MS = 3000;
 
 /**
  * Negative Startverzögerung, damit alle atmenden Elemente im selben Takt atmen, egal

@@ -18,7 +18,7 @@ import { initialBlocks, initialSettings, statusText, SUMMARIES, urgentOf, usage 
 
 type Handler = (payload: unknown) => void;
 
-export interface MockControl {
+interface MockControl {
   setDock(dock: Partial<DockView>): void;
   setStatus(slot: string, status: Status): void;
   emit<E extends EventName>(event: E, payload: EventPayloads[E]): void;
@@ -216,7 +216,9 @@ export function createMockBackend(): Backend {
     invoke<K extends CommandName>(cmd: K, args: Commands[K]["args"]): Promise<Commands[K]["ret"]> {
       control.calls.push({ cmd, args });
       try {
-        return Promise.resolve(commands[cmd](args));
+        // Kopie wie über die echte Schnittstelle (JSON): sonst hielte die Oberfläche die
+        // Objekte des Mocks, die er später verändert, und memo sähe keinen Unterschied.
+        return Promise.resolve(structuredClone(commands[cmd](args)));
       } catch (err) {
         return Promise.reject(err);
       }

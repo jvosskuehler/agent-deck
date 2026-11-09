@@ -6,10 +6,10 @@
 // das Panel-Fenster ist genau so groß wie sein Inhalt, nach unten wäre kein Platz.
 
 import { useState } from "react";
-import type { LimitView } from "../../bindings/LimitView";
 import type { UsageView } from "../../bindings/UsageView";
 import { t, type Lang } from "../../logic/i18n";
-import { PALETTES, usageDot, type Scheme } from "../../logic/palette";
+import type { Scheme } from "../../logic/palette";
+import { dotColor, percentText } from "../../logic/usage";
 import { useScheme } from "../useScheme";
 import { GearIcon } from "../icons";
 
@@ -18,16 +18,6 @@ interface Props {
   lang: Lang;
   onOpenUsage(): void;
   onOpenSettings(): void;
-}
-
-function percentText(limit: LimitView): string {
-  // Ein Limit hinter seinem Reset ist keine Zahl mehr (CLAUDE.md, Fallen): graues „—“.
-  return limit.percent === null ? "—" : `${Math.round(limit.percent)} %`;
-}
-
-/** Ampelpunkt eines Limits; unbekannt = leiser Punkt. */
-function dotColor(limit: LimitView, scheme: Scheme): string {
-  return limit.percent === null ? PALETTES[scheme].dotUnknown : usageDot(limit.color, scheme);
 }
 
 export function BottomBar({ usage, lang, onOpenUsage, onOpenSettings }: Props) {

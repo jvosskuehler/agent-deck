@@ -5,7 +5,7 @@
 
 export type Lang = "de" | "en";
 
-/** DeckView.lang („de“/„en“) → Sprache; alles Unbekannte wird Deutsch. */
+/** DeckView.lang und TicketView.lang („de“/„en“) → Sprache; alles Unbekannte wird Deutsch. */
 export function langFromView(lang: string | undefined): Lang {
   return lang === "en" ? "en" : "de";
 }
@@ -53,7 +53,7 @@ const TEXTS = {
   cancel: ["Abbrechen", "Cancel"],
 } as const satisfies Record<string, readonly [string, string]>;
 
-export type TextKey = keyof typeof TEXTS;
+type TextKey = keyof typeof TEXTS;
 
 /** Text in der gewählten Sprache; `{name}`-Platzhalter werden ersetzt. */
 export function t(lang: Lang, key: TextKey, vars: Record<string, string> = {}): string {

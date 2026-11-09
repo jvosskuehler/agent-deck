@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLOSE_MS,
   gutterSide,
+  gutterStyle,
   normalizeEdge,
   normalizePhase,
   OPEN_MS,
@@ -64,5 +65,13 @@ describe("Andocken", () => {
     expect(gutterSide("left")).toBe("right");
     expect(gutterSide("right")).toBe("left");
     expect(gutterSide("bottom")).toBe("top");
+  });
+
+  it("gibt der Messbox genau dort Innenabstand, wo der Schatten ausläuft", () => {
+    expect(gutterStyle("top")).toEqual({ paddingBottom: 24 });
+    expect(gutterStyle("off")).toEqual({ paddingBottom: 24 });
+    expect(gutterStyle("bottom")).toEqual({ paddingTop: 24 });
+    expect(gutterStyle("left")).toEqual({ paddingRight: 24 });
+    expect(gutterStyle("right")).toEqual({ paddingLeft: 24 });
   });
 });
