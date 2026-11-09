@@ -27,6 +27,15 @@ const TEXTS = {
   usageReset: ["Reset {when}", "resets {when}"],
   usageOpen: ["Klick öffnet claude.ai/settings/usage", "Click opens claude.ai/settings/usage"],
   usageStale: ["alter Wert", "old value"],
+  // Läuft noch ohne Fenster
+  orphansHead: ["Läuft noch ohne Fenster", "Still running without a window"],
+  orphansKill: ["Beenden", "Stop"],
+  orphansKilling: ["beendet…", "stopping…"],
+  orphansKillAll: ["Alle beenden", "Stop all"],
+  orphansNote: [
+    "Nie angeboten: Claude, Docker, das Deck selbst, Prozesse in Sitzung 0 und alles, was nicht aus einem Agentenfenster stammt.",
+    "Never offered: Claude, Docker, the deck itself, session 0 processes and anything not started from an agent window.",
+  ],
   // Einstellungen
   savedNote: ["Gespeichert", "Saved"],
   liveNote: ["Änderungen gelten sofort", "Changes apply immediately"],

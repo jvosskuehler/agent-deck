@@ -26,6 +26,7 @@ pub mod i18n;
 pub mod isotime;
 pub mod menu;
 pub mod ordering;
+pub mod orphans;
 pub mod paths;
 pub mod prompt_cache;
 pub mod prompts;

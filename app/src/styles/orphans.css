@@ -1,0 +1,157 @@
+/* „Läuft noch ohne Fenster“: leiser Hinweis in der unteren Leiste und die Liste darüber.
+ * Vorlage: Canvas „Cache-Restzeit auf der Kachel“, Zeichenfläche „Läuft noch ohne Fenster“
+ * (Zeilen auf dem Overlay, Knöpfe im Kartengrund), Farben aus base.css. */
+
+.orphans {
+  display: flex;
+  align-items: center;
+}
+
+/* Wie ein Wert der Leiste, nicht wie ein Alarm: gedämpft, erst beim Hover kräftiger. */
+.orphans-hint {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--dim);
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.orphans-hint:hover,
+.orphans-hint[data-open] {
+  background: var(--soft-hover);
+  color: var(--ink);
+}
+
+/* Die Liste hängt über der Leiste, rechtsbündig. Der durchsichtige Rand unten ist die
+ * Brücke vom Hinweis in die Liste: der Zeiger verlässt dabei den Hover-Bereich nicht. */
+.orphans-pop {
+  position: absolute;
+  right: 12px;
+  bottom: 100%;
+  z-index: 10;
+  width: min(620px, calc(100% - 24px));
+  padding-bottom: 6px;
+}
+
+.orphans-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--hl-med);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px -14px var(--panel-shadow);
+  color: var(--ink);
+  font-size: 11px;
+  overflow: hidden;
+}
+
+.orphans-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.orphans-all,
+.orphans-kill {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--hl-med);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--subtle);
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.orphans-all:hover:not(:disabled) {
+  background: var(--soft-hover);
+  color: var(--ink);
+}
+
+/* Ein Raster für alle Zeilen (subgrid): Port, Programm und Herkunft fluchten, der Befehl
+ * nimmt den Rest und kürzt mit Auslassung. */
+.orphans-list {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content max-content;
+  gap: 6px 12px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.orphans-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding: 6px 6px 6px 10px;
+  border-radius: 10px;
+  background: var(--overlay);
+}
+
+.orphans-row[data-busy] {
+  opacity: 0.6;
+}
+
+.orphans-port {
+  font-weight: 700;
+}
+
+.orphans-port[data-none],
+.orphans-origin {
+  color: var(--dim);
+  font-weight: 400;
+}
+
+.orphans-cmd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orphans-origin {
+  white-space: nowrap;
+}
+
+.orphans-kill {
+  height: 24px;
+  border-color: var(--hl-high);
+  border-radius: 7px;
+  background: var(--card);
+  color: var(--ink);
+}
+
+.orphans-kill:hover:not(:disabled) {
+  border-color: var(--err-pig);
+  color: var(--err-ink);
+}
+
+.orphans-all:disabled,
+.orphans-kill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.orphans-error {
+  grid-column: 1 / -1;
+  color: var(--err-ink);
+  white-space: normal;
+}
+
+.orphans-note {
+  margin: 0;
+  color: var(--dim);
+  line-height: 1.4;
+}

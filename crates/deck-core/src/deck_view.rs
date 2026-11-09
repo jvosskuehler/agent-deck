@@ -282,5 +282,5 @@ pub fn build_deck_view(input: &DeckInput, memory: &mut StatusMemory) -> DeckView
         k @ ("waiting" | "done" | "lost" | "thinking") => Some(to_status(k)),
         _ => None,
     };
-    DeckView { blocks, usage: input.usage.clone(), urgent, lang: input.lang.code().into() }
+    DeckView { blocks, usage: input.usage.clone(), urgent, lang: input.lang.code().into(), orphans: Vec::new() }
 }

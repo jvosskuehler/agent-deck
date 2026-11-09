@@ -12,7 +12,8 @@ use deck_core::claude::refs::Refs;
 use deck_core::config::{HOVER_SUMMARY, HOVER_SUMMARY_PREFETCH, TICKET_AUTODETECT};
 use deck_core::git_head::{BranchCache, GitFs, NoGit};
 use deck_core::i18n::Lang;
-use deck_core::view::UsageView;
+use deck_core::view::{OrphanView, UsageView};
+use deck_services::orphans::{OrphanWatch, Win32Source};
 use deck_services::summary::{ChatInfo, InfoCallback, SummaryService};
 use deck_services::usage::UsageService;
 use deck_services::worktree_sweep::{SweepView, WorktreeSweeper};
@@ -31,6 +32,8 @@ pub struct Services {
     usage: Option<UsageService>,
     summary: Option<Arc<SummaryService>>,
     sweeper: Option<WorktreeSweeper>,
+    /// „Läuft noch ohne Fenster“ (eigener Scan-Thread, `crate::orphans`).
+    orphans: Option<Arc<OrphanWatch>>,
     refs: Arc<Mutex<HashMap<String, Refs>>>,
     wake: Wake,
     /// Zusammenfassungen vorab erzeugen (kostet `claude`-Läufe).
@@ -49,6 +52,7 @@ impl Services {
             usage: None,
             summary: None,
             sweeper: None,
+            orphans: None,
             refs: Arc::default(),
             wake: Arc::new(|| {}),
             prefetch_summaries: false,
@@ -65,10 +69,13 @@ impl Services {
         let usage = UsageService::system(lang);
         let w = wake.clone();
         usage.start(Box::new(move |_| w()));
+        let orphans = Arc::new(OrphanWatch::new(Arc::new(Win32Source), &paths.app_dir, &paths.state_dir));
+        crate::orphans::start(orphans.clone(), wake.clone());
         Services {
             usage: Some(usage),
             summary: Some(summary),
             sweeper: Some(WorktreeSweeper::system(&paths.state_dir)),
+            orphans: Some(orphans),
             refs: Arc::default(),
             wake,
             prefetch_summaries: HOVER_SUMMARY && HOVER_SUMMARY_PREFETCH,
@@ -120,6 +127,17 @@ impl Services {
     /// Verwaiste worktrees fegen. Rückgabe: Slots, deren Ticket die App vergisst.
     pub fn sweep(&mut self, view: &SweepView) -> Vec<String> {
         self.sweeper.as_mut().map(|s| s.tick(view)).unwrap_or_default()
+    }
+
+    // ── Läuft noch ohne Fenster ─────────────────────────────────────────────────
+
+    pub fn orphan_rows(&self, now: f64, lang: Lang) -> Vec<OrphanView> {
+        self.orphans.as_ref().map(|o| o.rows(now, lang)).unwrap_or_default()
+    }
+
+    /// Der Dienst selbst, für die Befehle „Beenden“ (laufen ohne Sperre des Decks).
+    pub fn orphan_watch(&self) -> Option<Arc<OrphanWatch>> {
+        self.orphans.clone()
     }
 
     // ── Usage ────────────────────────────────────────────────────────────────────
@@ -198,5 +216,6 @@ mod tests {
         assert!(s.detected_refs(&[]).is_empty());
         assert!(s.branches(&["C:/Repos/agent-deck".into()], 100.0).is_empty(), "ohne Dateisystem kein Branch");
         s.set_jira_prefix("ORPH");
+        assert!(s.orphan_rows(100.0, Lang::German).is_empty() && s.orphan_watch().is_none());
     }
 }

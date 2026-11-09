@@ -7,6 +7,7 @@
 import type { BlockView } from "../../bindings/BlockView";
 import type { CacheStage } from "../../bindings/CacheStage";
 import type { CacheView } from "../../bindings/CacheView";
+import type { OrphanView } from "../../bindings/OrphanView";
 import type { RefSource } from "../../bindings/RefSource";
 import type { RefView } from "../../bindings/RefView";
 import type { SettingsView } from "../../bindings/SettingsView";
@@ -126,6 +127,36 @@ export function usage(lang: Lang): UsageView {
     error: null,
     asOf: de ? "Stand: 23:41" : "As of: 23:41",
   };
+}
+
+/**
+ * „Läuft noch ohne Fenster“, wie Rust die Zeilen schickt (zuletzt geschlossenes Fenster
+ * zuerst). Mit `failed` trägt die zweite Zeile einen Fehler vom letzten Beenden.
+ */
+export function orphans(lang: Lang, failed = false): OrphanView[] {
+  const de = lang !== "en";
+  const ago = (slot: string, de1: string, en1: string) => `${slot} · ${de ? `zu seit ${de1}` : `closed ${en1} ago`}`;
+  return [
+    {
+      id: "41236-134387263575552467", pid: 41236, ports: [3000], portText: ":3000", program: "node",
+      command: "pnpm nx serve management-ui",
+      commandFull: String.raw`"C:\Program Files\nodejs\node.exe" C:\Users\jv\AppData\Roaming\npm\node_modules\pnpm\bin\pnpm.cjs nx serve management-ui`,
+      origin: ago("A2", "14 min", "14 min"), busy: false, error: null,
+    },
+    {
+      id: "38820-134387211170000000", pid: 38820, ports: [5116, 7116], portText: ":5116 :7116", program: "dotnet",
+      command: "Idm.Orpheus.Management.Api.dll",
+      commandFull: String.raw`"C:\Program Files\dotnet\dotnet.exe" C:\Users\jv\Repos\wt\4062-api\bin\Debug\net9.0\Idm.Orpheus.Management.Api.dll`,
+      origin: ago("A3", "2 h", "2 h"), busy: false,
+      error: failed ? (de ? "PID 38820: kein Zugriff (läuft erhöht?)" : "PID 38820: access denied (elevated?)") : null,
+    },
+    {
+      id: "29404-134387200000000000", pid: 29404, ports: [], portText: de ? "kein Port" : "no port", program: "node",
+      command: "vitest --watch",
+      commandFull: String.raw`"C:\Program Files\nodejs\node.exe" C:\Users\jv\Repos\wt\4116-ui\node_modules\vitest\vitest.mjs --watch`,
+      origin: ago("A1", "3 h", "3 h"), busy: false, error: null,
+    },
+  ];
 }
 
 export function initialSettings(): SettingsView {

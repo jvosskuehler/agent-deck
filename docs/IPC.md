@@ -61,6 +61,8 @@ nicht auf das erste Ereignis warten muss.
 | `tooltip_content_size` | `width`, `height` (CSS-Pixel, inkl. 8 px Rand) | – | Größe des Tooltip-Fensters anpassen |
 | `get_ticket` | – | `TicketView` oder `null` | Inhalt des Ticket-Dialogs |
 | `submit_ticket` | `ticket`: Text oder `null` | – | zuweisen (leer = abbrechen) bzw. abbrechen; schließt den Dialog |
+| `kill_orphan` | `id` (`OrphanView.id`) | – | „Läuft noch ohne Fenster“: diese Zeile beenden. Kehrt sofort zurück; die Zeile steht bis zum Ende auf `busy`, ein Fehler danach in `error` |
+| `kill_all_orphans` | – | – | „Alle beenden“: jede Zeile wie `kill_orphan` |
 
 ### Was die Oberfläche bereits so umsetzt (Stand 06.11.)
 
@@ -112,6 +114,20 @@ nicht auf das erste Ereignis warten muss.
   die Oberfläche zieht (`panel_hold`), bleibt das Panel offen.
 - Das Kontextmenü (`show_tile_menu`) ist nativ: Model, Ticket (zuweisen öffnet `ticket`,
   entfernen), Effort, Mode, „Agent schließen“.
+
+### Läuft noch ohne Fenster (Stand 09.11.)
+
+- `DeckView.orphans`: Prozesse aus geschlossenen Agentenfenstern, fertig sortiert und
+  beschriftet (`OrphanView`: `portText`, `program`, `command`, `commandFull`, `origin`
+  „A2 · zu seit 14 min“, `busy`, `error`). Leer = kein Hinweis in der Leiste.
+- `id` ist `pid-startzeit` als Text (die FILETIME passt nicht genau in eine JS-Zahl).
+  Rust beendet nur, was unter genau dieser PID UND Startzeit noch eine Waise ist, samt
+  ihrer Nachkommen von oben nach unten, nie Claude, das Deck, Docker, Konsolenwirte oder
+  Prozesse in Sitzung 0 (`deck_core::orphans`), und prüft danach, dass die Prozesse weg
+  und ihre Ports frei sind.
+- Gemerkt wird in `%LOCALAPPDATA%\claude-agent-deck\orphans.json`, damit ein Neustart
+  des Decks die Herkunft nicht vergisst. Gescannt wird in einem eigenen Thread
+  (`app/src-tauri/src/orphans.rs`), nicht im Takt.
 
 Ohne Tauri (`pnpm dev` im Browser) bedient ein Mock dieselben Befehle und Ereignisse mit
 Beispieldaten, damit die Oberfläche allein entwickelt und angeschaut werden kann.

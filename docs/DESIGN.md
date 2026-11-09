@@ -105,7 +105,16 @@ den ganzen Block gibt es bewusst nicht.
   links Ampelpunkt + „Session 34 %“ und „Woche 61 %“ (Prozent fett in Textfarbe), alt =
   matt; Hover zeigt Resets, weitere Limits, Stand, Fehler; Klick öffnet
   claude.ai/settings/usage. Rechts das **normale Zahnrad-Symbol** (Lucide `settings`),
-  öffnet die Einstellungen. Die Ampelfarben aus Rust (`usage.rs`) werden zu den Pigmenten
+  öffnet die Einstellungen. Links vom Zahnrad steht, nur wenn es welche gibt, leise
+  „2 ohne Fenster“ (gedämpft, Hover wie die Nutzung); Hover oder Klick öffnet darüber
+  rechtsbündig die Liste **„Läuft noch ohne Fenster“** (Canvas
+  https://claude.ai/artifact/6U2pYMKFAPm2tfN1zckQZG, Zeichenfläche „Läuft noch ohne
+  Fenster“): Fläche Panel, Rand hl-med, Radius 12; Kopf 12 px fett mit „Alle beenden“
+  rechts; je Prozess eine Zeile auf dem Overlay (Radius 10): Port fett (ohne Port
+  „kein Port“ gedämpft), Programm, Befehl mit Auslassung (Hover zeigt die ganze Zeile),
+  Herkunft „A2 · zu seit 14 min“ gedämpft, Knopf „Beenden“ im Kartengrund (Hover rot);
+  ein Fehler steht rot unter seiner Zeile; unten klein, was nie angeboten wird. Die
+  Ampelfarben aus Rust (`usage.rs`) werden zu den Pigmenten
   von ungelesen, Rückfrage, getrennt und idle.
 - Eingeklappt bleibt nur der **Griff**: Kapsel 120 × 7, Radius 7, im Pigment des
   dringlichsten Zustands mit leichtem Schein, atmet bei Rückfrage/denkt; alles ruhig =

@@ -250,7 +250,8 @@ impl Deck {
             lang: self.lang,
             usage,
         };
-        let view = build_deck_view(&input, &mut self.memory);
+        let mut view = build_deck_view(&input, &mut self.memory);
+        view.orphans = self.services.orphan_rows(now, self.lang);
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
         self.tile_refs = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), (t.ticket.clone(), t.pr.clone()))).collect();
         // Die Auswahl gilt einer Kachel, die es gibt; sonst bliebe ein Ring an einem

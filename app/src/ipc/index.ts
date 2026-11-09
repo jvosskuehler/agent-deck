@@ -52,6 +52,8 @@ export const commands = {
     fire(getBackend().invoke("panel_drag", { mode, x, y }), "panel_drag"),
   getTicket: () => getBackend().invoke("get_ticket", {}),
   submitTicket: (ticket: string | null) => fire(getBackend().invoke("submit_ticket", { ticket }), "submit_ticket"),
+  killOrphan: (id: string) => fire(getBackend().invoke("kill_orphan", { id }), "kill_orphan"),
+  killAllOrphans: () => fire(getBackend().invoke("kill_all_orphans", {}), "kill_all_orphans"),
 };
 
 export function isNative(): boolean {

@@ -49,6 +49,7 @@ wird dort getestet; Zeichnen gehört nach `app/src` und wird angeschaut.**
 ```powershell
 cargo test --workspace                               # alle Rust-Tests
 cargo test -p deck-core export_bindings              # TS-Typen nach app/src/bindings erzeugen
+cargo test -p deck-services --test orphans_real -- --ignored --nocapture   # „ohne Fenster“ echt (startet node/pwsh versteckt)
 cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
