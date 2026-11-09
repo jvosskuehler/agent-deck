@@ -34,6 +34,7 @@ pub mod ref_sources;
 pub mod slot_state;
 pub mod status_model;
 pub mod text;
+pub mod tile_refs;
 pub mod tooltip;
 pub mod view;
 pub mod wt;

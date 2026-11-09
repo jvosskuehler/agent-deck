@@ -18,7 +18,8 @@ use deck_core::i18n::Lang;
 use deck_core::paths::{live_path, load_json, save_json, state_path};
 use deck_core::field::{number, raw_number, text};
 use deck_core::prompt_cache::{CacheLevel, view, working};
-use deck_core::text::{char_len, first_line, squash_ws, take_chars};
+use deck_core::text::{char_len, squash_ws, take_chars};
+use deck_core::tile_refs::{RefEntry, TileRefs, refs_path};
 use serde_json::{Map, Value};
 
 use crate::cache_scan::cache_until;
@@ -103,32 +104,47 @@ pub fn extract(data: &Map<String, Value>, now: f64) -> Map<String, Value> {
     rec
 }
 
-/// „B2 · ORPH-4116“: welche Kachel dieses Pane ist und woran es arbeitet. Ticket: im
-/// Deck zugewiesen (tickets.json) oder vom Agenten gemeldet (`state\<slot>.ticket`).
-pub fn label(slot: &str, env: &HookEnv) -> String {
-    let tickets = load_json(&env.app_dir.join(deck_core::paths::TICKETS_FILE));
-    let mut ticket = text(tickets.as_ref().and_then(|t| t.get(slot))).unwrap_or_default().to_string();
-    if ticket.is_empty() {
-        let path = deck_core::paths::found_ticket_path(&env.state_dir, slot);
-        if let Ok(bytes) = std::fs::read(path) {
-            ticket = take_chars(first_line(String::from_utf8_lossy(&bytes).trim()), 40).to_string();
-        }
-    }
-    if ticket.is_empty() { slot.to_string() } else { format!("{slot} · {ticket}") }
+/// Ticket und PR der Kachel, wie das Deck sie zeigt (`state\<slot>.refs.json`,
+/// `deck_core::tile_refs`). Fehlt die Datei oder ist sie kaputt: nichts.
+pub fn tile_refs(slot: &str, env: &HookEnv) -> TileRefs {
+    load_json(&refs_path(&env.state_dir, slot)).map(|v| TileRefs::parse(&v)).unwrap_or_default()
+}
+
+/// Nur geraten: gedimmt (SGR 2), danach zurück zu fett. 22 nimmt beides weg; ein volles
+/// Zurücksetzen machte den Rest der fetten Kopfzeile dünn.
+fn shown(text: &str, detected: bool) -> String {
+    if detected { format!("\x1b[22;2m{text}\x1b[22;1m") } else { text.to_string() }
+}
+
+/// (ohne Farbe, mit Farbe) eines Bezugs aus der Datei; `prefix` steht davor („PR “).
+fn ref_part(e: Option<&RefEntry>, prefix: &str) -> (String, String) {
+    e.map_or_else(Default::default, |e| {
+        let plain = format!("{prefix}{}", e.text);
+        let colored = shown(&plain, e.detected);
+        (plain, colored)
+    })
 }
 
 /// Kopfzeile des Chats, fett: „B2 · ORPH-4116 · PR #347 freigegeben · Überschrift“.
 /// Claude Code hat oben keinen Platz für eigene Zeilen, die Statuszeile steht dagegen in
-/// JEDEM Pane. Der PR steht vor der Überschrift und kürzt sie: die Zeile soll nicht
-/// länger werden als ohne PR, sonst bricht sie im schmalen Pane um.
-pub fn header(label: &str, title: Option<&str>, pr: Option<&Value>, lang: Lang) -> String {
-    let (pr_plain, pr_text) = pr_part(pr, lang);
-    let budget = if pr_plain.is_empty() { TITLE_MAX } else { TITLE_MAX.saturating_sub(char_len(&pr_plain) + 3) };
+/// JEDEM Pane. Ticket und PR stehen vor der Überschrift und kürzen sie: die Zeile soll
+/// nicht länger werden als mit Slot und Überschrift allein, sonst bricht sie im schmalen
+/// Pane um. Ticket und, wenn Claude Code keinen meldet, PR kommen vom Deck (`refs`); ein
+/// nur geratener Wert steht gedimmt. Der PR aus dem stdin gilt vor dem des Decks.
+pub fn header(slot: &str, refs: &TileRefs, title: Option<&str>, pr: Option<&Value>, lang: Lang) -> String {
+    let (ticket_plain, ticket_text) = ref_part(refs.ticket.as_ref(), "");
+    let (mut pr_plain, mut pr_text) = pr_part(pr, lang);
+    if pr_plain.is_empty() {
+        (pr_plain, pr_text) = ref_part(refs.pr.as_ref(), "PR ");
+    }
+    let used: usize = [&ticket_plain, &pr_plain].iter().filter(|p| !p.is_empty()).map(|p| char_len(p) + 3).sum();
+    let budget = TITLE_MAX.saturating_sub(used);
     let mut t = squash_ws(title.unwrap_or(""));
     if char_len(&t) > budget {
         t = format!("{}…", take_chars(&t, budget.saturating_sub(1)));
     }
-    let text = [label, pr_text.as_str(), t.as_str()].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" · ");
+    let parts = [slot, ticket_text.as_str(), pr_text.as_str(), t.as_str()];
+    let text = parts.iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" · ");
     if text.is_empty() { String::new() } else { format!("\x1b[1m{text}\x1b[0m") }
 }
 
@@ -139,15 +155,15 @@ pub fn cache_part(until: f64, ttl: f64, now: f64, lang: Lang) -> String {
     let (text, level) = view(until - now - STATUSLINE_REFRESH_S as f64, ttl, lang.l("kalt", "cold"));
     match level {
         CacheLevel::Warm => format!("cache {text}"),
-        CacheLevel::Low => format!("[33mcache {text}[0m"),
-        CacheLevel::Cold => format!("[2mcache {text}[0m"),
+        CacheLevel::Low => format!("\x1b[33mcache {text}\x1b[0m"),
+        CacheLevel::Cold => format!("\x1b[2mcache {text}\x1b[0m"),
     }
 }
 
 /// Die Statuszeile: erst die Kopfzeile (Slot, Ticket, PR, Überschrift), darunter Modell,
 /// Effort, Kontext und Cache-Restzeit; ohne Slot, PR und Überschrift nur diese Zeile.
-pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
-    let head = header(label, rec.get("session_name").and_then(Value::as_str), rec.get("pr"), lang);
+pub fn line(rec: &Map<String, Value>, slot: &str, refs: &TileRefs, lang: Lang) -> String {
+    let head = header(slot, refs, rec.get("session_name").and_then(Value::as_str), rec.get("pr"), lang);
     let mut parts = Vec::new();
     if let Some(m) = text(rec.get("model")) {
         parts.push(m.to_string());
@@ -172,11 +188,12 @@ pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
 pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
     let mut rec = extract(&crate::parse_stdin(stdin), env.now);
     // Deck-Zustand ist Beiwerk: ein Fehler hier macht nie die Statuszeile kaputt.
-    let mut lbl = String::new();
+    let (mut shown_slot, mut refs) = (String::new(), TileRefs::default());
     if let Some(slot) = env.resolve_slot()
         && save_json(&live_path(&env.state_dir, &slot), &Value::Object(rec.clone())).is_ok()
     {
-        lbl = label(&slot, env);
+        refs = tile_refs(&slot, env);
+        shown_slot = slot.clone();
         // Arbeitet der Agent, kein Timer (`prompt_cache::working`). Nur die Anzeige:
         // live.json behält die Ablaufzeit, das Deck entscheidet selbst.
         let st = load_json(&state_path(&env.state_dir, &slot));
@@ -189,5 +206,5 @@ pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
     let shows_cache = !rec.get("cache_until").is_none_or(Value::is_null);
     let shows_pr = !rec.get("pr").is_none_or(Value::is_null);
     let lang = if shows_cache || shows_pr { Lang::from_settings(&env.claude_settings) } else { Lang::German };
-    line(&rec, &lbl, lang)
+    line(&rec, &shown_slot, &refs, lang)
 }

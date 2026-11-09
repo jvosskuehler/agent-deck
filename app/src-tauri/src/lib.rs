@@ -19,6 +19,7 @@ pub mod menu;
 pub mod native;
 pub mod orphans;
 pub mod poll;
+pub mod refs_files;
 pub mod services;
 pub mod settings;
 pub mod state;
@@ -40,6 +41,8 @@ mod tests;
 mod tests_compact;
 #[cfg(test)]
 mod tests_head;
+#[cfg(test)]
+mod tests_refs;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};

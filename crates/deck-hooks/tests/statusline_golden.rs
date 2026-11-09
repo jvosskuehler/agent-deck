@@ -6,6 +6,7 @@
 use std::path::Path;
 
 use deck_core::paths::{live_path, load_json, save_json};
+use deck_core::tile_refs::refs_path;
 use deck_hooks::env::HookEnv;
 use deck_hooks::statusline::run;
 use serde_json::{Value, json};
@@ -43,19 +44,76 @@ fn run_with(env: &HookEnv, stdin: &Value) -> String {
     run(env, Some(stdin.to_string().as_bytes()))
 }
 
+/// `refs.json`, wie das Deck sie schreibt (`deck_core::tile_refs`).
+fn refs(ticket: &str, detected: bool, pr: Option<(&str, bool)>) -> Value {
+    json!({"ticket": ticket, "ticket_source": if detected { "chat" } else { "branch" }, "ticket_detected": detected,
+        "pr": pr.map(|p| p.0), "pr_source": pr.map(|p| if p.1 { "chat" } else { "statusline" }), "pr_detected": pr.is_some_and(|p| p.1)})
+}
+
+/// Die Kopfzeile eines Laufs mit `stdin` und (wenn gegeben) der `refs.json` des Decks.
+fn head_of(stdin: &Value, refs_json: Option<Value>) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path(), Some("B3"));
+    std::fs::create_dir_all(&env.state_dir).unwrap();
+    if let Some(r) = refs_json {
+        save_json(&refs_path(&env.state_dir, "B3"), &r).unwrap();
+    }
+    run_with(&env, stdin).split('\n').next().unwrap().to_string()
+}
+
+#[test]
+fn the_header_shows_the_decks_ticket_with_and_without_pr_and_shortens_a_long_title() {
+    let title = "Agent Deck: Ticket aus der Kachel auch in der Statuszeile zeigen, ohne zweite Erkennung im Hook";
+    let base = json!({"session_name": title});
+    let with_pr = json!({"session_name": title, "pr": {"number": 347, "url": "u", "review_state": "approved"}});
+    let cases = [
+        // ohne Ticket, ohne PR: der Titel allein, auf 70 Zeichen gekürzt
+        (base.clone(), None, "\x1b[1mB3 · Agent Deck: Ticket aus der Kachel auch in der Statuszeile zeigen, ohn…\x1b[0m"),
+        // mit Ticket: es steht vorn, der Titel wird um genau so viel kürzer
+        (
+            base.clone(),
+            Some(refs("ORPH-4116", false, None)),
+            "\x1b[1mB3 · ORPH-4116 · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
+        ),
+        // nur geratenes Ticket: gedimmt
+        (
+            base.clone(),
+            Some(refs("ORPH-4116", true, None)),
+            "\x1b[1mB3 · \x1b[22;2mORPH-4116\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
+        ),
+        // Ticket und PR aus dem stdin
+        (
+            with_pr.clone(),
+            Some(refs("ORPH-4116", false, Some(("#12", true)))),
+            "\x1b[1mB3 · ORPH-4116 · PR #347 \x1b[32mfreigegeben\x1b[39m · Agent Deck: Ticket aus der Kachel a…\x1b[0m",
+        ),
+        // PR ohne Ticket
+        (with_pr, None, "\x1b[1mB3 · PR #347 \x1b[32mfreigegeben\x1b[39m · Agent Deck: Ticket aus der Kachel auch in der S…\x1b[0m"),
+        // kein PR im stdin: der des Decks, hier geraten und gedimmt
+        (
+            base,
+            Some(refs("ORPH-4116", false, Some(("#12", true)))),
+            "\x1b[1mB3 · ORPH-4116 · \x1b[22;2mPR #12\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der St…\x1b[0m",
+        ),
+    ];
+    for (stdin, refs_json, want) in cases {
+        assert_eq!(head_of(&stdin, refs_json.clone()), want, "{refs_json:?}");
+    }
+}
+
 #[test]
 fn a_full_stdin_gives_the_golden_lines_in_both_languages() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), Some("A1"));
     std::fs::create_dir_all(&env.state_dir).unwrap();
-    std::fs::write(env.state_dir.join("A1.ticket"), "ORPH-4116\n").unwrap();
+    save_json(&refs_path(&env.state_dir, "A1"), &refs("ORPH-4116", false, None)).unwrap();
     assert_eq!(
         run_with(&env, &full()),
         "\x1b[1mA1 · ORPH-4116 · PR #12 \x1b[33mÄnderungen gewünscht\x1b[39m · Statuszeile für Wörter\x1b[0m\n\
          Opus 5.5  ·  effort xhigh  ·  ctx 42%  ·  cache 29 min"
     );
     std::fs::write(&env.claude_settings, r#"{"language": "english"}"#).unwrap();
-    save_json(&dir.path().join("tickets.json"), &json!({"A1": "ORPH-1"})).unwrap();
+    save_json(&refs_path(&env.state_dir, "A1"), &refs("ORPH-1", false, None)).unwrap();
     assert_eq!(
         run_with(&env, &full()),
         "\x1b[1mA1 · ORPH-1 · PR #12 \x1b[33mchanges requested\x1b[39m · Statuszeile für Wörter\x1b[0m\n\

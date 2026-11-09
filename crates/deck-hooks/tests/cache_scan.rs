@@ -116,7 +116,7 @@ fn the_display_counts_to_the_next_beat_and_warns_when_it_gets_short() {
     // Beim 5-Minuten-Cache wird erst in der letzten Minute gewarnt.
     assert_eq!(cache_part(now + 3.0 * 60.0 + beat, 300.0, now, de), "cache 3 min");
     let rec = obj(json!({"model": "opus", "cache_until": now + 600.0 + beat, "cache_ttl": 3600, "ts": now}));
-    assert_eq!(line(&rec, "", de), "opus  ·  cache 10 min");
+    assert_eq!(line(&rec, "", &Default::default(), de), "opus  ·  cache 10 min");
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn after_a_compact_there_is_no_timer_until_the_next_request() {
     let data = obj(json!({"prompt_cache": {"warm": true, "ttl": "1h", "expires_at": 1_794_182_611}, "transcript_path": path}));
     assert_eq!(cache_until(&data), None);
     let rec = extract(&data, 7.0);
-    assert!(rec["cache_until"].is_null() && !line(&rec, "", Lang::German).contains("cache"));
+    assert!(rec["cache_until"].is_null() && !line(&rec, "", &Default::default(), Lang::German).contains("cache"));
 }
 
 #[test]

@@ -27,6 +27,7 @@ use deck_services::worktree_sweep::SweepView;
 use deck_win::effects::Desktop;
 
 use crate::app_paths::Paths;
+use crate::refs_files::RefsFiles;
 use crate::services::Services;
 use crate::wt_host::WtHost;
 
@@ -65,6 +66,8 @@ pub struct Deck {
     pub detected_refs: HashMap<String, Refs>,
     /// Slot → Ticket und PR, wie die zuletzt gebaute Ansicht sie zeigt (für den Tooltip).
     pub tile_refs: HashMap<String, (Option<RefView>, Option<RefView>)>,
+    /// Dasselbe für die Statuszeile im Terminal (`state\<slot>.refs.json`).
+    refs_files: RefsFiles,
     /// Die Slots der zuletzt gebauten Ansicht, in Anzeigereihenfolge.
     pub shown_slots: Vec<String>,
     /// Taste „alle nach vorn“: das Fenster, aus dem man kam.
@@ -80,6 +83,7 @@ impl Deck {
     pub fn new(paths: Paths, wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
         let store = BindStore::load(&paths.app_dir);
         let lang = Lang::from_settings(&paths.claude_settings);
+        let refs_files = RefsFiles::new(paths.state_dir.clone());
         Deck {
             paths,
             store,
@@ -100,6 +104,7 @@ impl Deck {
             worktrees: HashMap::new(),
             detected_refs: HashMap::new(),
             tile_refs: HashMap::new(),
+            refs_files,
             shown_slots: Vec::new(),
             front_toggle: BackToggle::default(),
             compact_memo: CompactMemo::default(),
@@ -254,6 +259,7 @@ impl Deck {
         view.orphans = self.services.orphan_rows(now, self.lang);
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
         self.tile_refs = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), (t.ticket.clone(), t.pr.clone()))).collect();
+        self.refs_files.sync(&self.tile_refs);
         // Die Auswahl gilt einer Kachel, die es gibt; sonst bliebe ein Ring an einem
         // später gleichnamigen Agenten hängen.
         if self.active_slot.as_ref().is_some_and(|a| !self.shown_slots.contains(a)) {

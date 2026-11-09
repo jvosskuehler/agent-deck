@@ -109,6 +109,14 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
    was es selbst startet, einem Agenten zugerechnet wird. Ein Job-Objekt je Fenster taugt
    dafür nicht: auf dem Zielrechner steckt jeder Prozess schon in einem Job, und Kinder
    erben einen darunter angelegten Job nicht (gemessen 09.11.2026).
+7. **`<slot>.refs.json`** schreibt das Deck (atomar, nur bei Änderung, weg mit der Kachel):
+   Ticket und PR genau so, wie die Kachel sie zeigt (`deck_core::tile_refs`):
+   `{"ticket", "ticket_source", "ticket_detected", "pr", "pr_source", "pr_detected"}`, alle
+   dürfen `null` sein, Quellen wie `RefSource` (`assigned`, `branch` …). `deck-statusline`
+   liest nur diese Datei für das Ticket (kein `tickets.json`, kein `.ticket` mehr, keine
+   eigene Erkennung) und zeigt die Kopfzeile „B3 · ORPH-4116 · PR #347 freigegeben ·
+   Titel“; nur Geratenes gedimmt, der PR aus dem stdin vor dem des Decks, der Titel wird um
+   Ticket und PR gekürzt (`TITLE_MAX`). Fehlt die Datei: kein Ticket.
 
 ## Fallen, die schon einmal wehgetan haben
 
