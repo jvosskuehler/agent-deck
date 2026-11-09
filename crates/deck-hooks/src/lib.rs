@@ -13,7 +13,6 @@
 
 pub mod cache_scan;
 pub mod env;
-pub mod procs;
 pub mod report;
 pub mod status_extras;
 pub mod statusline;

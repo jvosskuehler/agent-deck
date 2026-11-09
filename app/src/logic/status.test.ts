@@ -25,9 +25,8 @@ describe("Statusfarben", () => {
     expect(toneOf("lost", "dark").fill).toBe("#3a2528");
   });
 
-  it("zeigen unbekannt und none wie idle", () => {
+  it("zeigen none wie idle", () => {
     for (const scheme of ["light", "dark"] as const) {
-      expect(toneOf("unknown", scheme)).toEqual(toneOf("idle", scheme));
       expect(toneOf("none", scheme)).toEqual(toneOf("idle", scheme));
     }
   });
@@ -40,7 +39,7 @@ describe("Kartenfläche", () => {
   });
 
   it("legt ruhige Karten auf die Overlay-Fläche statt sie zu tönen", () => {
-    for (const s of ["idle", "none", "unknown"] as const) {
+    for (const s of ["idle", "none"] as const) {
       expect(tileLook(s, "light").tint).toBe(PALETTES.light.idleCard);
       expect(tileLook(s, "dark").tint).toBe(PALETTES.dark.idleCard);
     }
@@ -56,16 +55,10 @@ describe("Kartenfläche", () => {
       expect(look.pulse).toBe(`${toneOf(s, "light").pig}24`);
       expect(look.breathe).toBe(true);
     }
-    for (const s of ["done", "lost", "idle", "none", "unknown"] as const) {
+    for (const s of ["done", "lost", "idle", "none"] as const) {
       expect(tileLook(s, "light").pulse).toBe("transparent");
       expect(tileLook(s, "light").breathe).toBe(false);
     }
-  });
-
-  it("zeichnet nur unbekannt matt", () => {
-    expect(tileLook("unknown", "light").matte).toBe(true);
-    expect(tileLook("idle", "light").matte).toBe(false);
-    expect(tileLook("lost", "light").matte).toBe(false);
   });
 
   it("setzt den Ring der Auswahl mit Abstand in Panelfarbe ab", () => {

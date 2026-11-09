@@ -1,7 +1,7 @@
 //! Reihenfolge und Umsortieren: die Rechnung hinter dem Ziehen.
 //!
-//! VS Code gibt seine visuelle Reihenfolge nicht preis (weder Terminals noch Fenster),
-//! also führt das Deck seine eigene:
+//! Das Deck führt seine eigene Reihenfolge (Fensterlage auf dem Bildschirm geht vor, wo
+//! sie bekannt ist, `deck_view::layout`):
 //!
 //! * `apply_order` legt die gemerkte Wahl über die gemeldete Liste, bei den Kacheln
 //!   einer Reihe wie bei den Repo-Blöcken untereinander.

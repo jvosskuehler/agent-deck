@@ -1,7 +1,7 @@
 // Beispieldaten für den Browser ohne Tauri: so, wie Rust sie schicken würde.
 //
-// Ein Heimat-Block „Repos“ (Windows Terminal) mit fünf Agenten in allen Zuständen und
-// ein VS-Code-Block mit drei Agenten, einer davon getrennt. Die Texte entsprechen
+// Ein Heimat-Block „Repos“ mit sechs Agenten in allen Zuständen und ein Repo-Block mit
+// drei Agenten, einer davon getrennt. Die Texte entsprechen
 // denen der Vorlagen in docs/design-refs, damit Screenshots vergleichbar sind.
 
 import type { BlockView } from "../../bindings/BlockView";
@@ -17,7 +17,6 @@ const STATUS_TEXT: Record<Status, [string, string]> = {
   done: ["ungelesen", "unread"],
   lost: ["getrennt", "disconnected"],
   idle: ["idle", "idle"],
-  unknown: ["unbekannt", "unknown"],
   none: ["", ""],
 };
 
@@ -51,30 +50,30 @@ const HOME: TileSeed[] = [
   { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", reference: null, referenceDetected: false },
 ];
 
-const VSCODE: TileSeed[] = [
-  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, reference: "ORPH-4107", referenceDetected: false },
-  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: null, reference: null, referenceDetected: false },
-  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, reference: "ORPH-4105", referenceDetected: false },
+const REPO: TileSeed[] = [
+  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Rechtstexte als PDF", reference: "ORPH-4107", referenceDetected: false },
+  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: "Plan für /sessions", reference: null, referenceDetected: false },
+  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Gruppen-Claim für AD FS", reference: "ORPH-4105", referenceDetected: false },
 ];
 
 function tile(seed: TileSeed, lang: Lang, selected: string, now: number): TileView {
   return { ...seed, statusLabel: statusText(seed.status, lang), selected: seed.slot === selected, statusChangedAt: now };
 }
 
-/** Zusatzblock für ?blocks=3: ein Remote-Fenster, damit sich Blöcke ziehen lassen. */
-const REMOTE: TileSeed[] = [
-  { slot: "C1", status: "unknown", model: "Opus 5.5", effort: "high", mode: "auto", title: null, reference: null, referenceDetected: false },
-  { slot: "C2", status: "unknown", model: "Fable 5.1", effort: "medium", mode: "plan", title: null, reference: "#347", referenceDetected: false },
+/** Zusatzblock für ?blocks=3, damit sich Blöcke ziehen lassen. */
+const EXTRA: TileSeed[] = [
+  { slot: "C1", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Update-Kanal prüfen", reference: null, referenceDetected: false },
+  { slot: "C2", status: "done", model: "Fable 5.1", effort: "medium", mode: "plan", title: "PR 347 Review", reference: "#347", referenceDetected: false },
 ];
 
 export function initialBlocks(lang: Lang, now: number, extra = false): BlockView[] {
   const selected = "B2";
   const blocks: BlockView[] = [
-    { letter: "B", name: "Repos", host: "terminal", home: true, connected: true, remote: false, binding: false, rows: [3, 3], screenCols: 3, tiles: HOME.map((s) => tile(s, lang, selected, now)) },
-    { letter: "A", name: "orpheus-management-api", host: "vscode", home: false, connected: true, remote: false, binding: false, rows: [], screenCols: 0, tiles: VSCODE.map((s) => tile(s, lang, selected, now)) },
+    { letter: "B", name: "Repos", home: true, connected: true, rows: [3, 3], screenCols: 3, tiles: HOME.map((s) => tile(s, lang, selected, now)) },
+    { letter: "A", name: "orpheus-management-api", home: false, connected: true, rows: [3], screenCols: 3, tiles: REPO.map((s) => tile(s, lang, selected, now)) },
   ];
   if (extra) {
-    blocks.push({ letter: "C", name: "orpheus-client-electron", host: "vscode", home: false, connected: true, remote: true, binding: false, rows: [], screenCols: 0, tiles: REMOTE.map((s) => tile(s, lang, selected, now)) });
+    blocks.push({ letter: "C", name: "orpheus-client-electron", home: false, connected: true, rows: [2], screenCols: 3, tiles: EXTRA.map((s) => tile(s, lang, selected, now)) });
   }
   return blocks;
 }
@@ -114,5 +113,5 @@ export const SUMMARIES: Record<string, { summary: string; lastPrompt: string }> 
   B5: { summary: "Neues Aussehen des Decks: Karten nach Variante 05, Farben nach Variante 01.", lastPrompt: "Bau die Oberfläche nach DESIGN.md" },
   A1: { summary: "Rechtstexte als PDF: baut die Vorschau für die Endnutzer-Seite.", lastPrompt: "Bau das PDF für die Rechtstexte" },
   A2: { summary: "Plant die Umstellung der Sessions-Route, wartet auf Freigabe.", lastPrompt: "Mach einen Plan für /sessions" },
-  A3: { summary: "Gruppen-Claim: Anleitung für AD FS geschrieben, VS-Code-Fenster getrennt.", lastPrompt: "Schreib die Anleitung für den Gruppen-Claim" },
+  A3: { summary: "Gruppen-Claim: Anleitung für AD FS geschrieben, Fenster getrennt.", lastPrompt: "Schreib die Anleitung für den Gruppen-Claim" },
 };

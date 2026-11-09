@@ -8,12 +8,11 @@ use crate::slot_state::SlotState;
 
 /// Status, die eine Kachel zeigen kann (die Schlüssel von `GLOW_STYLE` in Python).
 /// Alles andere gilt als idle.
-pub const VALID_STATUSES: [&str; 7] = ["idle", "done", "thinking", "running", "waiting", "unknown", "none"];
+pub const VALID_STATUSES: [&str; 6] = ["idle", "done", "thinking", "running", "waiting", "none"];
 
 /// Rangfolge für den Griff: wichtig → unwichtig. `lost` meldet kein Hook, das Panel
-/// errechnet ihn. `unknown` steht hinter `idle`: eine Kachel, über die nichts bekannt
-/// ist, lässt den Griff nicht aufleuchten, ist aber auch nicht „kein Agent“.
-pub const DECK_PRIORITY: [&str; 7] = ["waiting", "done", "lost", "thinking", "idle", "unknown", "none"];
+/// errechnet ihn.
+pub const DECK_PRIORITY: [&str; 6] = ["waiting", "done", "lost", "thinking", "idle", "none"];
 
 fn ts_of(st: &SlotState) -> f64 {
     number(st.get("ts")).unwrap_or(0.0)
@@ -31,18 +30,15 @@ pub fn is_fresh(st: Option<&SlotState>, now: f64, stale_s: f64) -> bool {
 /// Ausgangsstatus einer Kachel, bevor `normalize_status` greift.
 ///
 /// Ohne Meldung gilt eine Kachel als `idle`: sie wird gezeichnet, den Agenten gibt es
-/// also. Bei einem REMOTE-Fenster stimmt das nicht: dessen Hooks schreiben in den
-/// Zustandsordner der Gegenstelle, hier käme auch eine Rückfrage nie an. `idle` wäre da
-/// eine beruhigende Behauptung statt einer Beobachtung, also `unknown`. Eine echte
-/// Meldung gewinnt weiterhin, auch bei remote.
-pub fn initial_status(st: Option<&SlotState>, remote: bool) -> String {
+/// also.
+pub fn initial_status(st: Option<&SlotState>) -> String {
     match st {
         Some(st) if !st.is_empty() => match st.get("status") {
             Some(serde_json::Value::String(s)) if !s.is_empty() => s.clone(),
             // Ein nicht-leerer Nicht-Text ist in Python kein gültiger Status → idle.
             _ => "idle".into(),
         },
-        _ => if remote { "unknown" } else { "idle" }.into(),
+        _ => "idle".into(),
     }
 }
 

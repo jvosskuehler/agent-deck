@@ -4,7 +4,6 @@
  * Zustand eines Agenten, wie ihn die Kachel zeigt.
  *
  * `Lost` meldet kein Hook: das Panel errechnet ihn, wenn das Fenster des Agenten
- * nicht mehr verbunden ist. `Unknown` steht bei Remote-Fenstern, deren Hooks auf
- * der Gegenstelle schreiben (dort kommt hier nie eine Meldung an).
+ * nicht mehr verbunden ist.
  */
-export type Status = "idle" | "thinking" | "waiting" | "done" | "lost" | "unknown" | "none";
+export type Status = "idle" | "thinking" | "waiting" | "done" | "lost" | "none";

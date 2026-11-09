@@ -1,6 +1,6 @@
 //! Das Schutzgitter dieses Crates: dieselbe Idee wie `deck_win::forbid_effects`, für die
-//! Eingriffe, die hier selbst stattfinden (VS Code starten, die App starten, `claude`
-//! aufrufen, den Usage-Endpoint abfragen).
+//! Eingriffe, die hier selbst stattfinden (die App starten, `claude` aufrufen, den
+//! Usage-Endpoint abfragen, fremde Einstellungsdateien ändern).
 //!
 //! Die erste Verteidigung sind die Traits (Tests bekommen Attrappen). Diese zweite greift,
 //! wenn irgendwo doch die echte Fassung landet: in den Unit-Tests dieses Crates ist alles
@@ -30,6 +30,6 @@ mod tests {
     #[test]
     fn unit_tests_of_this_crate_can_never_cause_effects() {
         assert!(effects_forbidden());
-        assert_eq!(check("code starten").unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(check("claude starten").unwrap_err().kind(), io::ErrorKind::PermissionDenied);
     }
 }

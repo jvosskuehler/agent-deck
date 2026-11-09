@@ -38,7 +38,6 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
 | ungelesen (`done`) | `#d8eedd` / `#2c7247` | `#1c392d` / `#86d2a3` | ungelesen / unread | getönt, ruhig |
 | getrennt (`lost`) | `#f5e0e4` / `#a13d59` | `#3a2528` / `#f08a9e` | getrennt / disconnected | getönt, ruhig |
 | idle | `#efe7df` / `#6e6a86` | `#2b2927` / `#a9a39b` | idle / idle | Overlay |
-| unbekannt (`unknown`, Remote) | wie idle, Karte matt | wie idle, Karte matt | unbekannt / unknown | Overlay |
 
 | Rolle | hell | dunkel |
 |---|---|---|
@@ -47,7 +46,7 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
 | Overlay (ruhige Karte, Segmente) | `#f2e9e1` | `#2b2927` |
 | Text | `#575279` | `#e6e0d6` |
 | Modell · Effort, Modus | `#575279` | `#cfc9bf` |
-| gedämpft (Host, Leiste) | `#6e6a86` | `#8e8a84` |
+| gedämpft („nicht verbunden“, Leiste) | `#6e6a86` | `#8e8a84` |
 | Ticket/PR (nur erkannt: gedimmt) | `#6a5590` | `#bda2e0` |
 | Modus Bypass | `#8f3f58` | `#f497a8` |
 | Haarlinien (hl-med / hl-high) | `#dfdad9` / `#cecacd` | `#3a3734` / `#4a4744` |
@@ -55,15 +54,13 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
 ## Karte
 
 - Breite 197, Abstand 10, vier je Reihe. Radius 14, kein Rand.
-- **Windows-Terminal-Karte** 197 × 118, Innenabstand 10 12 9:
+- **Karte** 197 × 118, Innenabstand 10 12 9:
   oben links Statustext (11 px, fett, Ink), oben rechts „Modell · Effort“ (10,5 px,
   normal); darunter der **Sessiontitel** (IBM Plex Sans 14 px, halbfett, Zeilenhöhe 1,3,
   Textfarbe, höchstens zwei Zeilen, sonst Auslassung); unten links Ticket/PR (10,5 px,
   fett), unten rechts Modus (10,5 px, mittel).
-- **VS-Code-Karte** 197 × 58 (flach, kein Titel), Innenabstand 7 12: Zeile 1 wie oben,
-  Zeile 2 Ticket/PR links, Modus rechts.
-- Fläche: Pigment mit Hex-Alpha `38` (dunkel `30`) über dem Kartengrund; idle, none und
-  unbekannt liegen stattdessen auf dem Overlay. Zustandswechsel blenden in 400 ms über.
+- Fläche: Pigment mit Hex-Alpha `38` (dunkel `30`) über dem Kartengrund; idle und none
+  liegen stattdessen auf dem Overlay. Zustandswechsel blenden in 400 ms über.
 - Atmen als eigene Ebene: bei Rückfrage und denkt Pigment `24` (dunkel `1e`), Deckkraft
   0,15 ↔ 1 in 3 s, sanft, alle Karten im selben Takt. Ungelesen, getrennt, idle: ruhig.
 - Statuswechsel nach Rückfrage, ungelesen oder getrennt: die Fläche blüht einmal kurz auf
@@ -76,22 +73,22 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
 
 ## ＋-Karte
 
-Genau so groß wie eine Karte ihres Blocks (197 × 118 bzw. 197 × 58), gestrichelter Rand
+Genau so groß wie eine Karte (197 × 118), gestrichelter Rand
 1,5 px hl-high (dunkel hl-med), Radius 14, „+“ mittig 18 px `#9893a5` (dunkel `#6f6b66`).
 Hover: Rand und „+“ eine Stufe dunkler (dunkel heller). Sie steht als letzte Karte der Reihe.
 
 ## Blockkopf
 
 Repo-Name 12,5 px halbfett in Textfarbe (ist zugleich der Griff zum Umsortieren der
-Blöcke; Hover in der Ticketfarbe), daneben klein der Host („Windows Terminal“ /
-„VS Code“, 11 px gedämpft). Links eine 2 px breite Schiene (hl-med), die Kopf und Karten
+Blöcke; Hover in der Ticketfarbe); ist der Block nicht verbunden, steht daneben klein
+„nicht verbunden“ (11 px gedämpft). Einen Host nennt der Kopf nicht: alle Agenten laufen
+in Windows Terminal. Links eine 2 px breite Schiene (hl-med), die Kopf und Karten
 zu einer Gruppe bindet; beim Hover über den Block wird sie kräftiger. Heimat-Block
 (`Repos`) steht immer oben.
 
-Der Kopf meint das ganze Fenster: Rechtsklick auf den Kopf öffnet das native Menü
-(vergessen, mit einem VS-Code-Fenster verbinden). Ein ✕ für das ganze Fenster gibt es
-bewusst nicht. Solange verbunden wird, steht statt des
-Hosts „Klicke jetzt ein VS-Code-Fenster an“ in Bernstein (Ink) mit atmendem Punkt.
+Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nach vorn,
+Rechtsklick öffnet das native Menü (vergessen; beim Heimat-Block kein Menü). Ein ✕ für
+den ganzen Block gibt es bewusst nicht.
 
 ## Panel, Leiste, Griff
 
@@ -133,7 +130,7 @@ Kein Speichern-Knopf: jede Änderung gilt sofort, ein kurzes „Gespeichert“ b
 
 Bewusst **nicht** (seit 09.11.2026, Jorrit arbeitet nur noch in Windows Terminal): kein
 Warnsatz und kein Rot bei Bypass, kein Ring um den Chat, kein Jira-Präfix, kein
-Heimatordner, keine Werkzeuge für VS Code und kein „Repo öffnen“. Jira-Präfix
+Heimatordner und kein „Repo öffnen“. Jira-Präfix
 (`jira_prefix`) und Heimatordner (`terminal_home`) liest das Deck weiter aus
 `deck_settings.json`, wenn sie dort von Hand stehen.
 

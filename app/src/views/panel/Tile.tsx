@@ -1,11 +1,9 @@
 // Eine Agentenkarte. Aufteilung nach karte-aufteilung-deck05.html, Fläche nach dem
 // Papier-Look „02 Farbfeld“ (docs/DESIGN.md).
 //
-// Terminal-Karte (hoch): Status | Modell · Effort, darunter der Sessiontitel, unten
-// Ticket/PR | Modus. VS-Code-Karte (flach): dieselben zwei Zeilen ohne Titel.
+// Status | Modell · Effort, darunter der Sessiontitel, unten Ticket/PR | Modus.
 
 import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import type { Host } from "../../bindings/Host";
 import type { TileView } from "../../bindings/TileView";
 import { propsEqual } from "../../logic/equal";
 import { t, type Lang } from "../../logic/i18n";
@@ -39,7 +37,6 @@ export interface TileHandlers {
 
 interface Props {
   tile: TileView;
-  host: Host;
   lang: Lang;
   /** Verschiebung beim Umsortieren (null = an seinem Platz). */
   offset: Point | null;
@@ -54,12 +51,11 @@ interface Props {
   place?: GridPlace;
 }
 
-function TileCard({ tile, host, lang, offset, lifted, landing, settling, handlers, place }: Props) {
+function TileCard({ tile, lang, offset, lifted, landing, settling, handlers, place }: Props) {
   const scheme = useScheme();
   const look = tileLook(tile.status, scheme);
   const [bloomKey, endBloom] = useBloom({ status: tile.status, changedAt: tile.statusChangedAt });
   const [breatheDelay] = useState(() => syncedDelay(performance.now()));
-  const tall = host === "terminal";
   const meta = metaLine(tile.model, tile.effort);
 
   const style = {
@@ -68,13 +64,12 @@ function TileCard({ tile, host, lang, offset, lifted, landing, settling, handler
     boxShadow: [tile.selected ? selectedRing(scheme) : null, lifted && !landing ? liftShadow(scheme) : null]
       .filter(Boolean)
       .join(", ") || "none",
-    opacity: look.matte ? 0.55 : 1,
     transform: offset ? `translate(${offset.x}px, ${offset.y}px)${lifted ? " scale(1.02)" : ""}` : undefined,
   } as CSSProperties;
 
   return (
     <div
-      className={`tile ${tall ? "tile--tall" : "tile--flat"}`}
+      className="tile"
       data-slot={tile.slot}
       data-status={tile.status}
       data-lifted={lifted || undefined}
@@ -126,7 +121,7 @@ function TileCard({ tile, host, lang, offset, lifted, landing, settling, handler
         {meta && <span className="tile-meta">{meta}</span>}
       </span>
 
-      {tall && <span className="tile-title">{tile.title ?? ""}</span>}
+      <span className="tile-title">{tile.title ?? ""}</span>
 
       <span className="tile-row tile-row--foot">
         {tile.reference && (

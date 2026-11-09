@@ -1,8 +1,7 @@
 //! Die Flag-Zeile für `claude` beim Start eines Agenten (`--model`, `--effort`,
 //! `--permission-mode`, auf Wunsch `--resume`).
 //!
-//! Die Zeile geht als Text in eine Shell (Startskript der Terminal-Agenten bzw.
-//! `createAgent` der Extension). Darum kommt nur hinein, was die Prüfungen hier
+//! Die Zeile geht als Text in eine Shell (Startskript der Terminal-Agenten). Darum kommt nur hinein, was die Prüfungen hier
 //! besteht; alles andere fällt still weg.
 
 use std::sync::LazyLock;

@@ -63,16 +63,14 @@ impl Lang {
 }
 
 /// Anzeigetext eines Kachel-Status (Python `ui/theme.STATUS_LABEL`). `running` und
-/// `thinking` teilen sich „denkt“, `done` ist die ungelesene Antwort, `unknown` das
-/// ehrliche Eingeständnis eines Remote-Fensters, `lost` der im Panel errechnete
-/// Verbindungsverlust. Unbekanntes gilt als idle.
+/// `thinking` teilen sich „denkt“, `done` ist die ungelesene Antwort, `lost` der im Panel
+/// errechnete Verbindungsverlust. Unbekanntes gilt als idle.
 pub fn status_label(lang: Lang, status: &str) -> &'static str {
     let (de, en) = match status {
         "done" => ("ungelesen", "unread"),
         "thinking" | "running" => ("denkt", "thinking"),
         "waiting" => ("Rückfrage", "needs input"),
         "none" => ("—", "—"),
-        "unknown" => ("unbekannt", "unknown"),
         "lost" => ("getrennt", "disconnected"),
         _ => ("idle", "idle"),
     };

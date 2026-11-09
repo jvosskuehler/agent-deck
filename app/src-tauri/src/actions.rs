@@ -5,9 +5,8 @@
 use deck_core::agent_flags::flags;
 use deck_core::attention::next_slot;
 use deck_core::claude::settings::{MODEL_CHOICES, effort_label, read_values};
-use deck_core::config::{MODE_START, VSCODE_MARKER};
+use deck_core::config::MODE_START;
 use deck_core::front::focus_target;
-use deck_core::protocol::Command;
 use deck_core::slot_state::{clear_state, read_all, write_state};
 use deck_core::status_model::mode_steps;
 use deck_win::Hwnd;
@@ -16,25 +15,16 @@ use serde_json::Value;
 use crate::deck::{AwaitNew, Deck};
 
 impl Deck {
-    /// Das Fenster eines Blocks nach vorn: VS Code per Titelsuche, ein WT-Block über
-    /// seinen Host (der kennt die Fenster seiner Agenten).
-    pub fn raise_window(&mut self, win: &str) -> bool {
-        let Some(repo) = self.store.bindings.get(win).cloned() else { return false };
-        if self.hosts.is_wt(win) {
-            return self.hosts.wt.raise_window(win);
-        }
-        let Some(hwnd) = self.desktop.find_window(&[&repo, VSCODE_MARKER]) else { return false };
-        self.desktop.focus(hwnd).unwrap_or(false)
-    }
-
-    /// Klick auf den Repo-Namen: das Fenster nach vorn, bewusst OHNE Pane (der Kopf
-    /// meint das Fenster, nicht einen Agenten). Kein Fenster → nichts.
+    /// Klick auf den Repo-Namen: die Fenster des Blocks nach vorn, bewusst ohne einen
+    /// Agenten auszuwählen (der Kopf meint den Block). Kein Fenster → nichts.
     pub fn show_window(&mut self, win: &str) {
-        self.raise_window(win);
+        if self.store.bindings.contains_key(win) {
+            self.wt.raise_window(win);
+        }
     }
 
     /// Klick auf eine Kachel: Auswahl setzen, eine ungelesene Antwort als gelesen
-    /// markieren, Fenster nach vorn und das Pane fokussieren.
+    /// markieren, das Fenster des Agenten nach vorn.
     pub fn focus_slot(&mut self, slot: &str) {
         let win = Deck::letter(slot);
         if !self.store.bindings.contains_key(&win) {
@@ -42,11 +32,7 @@ impl Deck {
         }
         self.active_slot = Some(slot.to_string());
         self.mark_read(slot);
-        if !self.hosts.is_wt(&win) {
-            self.raise_window(&win);
-        }
-        // In Windows Terminal holt focusPane das Fenster UND das Pane.
-        self.hosts.send(&win, &Command::FocusPane { slot: slot.to_string() });
+        self.wt.focus_pane(slot);
     }
 
     /// „ungelesen“ → idle, in der Datei (der Merker muss über den Takt hinaus halten).
@@ -64,14 +50,13 @@ impl Deck {
     /// aktuelle Modelle nicht mehr (nur noch als Altwert); ohne den Schalter startete am
     /// 2026-11-09 jeder neue Agent mit der Modell-Vorgabe medium.
     pub fn create_agent(&mut self, win: &str, now: f64) {
-        if !self.hosts.connected(win) {
+        if !self.wt.has(win) {
             return;
         }
         let model = self.setting_str("model").unwrap_or_else(|| MODEL_CHOICES[0].1.to_string());
         let args = flags(None, Some(&model), self.chosen_effort(), None);
-        let before = self.hosts.terminals(win);
-        let cmd = Command::CreateAgent { model: Some(model), args: Some(args), cwd: None, slot: None };
-        if self.hosts.send(win, &cmd) {
+        let before = self.wt.terminals(win);
+        if self.wt.create_agent(win, Some(&model), Some(&args)) {
             self.await_new = Some(AwaitNew { win: win.to_string(), before, ts: now });
         }
     }
@@ -88,31 +73,28 @@ impl Deck {
     /// Taste „alle nach vorn“ (`config::FRONT_HOTKEYS`): jedes Agentenfenster in Windows
     /// Terminal als Raster auf den Monitor unter `cursor`, Fokus auf den, der am längsten
     /// wartet. Steht man schon bei einem Agenten, geht es zurück in das Fenster, aus dem
-    /// man kam (`deck_core::front`). VS-Code-Blöcke bleiben außen vor: ein maximiertes
-    /// VS Code deckte die Terminals zu; für sie gibt es den Klick auf den Repo-Namen.
+    /// man kam (`deck_core::front`).
     pub fn bring_all_front(&mut self, cursor: Option<(i32, i32)>) {
         let fg = self.desktop.foreground().filter(|w| w.pid != std::process::id());
-        let on_agent = fg.is_some() && self.hosts.wt.slot_in_front().is_some();
+        let on_agent = fg.is_some() && self.wt.slot_in_front().is_some();
         let desktop = self.desktop.clone();
         let back = self.front_toggle.press(fg.map(|w| w.hwnd.0), on_agent, |h| desktop.is_alive(Hwnd(h)));
         if let Some(h) = back {
             let _ = self.desktop.focus(Hwnd(h));
             return;
         }
-        let slots: Vec<String> =
-            self.shown_slots.iter().filter(|s| self.hosts.is_wt(&Deck::letter(s))).cloned().collect();
+        let slots = self.shown_slots.clone();
         let states = read_all(&self.paths.state_dir);
         let target = focus_target(&states, &slots, self.active_slot.as_deref());
-        self.hosts.wt.front_all(&slots, target, cursor);
+        self.wt.front_all(&slots, target, cursor);
     }
 
     /// Einen Agenten schließen; hing ein worktree daran, wird er mit abgeräumt.
     pub fn close_agent(&mut self, slot: &str) {
-        let win = Deck::letter(slot);
-        if !self.hosts.connected(&win) {
+        if !self.wt.has(&Deck::letter(slot)) {
             return;
         }
-        if self.hosts.send(&win, &Command::CloseAgent { slot: slot.to_string() }) {
+        if self.wt.close_agent(slot) {
             self.cleanup_worktrees(slot);
             if self.store.tickets.remove(slot).is_some() {
                 self.store.save_tickets();
@@ -125,7 +107,7 @@ impl Deck {
         }
     }
 
-    /// Die Spuren eines geschlossenen Agenten tilgen: die Extension recycelt Slot-Namen,
+    /// Die Spuren eines geschlossenen Agenten tilgen: Slot-Namen werden recycelt,
     /// ein späterer Agent darf Modus, Vormerkung und Status nicht erben.
     pub fn forget_slot(&mut self, slot: &str) {
         self.slot_mode.remove(slot);
@@ -140,11 +122,8 @@ impl Deck {
     pub fn set_slot_mode(&mut self, slot: &str, target: &str, cycle: &[String], current: Option<usize>) -> bool {
         let remembered = current.or_else(|| self.slot_mode.get(slot).copied());
         let Some((steps, tgt)) = mode_steps(remembered, target, cycle, MODE_START) else { return false };
-        if steps > 0 {
-            let cmd = Command::Key { slot: slot.to_string(), key: "shift-tab".into(), repeat: steps as u32 };
-            if !self.hosts.send(&Deck::letter(slot), &cmd) {
-                return false;
-            }
+        if steps > 0 && !self.wt.key(slot, "shift-tab", steps as u32) {
+            return false;
         }
         self.slot_mode.insert(slot.to_string(), tgt);
         true
@@ -152,31 +131,29 @@ impl Deck {
 
     /// Kontextmenü „Model“: `/model <wert>` an den Agenten.
     pub fn set_slot_model(&mut self, slot: &str, value: &str) {
-        let win = Deck::letter(slot);
-        if !self.hosts.connected(&win) {
+        if !self.wt.has(&Deck::letter(slot)) {
             return;
         }
         self.active_slot = Some(slot.to_string());
-        self.hosts.send(&win, &Command::Send { slot: slot.into(), text: format!("/model {value}"), execute: true, submit: false });
+        self.wt.send_text(slot, &format!("/model {value}"), false);
     }
 
     /// Kontextmenü „Effort“: `/effort <level>` und den Wert merken (die statusLine meldet
     /// für xhigh UND ultracode nur `xhigh`).
     pub fn set_slot_effort(&mut self, slot: &str, label: &str) {
-        let win = Deck::letter(slot);
-        if !self.hosts.connected(&win) {
+        if !self.wt.has(&Deck::letter(slot)) {
             return;
         }
         let level = label.to_lowercase();
         self.active_slot = Some(slot.to_string());
-        self.hosts.send(&win, &Command::Send { slot: slot.into(), text: format!("/effort {level}"), execute: true, submit: false });
+        self.wt.send_text(slot, &format!("/effort {level}"), false);
         self.store.effort.insert(slot.to_string(), level);
         self.store.save_effort();
     }
 
     /// Kontextmenü „Mode“.
     pub fn menu_set_mode(&mut self, slot: &str, target: &str) {
-        if !self.hosts.connected(&Deck::letter(slot)) {
+        if !self.wt.has(&Deck::letter(slot)) {
             return;
         }
         self.active_slot = Some(slot.to_string());
@@ -184,13 +161,10 @@ impl Deck {
         self.set_slot_mode(slot, target, &cycle, None);
     }
 
-    /// Die Bindung eines Buchstabens vergessen (auch eine verbundene, bindungslose).
+    /// Einen Block vergessen: Bindung und Windows-Terminal-Eintrag. Laufende Agenten
+    /// bleiben offen.
     pub fn forget_window(&mut self, win: &str) {
-        // Ein laufendes Verbinden dieses Blocks mit abbrechen.
-        if self.binding(win) {
-            self.cancel_bind();
-        }
-        self.hosts.forget(win);
+        self.wt.forget(win);
         if self.store.bindings.remove(win).is_some() {
             self.store.save_bindings();
         }
@@ -202,11 +176,9 @@ impl Deck {
             self.store.order.insert(win.to_string(), slots.clone());
             self.store.save_order();
         }
-        // Windows Terminal: die Karten liegen wie die Fenster, also zieht der Bildschirm
-        // nach. Sonst holte die gemessene Lage die Karte im nächsten Takt zurück.
-        if self.hosts.is_wt(win) {
-            self.hosts.wt.retile_in(win, &slots);
-        }
+        // Die Karten liegen wie die Fenster, also zieht der Bildschirm nach. Sonst holte
+        // die gemessene Lage die Karte im nächsten Takt zurück.
+        self.wt.retile_in(win, &slots);
     }
 
     /// Neue Blockreihenfolge. Gemerkt werden REPO-Namen (der Buchstabe wird beim

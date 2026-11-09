@@ -8,7 +8,6 @@ use std::path::Path;
 use deck_core::config::JIRA_PROJECT_KEY;
 use deck_core::paths::{found_ticket_path, worktree_marker_path};
 use deck_core::prompts::ticket_prompt;
-use deck_core::protocol::Command;
 
 use crate::deck::Deck;
 
@@ -16,7 +15,7 @@ impl Deck {
     /// Ordner des Blocks, wenn er in Windows Terminal über einem Ordner OHNE eigenes
     /// Git-Repo läuft (Heimat-Block): dort führte der normale Prompt ins Leere.
     fn hub_root(&self, slot: &str) -> Option<String> {
-        let folder = self.hosts.wt.folder(&Deck::letter(slot))?;
+        let folder = self.wt.folder(&Deck::letter(slot))?;
         (!Path::new(&folder).join(".git").exists()).then_some(folder)
     }
 
@@ -24,9 +23,8 @@ impl Deck {
     /// Branch. Ein vorheriger worktree dieses Slots wird erst abgeräumt, solange altes
     /// Ticket und Marker seinen Pfad noch verraten.
     pub fn assign_ticket(&mut self, slot: &str, ticket: &str) {
-        let win = Deck::letter(slot);
         let ticket = ticket.trim();
-        if ticket.is_empty() || !self.hosts.connected(&win) {
+        if ticket.is_empty() || !self.wt.has(&Deck::letter(slot)) {
             return;
         }
         self.active_slot = Some(slot.to_string());
@@ -38,7 +36,7 @@ impl Deck {
         let prefix = self.setting_str("jira_prefix").unwrap_or_else(|| JIRA_PROJECT_KEY.to_string());
         let hub = self.hub_root(slot);
         let text = ticket_prompt(&self.paths.state_dir, slot, ticket, "", &prefix, hub.as_deref());
-        self.hosts.send(&win, &Command::Send { slot: slot.into(), text, execute: false, submit: true });
+        self.wt.send_text(slot, &text, true);
     }
 
     /// Zugewiesenes bzw. gemeldetes Ticket vergessen (nur Anzeige; Agent und worktree

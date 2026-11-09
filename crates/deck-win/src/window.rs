@@ -144,30 +144,9 @@ unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     BOOL::from(f(hwnd))
 }
 
-/// Enthält `title` jede der `needles` (ohne Groß-/Kleinschreibung)? Leere Liste = ja.
-pub fn contains_all(title: &str, needles: &[&str]) -> bool {
-    let t = title.to_lowercase();
-    needles.iter().all(|n| t.contains(&n.to_lowercase()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn needles_match_case_insensitively_and_all_must_hit() {
-        assert!(contains_all(
-            "agent-deck - Visual Studio Code",
-            &["AGENT-DECK", "visual studio"]
-        ));
-        assert!(!contains_all(
-            "agent-deck - Notepad",
-            &["agent-deck", "Visual Studio Code"]
-        ));
-        assert!(contains_all("irgendwas", &[]));
-        assert!(!contains_all("Größe ÄNDERN", &["grösse"]));
-        assert!(contains_all("Größe ÄNDERN", &["größe", "ändern"]));
-    }
 
     #[test]
     fn null_handle_has_no_title_class_or_process() {

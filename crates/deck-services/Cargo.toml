@@ -1,6 +1,6 @@
 [package]
 name = "deck-services"
-description = "Hintergrunddienste des Agent Deck: Usage, Zusammenfassung, worktrees, Extension, Einrichtung, Wächter"
+description = "Hintergrunddienste des Agent Deck: Usage, Zusammenfassung, worktrees, Einrichtung, Wächter"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

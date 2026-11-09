@@ -1,11 +1,11 @@
 //! report-Hook (aus Python `test_hooks_report.py`):
 //! welche Notification eine echte Rückfrage ist, welche Felder fortgetragen werden und
-//! wie der Slot gefunden wird. Alles gegen Wegwerf-Ordner.
+//! dass ohne Slot nichts gemeldet wird. Alles gegen Wegwerf-Ordner.
 
 use std::path::Path;
 
-use deck_core::paths::{load_json, save_json, state_path};
-use deck_hooks::env::{HookEnv, load_pidmap, slot_from_procs};
+use deck_core::paths::{load_json, state_path};
+use deck_hooks::env::HookEnv;
 use deck_hooks::report::*;
 use serde_json::{Map, Value, json};
 
@@ -17,7 +17,6 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
         agent_slot: slot.map(String::from),
         cwd: Some(r"C:\Users\x\Repos\deck".into()),
         now: 1000.5,
-        ancestors: Box::new(Vec::new),
     }
 }
 
@@ -135,31 +134,4 @@ fn without_a_slot_nothing_is_written_and_stdin_is_not_read() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), None);
     assert!(run("done", &env, || panic!("stdin darf ohne Slot nicht gelesen werden")).is_none());
-}
-
-#[test]
-fn the_slot_comes_from_the_first_ancestor_in_a_pidmap() {
-    let dir = tempfile::tempdir().unwrap();
-    let state = dir.path().join("state");
-    save_json(&state.join("pidmap-A.json"), &json!({"100": "A1", "x": "A9", "200": "A2"})).unwrap();
-    save_json(&state.join("pidmap-B.json"), &json!({"300": "B1", "400": 7})).unwrap();
-    std::fs::write(state.join("pidmap-C.json"), "{halb").unwrap();
-    let pm = load_pidmap(&state);
-    assert_eq!(pm.len(), 3, "Schlüssel ohne PID und Werte ohne Slot zählen nicht: {pm:?}");
-    assert_eq!(slot_from_procs(&state, &|| vec![5, 300, 100]).as_deref(), Some("B1"));
-    assert_eq!(slot_from_procs(&state, &|| vec![400, 200]).as_deref(), Some("A2"), "ein Nicht-Text ist kein Slot");
-    assert_eq!(slot_from_procs(&state, &|| vec![1, 2]), None);
-    assert_eq!(slot_from_procs(&dir.path().join("fehlt"), &|| panic!("ohne pidmap keine Prozessliste")), None);
-    let mut env = env_in(dir.path(), None);
-    env.ancestors = Box::new(|| vec![100]);
-    assert_eq!(env.resolve_slot().as_deref(), Some("A1"));
-}
-
-#[test]
-fn the_real_process_chain_starts_with_this_process() {
-    let chain = deck_hooks::procs::ancestor_pids();
-    if cfg!(windows) {
-        assert_eq!(chain.first().copied(), Some(std::process::id()));
-        assert!(chain.len() >= 2, "ein Testprozess hat einen Elternprozess");
-    }
 }

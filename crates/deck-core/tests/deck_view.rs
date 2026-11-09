@@ -8,7 +8,7 @@ use deck_core::claude::refs::Refs;
 use deck_core::deck_view::*;
 use deck_core::i18n::Lang;
 use deck_core::slot_state::SlotState;
-use deck_core::view::{Host, Status};
+use deck_core::view::Status;
 use serde_json::{Value, json};
 
 const NOW: f64 = 10_000.0;
@@ -17,8 +17,8 @@ fn map(v: Value) -> HashMap<String, SlotState> {
     v.as_object().unwrap().iter().map(|(k, x)| (k.clone(), x.as_object().unwrap().clone())).collect()
 }
 
-fn win(letter: &str, host: Host, connected: bool, slots: &[&str]) -> WindowInfo {
-    WindowInfo { letter: letter.into(), host, connected, remote: false, terminals: slots.iter().map(|s| s.to_string()).collect(), screen: Vec::new(), screen_cols: 0 }
+fn win(letter: &str, connected: bool, slots: &[&str]) -> WindowInfo {
+    WindowInfo { letter: letter.into(), connected, terminals: slots.iter().map(|s| s.to_string()).collect(), screen: Vec::new(), screen_cols: 0 }
 }
 
 struct Fixture {
@@ -41,7 +41,7 @@ impl Fixture {
         store.bindings.insert("A".into(), "agent-deck".into());
         store.bindings.insert("B".into(), "Repos".into());
         Fixture {
-            windows: vec![win("A", Host::Vscode, true, &["A1", "A2"]), win("B", Host::Terminal, true, &["B1"])],
+            windows: vec![win("A", true, &["A1", "A2"]), win("B", true, &["B1"])],
             store,
             states: HashMap::new(),
             live: HashMap::new(),
@@ -85,19 +85,19 @@ impl Fixture {
 fn the_home_block_stands_on_top_and_dragged_block_order_follows_repo_names() {
     let mut f = Fixture::new();
     f.store.bindings.insert("C".into(), "api".into());
-    f.windows.push(win("C", Host::Vscode, false, &[]));
+    f.windows.push(win("C", false, &[]));
     f.store.win_order = vec!["api".into(), "agent-deck".into()];
     let v = f.view(&mut StatusMemory::default());
     assert_eq!(v.blocks.iter().map(|b| b.letter.as_str()).collect::<Vec<_>>(), ["B", "C", "A"]);
-    assert!(v.blocks[0].home && v.blocks[0].host == Host::Terminal);
+    assert!(v.blocks[0].home);
     assert!(!v.blocks[1].connected && v.blocks[1].tiles.is_empty(), "getrennt: keine Kacheln");
 }
 
 #[test]
 fn only_bound_or_connected_windows_are_shown_and_unbound_ones_are_named_by_letter() {
     let mut f = Fixture::new();
-    f.windows.push(win("D", Host::Vscode, true, &["D1"]));
-    f.windows.push(win("E", Host::Vscode, false, &[]));
+    f.windows.push(win("D", true, &["D1"]));
+    f.windows.push(win("E", false, &[]));
     let v = f.view(&mut StatusMemory::default());
     assert_eq!(v.blocks.iter().map(|b| b.name.as_str()).collect::<Vec<_>>(), ["Repos", "agent-deck", "Fenster D"]);
 }
@@ -129,16 +129,14 @@ fn terminal_tiles_lie_like_the_windows_on_screen_and_minimized_ones_follow() {
     assert_eq!(order, ["B3", "B1", "B5", "B2", "B6", "B4", "B7"], "B7 minimiert: hinten");
     assert_eq!(b.rows, [3, 3]);
     let a = v.blocks.iter().find(|b| b.letter == "A").unwrap();
-    assert!(a.rows.is_empty(), "VS Code: kein Bildschirmraster");
+    assert!(a.rows.is_empty(), "ohne gemessene Fensterlage kein Raster");
 }
 
 #[test]
-fn a_tile_without_report_is_idle_locally_and_unknown_remote() {
-    let mut f = Fixture::new();
-    assert_eq!(f.tile("A1").status, Status::Idle);
-    f.windows[0].remote = true;
+fn a_tile_without_report_is_idle() {
+    let f = Fixture::new();
     let t = f.tile("A1");
-    assert_eq!((t.status, t.status_label.as_str()), (Status::Unknown, "unbekannt"));
+    assert_eq!((t.status, t.status_label.as_str()), (Status::Idle, "idle"));
 }
 
 #[test]
@@ -155,7 +153,7 @@ fn card_fields_come_from_live_values_state_and_remembered_effort() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "waiting", "ts": NOW, "effort": "high", "mode": "plan"},
                           "B1": {"status": "done", "ts": NOW, "mode": "auto"}}));
-    f.live = map(json!({"A1": {"model": "Opus 5 (1M context)", "effort": "xhigh", "session_name": "nicht für VS Code"},
+    f.live = map(json!({"A1": {"model": "Opus 5 (1M context)", "effort": "xhigh"},
                         "B1": {"model": "Fable", "session_name": "Schrift-Einstellung"}}));
     f.store.effort.insert("A1".into(), "ultracode".into());
     f.slot_mode.insert("B1".into(), 0);

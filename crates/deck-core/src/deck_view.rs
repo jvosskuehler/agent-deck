@@ -3,8 +3,8 @@
 //! Die Rechnung der Python-Poll-Schleife (`ui/refresh.py`, `ui/tiles.py`) ohne Zeichnen:
 //! Status normalisieren und Frische prüfen, „getrennt“ errechnen, Effort-Kollision
 //! auflösen, Ticket/PR-Zeile wählen, Blöcke und Kacheln ordnen, Heimat-Block oben. Was
-//! nur die App wissen kann (Verbindung, Remote, gemeldete Terminals je Fenster, Host),
-//! kommt als `WindowInfo` herein.
+//! nur die App wissen kann (Verbindung, lebende Agenten je Block, Fensterlage), kommt als
+//! `WindowInfo` herein.
 
 use std::collections::HashMap;
 
@@ -17,7 +17,7 @@ use crate::field::text;
 use crate::text::take_chars;
 use crate::slot_state::SlotState;
 use crate::status_model::{VALID_STATUSES, dominant_status, initial_status, is_fresh, is_lost, normalize_status, resolve_effort};
-use crate::view::{BlockView, DeckView, Host, Status, TileView, UsageView};
+use crate::view::{BlockView, DeckView, Status, TileView, UsageView};
 
 /// So viele Zeichen passen in die Bezugszeile der Karte („PROJ-2691 #62“ = 13).
 pub const TICKET_MAX_CHARS: usize = 14;
@@ -26,16 +26,14 @@ pub const TICKET_MAX_CHARS: usize = 14;
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowInfo {
     pub letter: String,
-    pub host: Host,
     pub connected: bool,
-    pub remote: bool,
     /// Gemeldete Slots in Melde-Reihenfolge.
     pub terminals: Vec<String>,
-    /// Nur Windows Terminal: wie die Fenster der Agenten auf dem Bildschirm liegen, als
+    /// Wie die Fenster der Agenten auf dem Bildschirm liegen, als
     /// Reihen (`arrange::screen_rows`). Leer = unbekannt, dann gilt die gezogene
     /// Reihenfolge. Minimierte und nicht gefundene Fenster fehlen hier.
     pub screen: Vec<Vec<String>>,
-    /// Nur Windows Terminal: so viele Fenster passen auf dem Monitor des Blocks
+    /// So viele Fenster passen auf dem Monitor des Blocks
     /// nebeneinander (`arrange::max_cols_for`). 0 = unbekannt.
     pub screen_cols: u32,
 }
@@ -91,7 +89,6 @@ pub fn to_status(key: &str) -> Status {
         "waiting" => Status::Waiting,
         "done" => Status::Done,
         "lost" => Status::Lost,
-        "unknown" => Status::Unknown,
         "none" => Status::None,
         _ => Status::Idle,
     }
@@ -138,7 +135,7 @@ impl DeckInput<'_> {
     }
 
     /// Die Slots eines Fensters samt Reihenlängen. Liegen die Fenster auf dem
-    /// Bildschirm (Windows Terminal), bestimmt ihre Lage Reihenfolge und Reihen; was
+    /// Bildschirm, bestimmt ihre Lage Reihenfolge und Reihen; was
     /// dort fehlt (minimiert), hängt in gezogener Reihenfolge hinten an. Sonst gilt die
     /// gezogene Reihenfolge, ohne feste Reihen.
     pub fn layout(&self, letter: &str) -> (Vec<String>, Vec<u32>) {
@@ -178,13 +175,13 @@ impl DeckInput<'_> {
     }
 
     /// Eine Kachel samt Status-Schlüssel (`lost` oder der normalisierte Status).
-    fn tile(&self, slot: &str, host: Host, memory: &mut StatusMemory) -> (TileView, String) {
+    fn tile(&self, slot: &str, memory: &mut StatusMemory) -> (TileView, String) {
         let st = self.states.get(slot);
         let lv = self.live.get(slot);
         let letter: String = slot.chars().take(1).collect();
         let win = self.window(&letter);
         let fresh = is_fresh(st, self.now, STALE_S);
-        let status = normalize_status(&initial_status(st, win.is_some_and(|w| w.remote)), fresh, &VALID_STATUSES);
+        let status = normalize_status(&initial_status(st), fresh, &VALID_STATUSES);
         let lost = is_lost(&status, fresh, win.is_some_and(|w| w.connected));
         let key = if lost { "lost".to_string() } else { status };
         let shown = to_status(&key);
@@ -197,10 +194,7 @@ impl DeckInput<'_> {
         };
         let session_id = str_field(st, "session_id");
         let (reference, reference_detected) = self.reference(slot, &session_id);
-        let title = match host {
-            Host::Terminal => lv.and_then(|l| l.get("session_name")).and_then(|v| v.as_str()).map(String::from),
-            Host::Vscode => None,
-        };
+        let title = lv.and_then(|l| l.get("session_name")).and_then(|v| v.as_str()).map(String::from);
         let tile = TileView {
             slot: slot.to_string(),
             status: shown,
@@ -224,7 +218,6 @@ pub fn build_deck_view(input: &DeckInput, memory: &mut StatusMemory) -> DeckView
     let mut blocks = Vec::new();
     for letter in input.shown_windows() {
         let win = input.window(&letter);
-        let host = win.map_or(Host::Vscode, |w| w.host);
         let connected = input.connected(&letter);
         let name = match input.binding(&letter) {
             Some(b) => b.to_string(),
@@ -234,7 +227,7 @@ pub fn build_deck_view(input: &DeckInput, memory: &mut StatusMemory) -> DeckView
         let (slots, rows) = if connected { input.layout(&letter) } else { (Vec::new(), Vec::new()) };
         if connected {
             for slot in slots {
-                let (tile, key) = input.tile(&slot, host, memory);
+                let (tile, key) = input.tile(&slot, memory);
                 keys.push(key);
                 tiles.push(tile);
             }
@@ -242,14 +235,11 @@ pub fn build_deck_view(input: &DeckInput, memory: &mut StatusMemory) -> DeckView
         blocks.push(BlockView {
             home: input.home == Some(letter.as_str()),
             name,
-            host,
             connected,
-            remote: win.is_some_and(|w| w.remote),
             tiles,
             rows,
             screen_cols: if connected { win.map_or(0, |w| w.screen_cols) } else { 0 },
             letter,
-            binding: false,
         });
     }
     // Der Griff leuchtet nur, wenn etwas los ist; idle/unbekannt/keiner = ruhig.

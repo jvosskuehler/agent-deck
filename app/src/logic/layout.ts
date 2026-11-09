@@ -1,30 +1,24 @@
 // Maße des Panels (DESIGN.md, Abschnitt „Karte“) und die Spaltenzahl.
 
 import type { BlockView } from "../bindings/BlockView";
-import type { Host } from "../bindings/Host";
 import { screenCells } from "./reorder";
 
 // Die einzige Quelle der Kartenmaße: das CSS bekommt sie als Variablen (gridVars), es
 // trägt keine eigenen Zahlen dafür.
 export const CARD_W = 197;
 export const CARD_GAP = 10;
+export const CARD_H = 118;
 const MAX_COLS = 4;
-const TERMINAL_H = 118;
-const VSCODE_H = 58;
-
-export function cardHeight(host: Host): number {
-  return host === "terminal" ? TERMINAL_H : VSCODE_H;
-}
 
 /**
  * CSS-Variablen für das Kartenraster eines Blocks (`.block-grid` in block.css): Spalten,
  * Kartenbreite, Kartenhöhe und Abstand.
  */
-export function gridVars(cols: number, host: Host): Record<"--cols" | "--card-w" | "--card-h" | "--card-gap", string> {
+export function gridVars(cols: number): Record<"--cols" | "--card-w" | "--card-h" | "--card-gap", string> {
   return {
     "--cols": String(cols),
     "--card-w": `${CARD_W}px`,
-    "--card-h": `${cardHeight(host)}px`,
+    "--card-h": `${CARD_H}px`,
     "--card-gap": `${CARD_GAP}px`,
   };
 }
@@ -58,7 +52,7 @@ export function columnsFor(cells: readonly number[]): number {
 /**
  * Wie viele Karten nebeneinander dieser Block braucht, samt ＋-Karte.
  *
- * Liegen die Karten wie die Fenster (Windows Terminal), zählt die breiteste Fensterreihe
+ * Liegen die Karten wie die Fenster (Fensterlage bekannt), zählt die breiteste Fensterreihe
  * und dazu die ＋-Karte im nächsten freien Feld: sie steht neben der letzten Karte, wenn
  * auf dem Monitor dort noch ein Fenster Platz hätte (<screenCols>), sonst vorn in der
  * nächsten Reihe. Sonst: alle Karten plus ＋-Karte (die Spaltengrenze setzt

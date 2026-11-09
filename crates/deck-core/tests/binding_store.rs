@@ -1,4 +1,4 @@
-//! binding: Fenster ↔ Repo, Platzhalter, Ticket-Helfer (Python `test_domain_binding.py`),
+//! binding: Ticket-Helfer (Python `test_domain_binding.py`),
 //! dazu die selbstheilende Persistenz, die Pfade und die Zustandsdateien.
 
 use deck_core::bind_store::BindStore;
@@ -6,31 +6,6 @@ use deck_core::binding::*;
 use deck_core::paths::{self, load_json, save_json};
 use deck_core::slot_state::*;
 use serde_json::{Value, json};
-
-#[test]
-fn empty_and_unknown_workspaces_are_placeholders() {
-    assert!(is_placeholder_ws(Some("")));
-    assert!(is_placeholder_ws(None));
-    assert!(is_placeholder_ws(Some("unknown")));
-    assert!(is_placeholder_ws(Some("  Unknown  ")));
-    assert!(!is_placeholder_ws(Some("myrepo")));
-}
-
-#[test]
-fn the_repo_name_is_the_part_before_the_vscode_marker() {
-    assert_eq!(repo_from_title("main.py - myrepo - Visual Studio Code"), "myrepo");
-    assert_eq!(repo_from_title("● app.tsx - acme-client - Visual Studio Code"), "acme-client");
-    assert_eq!(repo_from_title("Visual Studio Code"), "Visual Studio Code");
-}
-
-#[test]
-fn only_known_remote_markers_are_stripped() {
-    assert_eq!(strip_remote_tag("agent-deck [SSH: 10.8.0.10]"), "agent-deck");
-    assert_eq!(strip_remote_tag("jorrit [wsl: Ubuntu]"), "jorrit");
-    assert_eq!(strip_remote_tag("release [alt]"), "release [alt]");
-    assert_eq!(window_from_title("x - jorrit [SSH: h] - Visual Studio Code"), "jorrit [SSH: h]");
-    assert_eq!(repo_from_title("x - jorrit [SSH: h] - Visual Studio Code"), "jorrit");
-}
 
 #[test]
 fn ticket_slug_is_lowercase_alnum_with_single_hyphens() {
@@ -61,10 +36,10 @@ fn a_bare_number_gets_the_project_prefix_and_a_key_its_project_uppercased() {
 }
 
 #[test]
-fn placeholder_bindings_are_dropped_on_load_and_the_file_heals() {
+fn empty_bindings_are_dropped_on_load_and_the_file_heals() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join(paths::BINDINGS_FILE);
-    save_json(&p, &json!({"A": "repo-a", "B": "unknown", "C": ""})).unwrap();
+    save_json(&p, &json!({"A": "repo-a", "B": "  ", "C": ""})).unwrap();
     let store = BindStore::load(dir.path());
     assert_eq!(store.bindings.len(), 1);
     assert_eq!(store.bindings["A"], "repo-a");
@@ -118,13 +93,12 @@ fn write_state_keeps_extra_fields_and_flips_only_status_and_time() {
 }
 
 #[test]
-fn read_all_skips_live_files_pidmaps_and_broken_files() {
+fn read_all_skips_live_files_and_broken_files() {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     save_json(&d.join("A1.json"), &json!({"slot": "A1", "status": "done"})).unwrap();
     save_json(&d.join("B2.json"), &json!({"status": "idle"})).unwrap();
     save_json(&d.join("A1.live.json"), &json!({"model": "Opus"})).unwrap();
-    save_json(&d.join("pidmap-A.json"), &json!({"123": "A1"})).unwrap();
     std::fs::write(d.join("C3.json"), "{halb").unwrap();
     let all = read_all(d);
     let mut keys: Vec<&String> = all.keys().collect();

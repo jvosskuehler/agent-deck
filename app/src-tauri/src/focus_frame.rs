@@ -201,7 +201,7 @@ mod tests {
         assert!(w.step());
         assert_eq!(w.target, Some(Hwnd(5)));
         let first = w.design;
-        d.set_foreground(Hwnd(9), "Editor", "Chrome_WidgetWin_1");
+        d.set_foreground(Hwnd(9), "Editor", "Notepad");
         assert!(w.step());
         assert_eq!(w.target, None);
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
@@ -219,7 +219,7 @@ mod tests {
         d.set_light(Some(false));
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
-        d.set_foreground(Hwnd(9), "Editor", "Chrome_WidgetWin_1");
+        d.set_foreground(Hwnd(9), "Editor", "Notepad");
         w.step();
         assert_eq!(d.bordered(), vec![(Hwnd(5), 0x191724)], "gleicher Modus: nicht neu stylen");
         d.set_light(Some(true));
@@ -254,7 +254,7 @@ mod tests {
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
         d.remove_wt(Hwnd(5));
-        d.set_foreground(Hwnd(9), "Editor", "Chrome_WidgetWin_1");
+        d.set_foreground(Hwnd(9), "Editor", "Notepad");
         w.step();
         d.add_wt(Hwnd(5), "A2", Rect::new(0, 0, 10, 10), false);
         d.set_foreground(Hwnd(5), "A2", WINDOW_CLASS);

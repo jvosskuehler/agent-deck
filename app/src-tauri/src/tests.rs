@@ -6,16 +6,15 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use deck_core::protocol::Command;
 use deck_core::slot_state::{read_all, write_state};
+use deck_win::console_input::Step;
 use deck_win::{Hwnd, Rect};
 use serde_json::{Value, json};
 
 use crate::app_paths::Paths;
 use crate::deck::Deck;
-use crate::hosts::Hosts;
 use crate::services::Services;
-use crate::testing::{FakeConsole, FakeDesktop, FakeLauncher, FakeProcesses, FakeVsCode};
+use crate::testing::{FakeConsole, FakeDesktop, FakeLauncher, FakeProcesses};
 use crate::worker::Worker;
 use crate::wt_host::WtHost;
 use crate::wt_setup::{WtEffects, WtSetup};
@@ -30,7 +29,6 @@ fn clock() -> f64 {
 pub(crate) struct Rig {
     _tmp: tempfile::TempDir,
     pub(crate) deck: Deck,
-    pub(crate) vs: Arc<FakeVsCode>,
     pub(crate) desk: Arc<FakeDesktop>,
     procs: Arc<FakeProcesses>,
     pub(crate) console: Arc<FakeConsole>,
@@ -42,7 +40,7 @@ pub(crate) fn rig() -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let paths = Paths::under(tmp.path());
     fs::create_dir_all(&paths.state_dir).unwrap();
-    let (vs, desk) = (Arc::new(FakeVsCode::default()), Arc::new(FakeDesktop::default()));
+    let desk = Arc::new(FakeDesktop::default());
     let (procs, console, launcher) = (Arc::new(FakeProcesses::default()), Arc::new(FakeConsole::default()), Arc::new(FakeLauncher::default()));
     let setup = WtSetup {
         hosts_file: paths.app_dir.join("wt_hosts.json"),
@@ -54,10 +52,8 @@ pub(crate) fn rig() -> Rig {
     };
     let fx = WtEffects { desktop: desk.clone(), procs: procs.clone(), console: console.clone(), launcher: launcher.clone() };
     let wt = WtHost::new(setup, fx, Worker::inline(), clock);
-    let hosts = Hosts { vscode: vs.clone(), wt };
-    let services = Services::inert();
-    let deck = Deck::new(paths, hosts, desk.clone(), services);
-    Rig { _tmp: tmp, deck, vs, desk, procs, console, launcher }
+    let deck = Deck::new(paths, wt, desk.clone(), Services::inert());
+    Rig { _tmp: tmp, deck, desk, procs, console, launcher }
 }
 
 impl Rig {
@@ -68,64 +64,63 @@ impl Rig {
     fn status(&self, slot: &str) -> Option<String> {
         read_all(&self.deck.paths.state_dir).get(slot).and_then(|s| s.get("status")).and_then(|v| v.as_str()).map(String::from)
     }
+    /// Ein Windows-Terminal-Block `win` über dem Repo `repo`, gebunden wie beim Start.
+    pub(crate) fn wt_block(&mut self, win: &str, repo: &str) {
+        self.deck.wt.open_repo(win, &format!("C:/{repo}"));
+        self.deck.store.bindings.insert(win.into(), repo.into());
+    }
     pub(crate) fn wt_agent(&self, slot: &str, pid: u32) {
         let rec = json!({"pid": pid, "created": 133_000_000_000_000_000i64, "slot": slot});
         fs::write(self.deck.paths.state_dir.join(format!("{slot}.wtpid")), rec.to_string()).unwrap();
         self.procs.alive.lock().unwrap().insert(pid, 133_000_000_000_000_000);
     }
+    /// Was in die Konsolen getippt wurde, je Sendung `(pid, Text ohne Pausen)`.
+    pub(crate) fn typed(&self) -> Vec<(u32, String)> {
+        let text = |steps: &[Step]| steps.iter().filter_map(|s| if let Step::Text(t) = s { Some(t.as_str()) } else { None }).collect();
+        self.console.0.lock().unwrap().iter().map(|(pid, steps)| (*pid, text(steps))).collect()
+    }
+    /// Die claude-Argumente des zuletzt gestarteten Agenten (aus der `-Spec` des Starts).
+    fn last_claude_args(&self) -> Vec<String> {
+        let argv = self.launcher.0.lock().unwrap().last().cloned().expect("kein Start");
+        let spec = deck_core::wt::decode_spec(argv.last().unwrap()).unwrap();
+        serde_json::from_value(spec["args"].clone()).unwrap()
+    }
 }
 
 #[test]
-fn a_new_vscode_window_binds_itself_to_the_letter_its_terminals_carry() {
+fn a_binding_without_a_terminal_block_is_dropped_together_with_its_traces() {
     let mut r = rig();
-    r.vs.open("agent-deck", None, &["C1", "C2"]);
-    let view = r.deck.tick(100.0);
-    assert_eq!(r.deck.store.bindings.get("C").map(String::as_str), Some("agent-deck"));
-    let block = view.blocks.iter().find(|b| b.letter == "C").expect("Block C");
-    assert_eq!(block.tiles.iter().map(|t| t.slot.as_str()).collect::<Vec<_>>(), ["C1", "C2"]);
-    assert!(block.connected);
-}
-
-#[test]
-fn a_closed_vscode_window_goes_only_after_the_grace_and_while_no_title_shows_it() {
-    let mut r = rig();
-    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.wt_block("B", "x");
+    r.deck.store.bindings.insert("A".into(), "alt-aus-vs-code".into());
     r.deck.store.tickets.insert("A1".into(), "X-1".into());
-    r.desk.add_title(Hwnd(7), "main.rs - repo - Visual Studio Code");
     r.deck.tick(100.0);
-    r.deck.tick(110.0);
-    assert!(r.deck.store.bindings.contains_key("A"), "Fenster offen (Reload): bleibt");
-    r.desk.clear_titles();
-    r.deck.tick(120.0);
-    r.deck.tick(122.0);
-    assert!(r.deck.store.bindings.contains_key("A"), "noch in der Frist");
-    r.deck.tick(123.5);
     assert!(!r.deck.store.bindings.contains_key("A"));
     assert!(!r.deck.store.tickets.contains_key("A1"), "Ticket geht mit");
+    assert!(r.deck.store.bindings.contains_key("B"), "ein Terminal-Block bleibt");
 }
 
 #[test]
-fn clicking_an_unread_tile_marks_it_read_and_brings_window_and_pane_forward() {
+fn clicking_an_unread_tile_marks_it_read_and_brings_its_window_forward() {
     let mut r = rig();
-    r.vs.open("repo", Some("B"), &["B1"]);
-    r.deck.store.bindings.insert("B".into(), "repo".into());
-    r.desk.add_title(Hwnd(9), "x - repo - Visual Studio Code");
+    r.wt_block("B", "repo");
+    r.wt_agent("B1", 41);
+    r.desk.add_wt(Hwnd(9), "B1", Rect::new(0, 0, 800, 600), false);
     write_state(&r.deck.paths.state_dir, "B1", "done", 100.0).unwrap();
     r.deck.focus_slot("B1");
     assert_eq!(r.status("B1").as_deref(), Some("idle"));
     assert_eq!(r.desk.focused(), vec![Hwnd(9)]);
-    assert_eq!(r.vs.sent(), vec![("B".to_string(), Command::FocusPane { slot: "B1".into() })]);
     assert_eq!(r.deck.active_slot.as_deref(), Some("B1"));
 }
 
 #[test]
-fn a_pane_seen_in_vscode_is_read_and_becomes_the_selection() {
+fn an_agent_window_brought_forward_by_hand_is_read_and_becomes_the_selection() {
     let mut r = rig();
-    r.vs.open("repo", Some("B"), &["B1", "B2"]);
-    r.deck.store.bindings.insert("B".into(), "repo".into());
+    r.wt_block("B", "repo");
+    r.wt_agent("B1", 41);
+    r.wt_agent("B2", 42);
     write_state(&r.deck.paths.state_dir, "B2", "done", 100.0).unwrap();
     r.deck.tick(100.0);
-    r.vs.seen.lock().unwrap().insert("B2".into());
+    r.desk.set_foreground(Hwnd(32), "B2", deck_core::wt::WINDOW_CLASS);
     let view = r.deck.tick(100.4);
     assert_eq!(r.status("B2").as_deref(), Some("idle"));
     let tile = view.blocks[0].tiles.iter().find(|t| t.slot == "B2").unwrap();
@@ -136,33 +131,28 @@ fn a_pane_seen_in_vscode_is_read_and_becomes_the_selection() {
 fn a_new_agent_gets_the_chosen_effort_as_a_start_flag() {
     // Das globale effortLevel zählt für aktuelle Modelle nicht mehr; nur der Schalter wirkt.
     let mut r = rig();
-    r.vs.open("repo", Some("C"), &["C1"]);
-    r.deck.store.bindings.insert("C".into(), "repo".into());
-    r.deck.tick(100.0);
+    r.wt_block("C", "repo");
     fs::create_dir_all(r.deck.paths.claude_settings.parent().unwrap()).unwrap();
     fs::write(&r.deck.paths.claude_settings, r#"{"effortLevel": "high"}"#).unwrap();
     r.deck.create_agent("C", 100.0);
-    let Command::CreateAgent { args, .. } = r.vs.sent().pop().unwrap().1 else { panic!("kein CreateAgent") };
-    assert_eq!(args.as_deref(), Some(r#"--model "opus[1m]" --effort high"#));
+    assert_eq!(r.last_claude_args(), ["--model", "opus[1m]", "--effort", "high"]);
 
     // Ultracode ist xhigh plus Schalter in settings.json; auf der Kommandozeile xhigh.
     fs::write(&r.deck.paths.claude_settings, r#"{"effortLevel": "xhigh", "ultracode": true}"#).unwrap();
     r.deck.create_agent("C", 101.0);
-    let Command::CreateAgent { args, .. } = r.vs.sent().pop().unwrap().1 else { panic!("kein CreateAgent") };
-    assert_eq!(args.as_deref(), Some(r#"--model "opus[1m]" --effort xhigh"#));
+    assert_eq!(r.last_claude_args(), ["--model", "opus[1m]", "--effort", "xhigh"]);
 }
 
 #[test]
 fn a_new_agent_is_focused_once_it_appears_and_driven_into_auto_mode() {
     let mut r = rig();
-    r.vs.open("repo", Some("C"), &["C1"]);
-    r.deck.store.bindings.insert("C".into(), "repo".into());
+    r.wt_block("C", "repo");
+    r.wt_agent("C1", 51);
     r.deck.tick(100.0);
     r.deck.create_agent("C", 100.0);
-    let create = r.vs.sent().pop().unwrap().1;
-    let args = Some(r#"--model "opus[1m]""#.to_string());
-    assert_eq!(create, Command::CreateAgent { model: Some("opus[1m]".into()), args, cwd: None, slot: None });
-    r.vs.windows.lock().unwrap()[0].slots.push("C2".into());
+    assert_eq!(r.last_claude_args(), ["--model", "opus[1m]"]);
+    r.wt_agent("C2", 52);
+    r.desk.add_wt(Hwnd(52), "C2", Rect::new(0, 0, 800, 600), false);
     r.deck.tick(101.0);
     assert_eq!(r.deck.active_slot.as_deref(), Some("C2"));
     assert!(r.deck.pending_auto.contains_key("C2"));
@@ -170,8 +160,7 @@ fn a_new_agent_is_focused_once_it_appears_and_driven_into_auto_mode() {
     r.state("C2", json!({"slot": "C2", "status": "idle", "ts": 101.5}));
     r.deck.tick(101.6);
     r.deck.tick(103.2);
-    let key = r.vs.sent().pop().unwrap().1;
-    assert_eq!(key, Command::Key { slot: "C2".into(), key: "shift-tab".into(), repeat: 3 });
+    assert_eq!(r.typed().pop(), Some((52, "\x1b[Z".repeat(3))));
     r.state("C2", json!({"slot": "C2", "status": "idle", "ts": 104.0, "mode": "auto"}));
     r.deck.tick(104.1);
     assert!(!r.deck.pending_auto.contains_key("C2"), "im Ziel angekommen");
@@ -180,15 +169,15 @@ fn a_new_agent_is_focused_once_it_appears_and_driven_into_auto_mode() {
 #[test]
 fn closing_an_agent_forgets_its_traces_so_a_recycled_slot_name_starts_clean() {
     let mut r = rig();
-    r.vs.open("repo", Some("A"), &["A1"]);
-    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.wt_block("A", "repo");
+    r.wt_agent("A1", 61);
     r.deck.store.tickets.insert("A1".into(), "X-1".into());
     r.deck.slot_mode.insert("A1".into(), 2);
     write_state(&r.deck.paths.state_dir, "A1", "waiting", 100.0).unwrap();
     fs::write(r.deck.paths.state_dir.join("A1.worktree"), "C:/r.wt/x-1").unwrap();
     r.deck.active_slot = Some("A1".into());
     r.deck.close_agent("A1");
-    assert_eq!(r.vs.sent().last().unwrap().1, Command::CloseAgent { slot: "A1".into() });
+    assert_eq!(*r.procs.killed.lock().unwrap(), vec![61]);
     assert_eq!(r.status("A1"), None);
     assert!(!r.deck.store.tickets.contains_key("A1"));
     assert!(!r.deck.slot_mode.contains_key("A1"));
@@ -199,8 +188,10 @@ fn closing_an_agent_forgets_its_traces_so_a_recycled_slot_name_starts_clean() {
 #[test]
 fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
     let mut r = rig();
-    r.vs.open("repo", Some("A"), &["A1", "A2", "A3"]);
-    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.wt_block("A", "repo");
+    for (slot, pid) in [("A1", 71), ("A2", 72), ("A3", 73)] {
+        r.wt_agent(slot, pid);
+    }
     write_state(&r.deck.paths.state_dir, "A1", "done", 90.0).unwrap();
     write_state(&r.deck.paths.state_dir, "A2", "waiting", 95.0).unwrap();
     write_state(&r.deck.paths.state_dir, "A3", "waiting", 80.0).unwrap();
@@ -214,14 +205,14 @@ fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
 #[test]
 fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_once_the_worktree_exists() {
     let mut r = rig();
-    r.vs.open("repo", Some("A"), &["A1"]);
-    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.wt_block("A", "repo");
+    r.wt_agent("A1", 81);
     r.deck.assign_ticket("A1", "2701");
-    let (_, cmd) = r.vs.sent().pop().unwrap();
-    let Command::Send { text, submit, execute, .. } = cmd else { panic!("kein send") };
-    assert!(submit && !execute);
+    let steps = r.console.0.lock().unwrap().last().cloned().unwrap().1;
+    let Step::Text(text) = &steps[0] else { panic!("erst der Text") };
+    assert!(text.starts_with(deck_core::wt::PASTE_START) && text.contains("PROJ-2701"));
     assert!(!text.contains('\n'));
-    assert!(text.contains("PROJ-2701"));
+    assert_eq!(steps.last(), Some(&Step::Text("\r".into())), "abgeschickt per eigenem Enter");
     let view = r.deck.tick(100.0);
     assert_eq!(view.blocks[0].tiles[0].reference, None, "ohne worktree noch nicht gebunden");
     fs::write(r.deck.paths.state_dir.join("A1.worktree"), "C:/repo.wt/2701").unwrap();
@@ -232,11 +223,11 @@ fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_once_the_worktree_ex
 #[test]
 fn the_mode_menu_counts_shift_tab_from_the_remembered_mode() {
     let mut r = rig();
-    r.vs.open("repo", Some("A"), &["A1"]);
-    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.wt_block("A", "repo");
+    r.wt_agent("A1", 91);
     r.deck.slot_mode.insert("A1".into(), 1);
     r.deck.menu_set_mode("A1", "auto");
-    assert_eq!(r.vs.sent().pop().unwrap().1, Command::Key { slot: "A1".into(), key: "shift-tab".into(), repeat: 2 });
+    assert_eq!(r.typed().pop(), Some((91, "\x1b[Z".repeat(2))));
     assert_eq!(r.deck.slot_mode.get("A1"), Some(&3));
 }
 
@@ -261,7 +252,7 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
     let mut r = rig();
     let folder = r._tmp.path().join("repo");
     fs::create_dir_all(&folder).unwrap();
-    r.deck.hosts.wt.open_repo("A", &folder.to_string_lossy());
+    r.deck.wt.open_repo("A", &folder.to_string_lossy());
     r.deck.store.bindings.insert("A".into(), "repo".into());
     r.deck.create_agent("A", 100.0);
     let argv = r.launcher.0.lock().unwrap().last().cloned().unwrap();
@@ -278,8 +269,7 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
     assert!(!r.desk.placed().is_empty(), "neu gekachelt");
 
     r.deck.set_slot_model("A1", "fable");
-    let sent = r.console.0.lock().unwrap().last().cloned().unwrap();
-    assert_eq!(sent.0, 4242);
+    assert_eq!(r.typed().pop(), Some((4242, "/model fable\r".into())));
     r.deck.close_agent("A1");
     assert_eq!(*r.procs.killed.lock().unwrap(), vec![4242]);
 }
@@ -287,8 +277,7 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
 #[test]
 fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
     let mut r = rig();
-    r.deck.hosts.wt.open_repo("D", "C:/x");
-    r.deck.store.bindings.insert("D".into(), "x".into());
+    r.wt_block("D", "x");
     r.wt_agent("D1", 71);
     r.wt_agent("D2", 72);
     r.desk.add_wt(Hwnd(31), "D1", Rect::new(0, 0, 800, 600), true);
@@ -296,7 +285,7 @@ fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
     write_state(&r.deck.paths.state_dir, "D2", "waiting", 90.0).unwrap();
     r.deck.tick(100.0);
     r.desk.add_title(Hwnd(500), "Editor");
-    r.desk.set_foreground(Hwnd(500), "Editor", "Chrome_WidgetWin_1");
+    r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
     let before = r.desk.focused().len();
     r.deck.bring_all_front(Some((10, 10)));
     assert_eq!(r.desk.focused()[before..], [Hwnd(31), Hwnd(32)], "der Wartende zuletzt, also oben");
@@ -309,11 +298,11 @@ fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
 #[test]
 fn a_dead_shell_frees_its_slot_and_its_pid_file() {
     let mut r = rig();
-    r.deck.hosts.wt.open_repo("D", "C:/x");
+    r.deck.wt.open_repo("D", "C:/x");
     r.wt_agent("D1", 77);
-    assert_eq!(r.deck.hosts.terminals("D"), vec!["D1"]);
+    assert_eq!(r.deck.wt.terminals("D"), vec!["D1"]);
     r.procs.alive.lock().unwrap().clear();
-    assert!(r.deck.hosts.terminals("D").is_empty());
+    assert!(r.deck.wt.terminals("D").is_empty());
     assert!(!r.deck.paths.state_dir.join("D1.wtpid").exists());
 }
 

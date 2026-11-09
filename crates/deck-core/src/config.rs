@@ -46,13 +46,6 @@ pub const TICKET_AUTODETECT: bool = true;
 /// mit worktree die Zeile belegt.
 pub const TICKET_AUTODETECT_ON_CARD: bool = true;
 
-/// Titelstück, an dem VS-Code-Fenster erkannt werden.
-pub const VSCODE_MARKER: &str = "Visual Studio Code";
-
-/// Broker der VS-Code-Extensions (muss zu agentDeck.host/port der Extension passen).
-pub const BROKER_HOST: &str = "127.0.0.1";
-pub const BROKER_PORT: u16 = 8765;
-
 /// Heimat-Block: Windows-Terminal-Block über dem Ordner aller Repos, steht immer oben.
 /// Überschreibbar per deck_settings.json (`terminal_home`); ein fehlender Ordner
 /// schaltet ihn ab.
@@ -78,9 +71,6 @@ pub const WINDOWS: [&str; 15] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J
 pub const POLL_MS: u64 = 400;
 /// So lange (s) ohne Meldung gilt „denkt“ als eingeschlafen (idle).
 pub const STALE_S: f64 = 900.0;
-/// So lange (s) darf ein gebundenes Fenster getrennt UND ohne offenes VS-Code-Fenster
-/// sein, bevor seine Bindung abgeräumt wird. Ein Reload trifft das nie.
-pub const STALE_WINDOW_S: f64 = 3.0;
 /// So lange (s) darf ein worktree-Marker ohne lebenden Agenten verwaisen, bevor der
 /// worktree abgeräumt wird (Puffer gegen kurze Terminal-Listen-Aussetzer).
 pub const WT_ORPHAN_GRACE_S: f64 = 20.0;

@@ -1,4 +1,4 @@
-//! Windows Terminal als zweiter Host neben VS Code: die rechenbaren Teile.
+//! Windows Terminal als Host der Agenten: die rechenbaren Teile.
 //!
 //! Ein Repo-Block in Windows Terminal ist eine Reihe von Fenstern: jeder Agent bekommt
 //! ein EIGENES Fenster `deck-<Slot>`, gleich groß nebeneinander gelegt (Raster in
@@ -36,14 +36,14 @@ pub const PAPER_DARK: u32 = 0x191724;
 pub fn paper_for(light: Option<bool>) -> u32 {
     if light == Some(false) { PAPER_DARK } else { PAPER_LIGHT }
 }
-/// Pause vor dem eigenen Enter nach einer Paste (wie die Extension).
+/// Pause vor dem eigenen Enter nach einer Paste (sonst verschluckt die TUI das Enter).
 pub const SUBMIT_ENTER_DELAY_S: f64 = 0.45;
 /// Pause zwischen wiederholten Tasten.
 pub const KEY_REPEAT_DELAY_S: f64 = 0.09;
 pub const PASTE_START: &str = "\x1b[200~";
 pub const PASTE_END: &str = "\x1b[201~";
 
-/// Tasten wie `KEYMAP` in extension/panes.js; Unbekanntes geht roh durch.
+/// Tasten als Bytes für den Eingabepuffer der Konsole; Unbekanntes geht roh durch.
 pub fn keymap(key: &str) -> Option<&'static str> {
     Some(match key {
         "enter" => "\r",
@@ -98,8 +98,8 @@ pub fn slots_of<S: AsRef<str>>(win: &str, names: &[S]) -> Vec<String> {
     hits.into_iter().map(|(_, n)| n).collect()
 }
 
-/// Nächster freier Name: höchster vergebener Index dieses Buchstabens + 1 (wie die
-/// Extension, also mit Namensrecycling nach dem Schließen des höchsten).
+/// Nächster freier Name: höchster vergebener Index dieses Buchstabens + 1 (also mit
+/// Namensrecycling nach dem Schließen des höchsten).
 pub fn next_slot<S: AsRef<str>>(win: &str, taken: &[S]) -> String {
     let win = win.to_uppercase();
     let max = taken
@@ -108,19 +108,6 @@ pub fn next_slot<S: AsRef<str>>(win: &str, taken: &[S]) -> String {
         .max()
         .unwrap_or(0);
     format!("{win}{}", max + 1)
-}
-
-/// Der Wunschname (Neustart), wenn er zu diesem Buchstaben passt und frei ist, sonst der
-/// nächste freie.
-pub fn wanted_or_next<S: AsRef<str>>(win: &str, wanted: Option<&str>, taken: &[S]) -> String {
-    if let Some(w) = wanted
-        && let Some((letter, idx)) = split_slot(w)
-        && letter == win.to_uppercase()
-        && !taken.iter().any(|t| t.as_ref() == w)
-    {
-        return format!("{letter}{idx}");
-    }
-    next_slot(win, taken)
 }
 
 /// Argumente für `claude`. `args` ist eine fertige Flag-Zeile aus

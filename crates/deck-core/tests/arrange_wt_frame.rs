@@ -33,14 +33,10 @@ fn columns_depend_on_width_and_scaling() {
 }
 
 #[test]
-fn slot_names_follow_the_extension() {
+fn a_new_slot_takes_the_highest_index_plus_one() {
     assert_eq!(wt::next_slot("A", &["A1", "A3", "B7"]), "A4");
     assert_eq!(wt::next_slot::<&str>("A", &[]), "A1");
     assert_eq!(wt::next_slot("a", &["A2"]), "A3");
-    assert_eq!(wt::wanted_or_next("A", Some("A2"), &["A1"]), "A2");
-    assert_eq!(wt::wanted_or_next("A", Some("A1"), &["A1"]), "A2");
-    assert_eq!(wt::wanted_or_next::<&str>("A", Some("B2"), &[]), "A1");
-    assert_eq!(wt::wanted_or_next("A", None, &["A1", "A2"]), "A3");
     assert_eq!(wt::slots_of("A", &["A10", "A2", "B1", "x", "A"]), ["A2", "A10"]);
 }
 

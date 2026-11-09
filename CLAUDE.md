@@ -1,6 +1,8 @@
 # Agent Deck (Tauri)
 
-Dashboard für parallel laufende Claude-Code-Agenten in **Windows Terminal** und VS Code.
+Dashboard für parallel laufende Claude-Code-Agenten in **Windows Terminal** (seit
+09.11.2026 nur dort; die VS-Code-Extension samt Broker ist entfernt, Stand davor in der
+Historie).
 Eine Kachel je Agent, Farbe = Zustand; dockt am Bildschirmrand an und klappt weg.
 Windows-only. Rust (Tauri 2) hinten, React + TypeScript vorn.
 
@@ -19,24 +21,20 @@ angeschaut (Screenshot), nicht nur gebaut. Die Vorgabe steht in `docs/DESIGN.md`
 ```
 Cargo.toml              Workspace
 crates/deck-core/       Fachkern: Zustände, Pfade, Konfiguration, Reihenfolge, Flag-Zeile für
-                        claude, Protokoll, Ticket/PR-Erkennung, Usage-Auswertung,
+                        claude, Windows-Terminal-Rechnung, Ticket/PR-Erkennung, Usage-Auswertung,
                         settings.json, Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll
                         getestet.
 crates/deck-win/        Win32: Fenster finden/fokussieren/anordnen, Monitore, DPI, Prozesse,
                         Tasten in fremde Konsolen, Fokus-Rahmen (GPU), globale Tastenkürzel.
 crates/deck-hooks/      Die Claude-Code-Hooks als kleine Programme: deck-report, deck-statusline.
 crates/deck-services/   Hintergrunddienste: Usage-Abruf (gemeinsamer Poller), KI-Zusammenfassung,
-                        Worktree-Aufräumen und Sweep, Extension-Registratur, Hook-Installation
-                        (deck-setup), Watchdog (deck-watchdog). Wirkung nach außen hinter
-                        Traits, in Tests gesperrt.
-app/src-tauri/          Die App: Fenster, Andocken, Broker zur VS-Code-Extension, Windows-
-                        Terminal-Host, Poll-Schleife, Usage, Zusammenfassung, Worktrees,
-                        Befehle für die Oberfläche.
+                        Worktree-Aufräumen und Sweep, Hook-Installation und Entfernen der
+                        früheren VS-Code-Extension (deck-setup), Watchdog (deck-watchdog).
+                        Wirkung nach außen hinter Traits, in Tests gesperrt.
+app/src-tauri/          Die App: Fenster, Andocken, Windows-Terminal-Host, Poll-Schleife, Usage,
+                        Zusammenfassung, Worktrees, Befehle für die Oberfläche.
 app/src/                React-Oberfläche: Panel, Kacheln, Griff, Tooltip, Einstellungen.
 app/src/bindings/       aus Rust erzeugte TypeScript-Typen (nicht von Hand ändern).
-extension/              VS-Code-Extension (JavaScript, unverändertes Protokoll). Nur
-                        extension.js lädt `vscode`, die Module daneben laufen unter Node
-                        allein; Tests in extension/test/.
 docs/DESIGN.md          verbindliche Gestaltung.
 ```
 
@@ -54,7 +52,6 @@ cargo test -p deck-core export_bindings              # TS-Typen nach app/src/bin
 cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
-node --test "extension/test/*.test.js"               # Extension (Node allein, ohne VS Code)
 ```
 
 `cargo` liegt unter `%USERPROFILE%\.cargo\bin` (rustup, ohne PATH-Eintrag installiert).
@@ -73,8 +70,10 @@ Exe eingebaut und werden beim Start in den App-Ordner geschrieben.
 
 Installiert und aktualisiert wird mit `pwsh tools\install.ps1` (`-SkipBuild` nimmt das
 schon gebaute Release): bauen, Deck und Wächter beenden, alle Programme samt `deck-setup`
-nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `check`
-(Hooks in `~/.claude/settings.json`), Deck starten und prüfen, dass es Port 8765 hält.
+nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup remove-vscode-extension`
+(nimmt die frühere VS-Code-Extension aus `~/.vscode/extensions`, nur ihren Eintrag und
+Ordner; Übergangsschritt, kann später entfallen), `deck-setup install` und `check` (Hooks
+in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
 `deck-setup uninstall` nimmt die Hooks wieder heraus.
 
 ## Daten und Verträge
@@ -93,23 +92,13 @@ nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `
    Eintrag in `settings.json` endet zusätzlich auf `|| exit 0`. **Kein `cmd /c` davor**
    (MSYS macht aus `/c` den Pfad `C:\`, `cmd` liest dann das Hook-JSON als Befehl).
 4. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
-5. **Das Protokoll zur Extension** (newline-getrenntes JSON über TCP 127.0.0.1:8765) ist
-   `deck-core::protocol` und `extension/commands.js` (Kommandos) bzw. `extension/extension.js`
-   (Meldungen). Wer einen String ändert, ändert beide; `extension/test/commands.test.js`
-   gleicht die beiden Seiten ab.
-   **Kein `SO_REUSEADDR`** auf dem Broker-Port (Windows erlaubt sonst zwei Listener).
-6. **VS Code lädt die Extension nur, wenn sie in `~/.vscode/extensions/extensions.json`
-   registriert ist**, der Ordner allein beweist nichts; dort stehen alle Extensions des
-   Nutzers, also nur ergänzen. Fehlt eine der Nebendateien, lädt VS Code gar nichts.
-   Kopiert wird nur die oberste Ebene von `extension/`: neue Module gehören direkt dorthin,
-   nie in einen Unterordner (`extension/test/` bleibt dadurch draußen).
-7. **`Ctrl+Alt+K` (Extension) ist eine Sicherheitsfrage:** Claude, Sitzung 0 und der
-   Broker-Port samt seinem Besitzer und die Programme des Decks bleiben gesperrt
-   (`extension/killable.js`, Tests in `extension/test/killable.test.js`).
+5. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`**, gesetzt von `wt_agent.ps1` im
+   Fenster des Agenten. Ohne ihn meldet kein Hook etwas: eine selbst gestartete Session
+   gehört nicht zum Deck.
 
 ## Fallen, die schon einmal wehgetan haben
 
-- **Tests dürfen nie echte Eingriffe auslösen** (taskkill, Fenster schließen, `code`
+- **Tests dürfen nie echte Eingriffe auslösen** (taskkill, Fenster schließen, Programme
   starten). Alles mit Wirkung nach außen steckt hinter einem Trait, Tests bekommen eine
   Attrappe. Am 2026-11-06 hat die Python-Suite zweimal das VS Code beendet, in dem sie lief.
 - **Usage-Werte:** ein Limit hinter seinem `resets_at` ist keine Zahl mehr (→ „—“); ein
@@ -134,10 +123,10 @@ nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `
 
 ## Offen
 
-- **Im Betrieb prüfen**, was nur gegen Attrappen getestet ist: VS-Code-Fenster am Broker
-  (Port 8765), Strg+< springt zum Wartenden, Klick auf eine Karte holt das richtige
-  Terminal, ＋ legt einen Agenten an, Worktree-Aufräumen. Protokoll:
-  `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
+- **Im Betrieb prüfen**, was nur gegen Attrappen getestet ist: Strg+< springt zum
+  Wartenden, Klick auf eine Karte holt das richtige Terminal, ＋ legt einen Agenten an,
+  Worktree-Aufräumen, `deck-setup remove-vscode-extension` auf dem echten Rechner.
+  Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
 - **Taskleisten-Abzeichen:** der dringlichste Status als Overlay auf dem Agenten-Knopf
   (`ITaskbarList3::SetOverlayIcon`, wirkt auch auf fremde Fenster, gemessen 09.11.2026).
 - **Makropad:** 6 Tasten mit Drehregler und ARGB je Taste (Taste = Agent, Licht = Status,

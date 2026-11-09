@@ -2,8 +2,7 @@
 //! - Kachel (`_card_menu`): Model, Ticket, Effort, Mode als Untermenüs, darunter
 //!   „Agent schließen“. Ein bewusst per Rechtsklick gewählter Eintrag ist Absicht genug,
 //!   darum ohne Rückfrage.
-//! - Kopf eines Blocks per Rechtsklick (`_forget_menu`): Bindung vergessen, mit einem
-//!   VS-Code-Fenster verbinden.
+//! - Kopf eines Blocks per Rechtsklick (`_forget_menu`): Block vergessen.
 //!
 //! Die Einträge tragen ihre Wirkung in der ID (`model|B3|opus[1m]`); `handle` führt sie
 //! aus, wenn Tauri das Menü-Ereignis meldet.
@@ -56,34 +55,22 @@ fn build(app: &AppHandle, slot: &str) -> tauri::Result<Menu<Wry>> {
 }
 
 /// Name des Blocks für die Menütexte: das Repo, sonst „Fenster A“.
-fn block_name(app: &AppHandle, win: &str) -> (String, Lang, bool, bool, bool) {
+fn block_name(app: &AppHandle, win: &str) -> (String, Lang, bool) {
     let s = shared(app);
     let d = lock(&s.deck);
     let name = d.store.bindings.get(win).cloned().unwrap_or_else(|| format!("{} {win}", d.lang.l("Fenster", "Window")));
-    (name, d.lang, d.hosts.is_wt(win), d.home_win.as_deref() == Some(win), d.binding(win))
+    (name, d.lang, d.home_win.as_deref() == Some(win))
 }
 
-/// Rechtsklick auf den Kopf eines Blocks. `None`, wenn es nichts anzubieten gibt
-/// (Heimat-Block: er entsteht beim Start neu, Verbinden gibt es nur für VS Code).
+/// Rechtsklick auf den Kopf eines Blocks. `None` für den Heimat-Block: er entsteht beim
+/// Start neu, Vergessen wäre also wirkungslos.
 fn build_block(app: &AppHandle, win: &str) -> tauri::Result<Option<Menu<Wry>>> {
-    let (name, lang, wt, home, binding) = block_name(app, win);
-    let menu = Menu::new(app)?;
-    let mut any = false;
-    if !wt {
-        let label = if binding {
-            lang.l("Verbinden abbrechen", "Cancel connecting")
-        } else {
-            lang.l("Mit VS-Code-Fenster verbinden …", "Connect to a VS Code window …")
-        };
-        menu.append(&item(app, label, MenuAction::Bind(win.into()))?)?;
-        any = true;
+    let (name, lang, home) = block_name(app, win);
+    if home {
+        return Ok(None);
     }
-    if !home {
-        let label = if lang.is_english() { format!("Forget “{name}”") } else { format!("„{name}“ vergessen") };
-        menu.append(&item(app, &label, MenuAction::Forget(win.into()))?)?;
-        any = true;
-    }
-    Ok(any.then_some(menu))
+    let label = if lang.is_english() { format!("Forget “{name}”") } else { format!("„{name}“ vergessen") };
+    Menu::with_items(app, &[&item(app, &label, MenuAction::Forget(win.into()))?]).map(Some)
 }
 
 /// Ein Menü an der Zeigerposition zeigen. Blockiert, bis es zu ist; solange bleibt
@@ -129,7 +116,6 @@ pub fn handle(app: &AppHandle, id: &str) {
         MenuAction::Mode(slot, v) => d.menu_set_mode(&slot, &v),
         MenuAction::Close(slot) => d.close_agent(&slot),
         MenuAction::Forget(win) => d.forget_window(&win),
-        MenuAction::Bind(win) => d.start_bind(&win, crate::now()),
         MenuAction::AssignTicket(_) => {}
     }
     drop(d);

@@ -31,7 +31,7 @@ use crate::types::{Error, Result, from_wide};
 pub struct ProcessInfo {
     pub pid: u32,
     pub parent_pid: u32,
-    /// Exe-Name ohne Pfad, wie Windows ihn führt (`Code.exe`).
+    /// Exe-Name ohne Pfad, wie Windows ihn führt (`pwsh.exe`).
     pub exe: String,
     /// Startzeit als FILETIME (100-ns-Schritte seit 1601); `None` ohne Zugriffsrecht.
     pub start: Option<u64>,

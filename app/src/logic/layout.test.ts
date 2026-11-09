@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error ohne @types/node (wie in vite.config.ts); Vitest läuft in Node.
 import { readFileSync } from "node:fs";
-import { blockWidth, CARD_GAP, CARD_W, cardHeight, columnsFor, gridVars, placeAt } from "./layout";
+import { blockWidth, CARD_GAP, CARD_W, columnsFor, gridVars, placeAt } from "./layout";
 
 // Roh von der Platte: Vitest liefert CSS-Importe (auch ?raw) leer aus.
 const styleOf = (name: string): string => readFileSync(new URL(`../styles/${name}`, import.meta.url), "utf8");
@@ -22,17 +22,11 @@ describe("Raster des Panels", () => {
   it("hat ohne Blöcke eine Spalte", () => {
     expect(columnsFor([])).toBe(1);
   });
-
-  it("macht Terminal-Karten hoch und VS-Code-Karten flach", () => {
-    expect(cardHeight("terminal")).toBe(118);
-    expect(cardHeight("vscode")).toBe(58);
-  });
 });
 
 describe("Kartenmaße im CSS", () => {
   it("kommen als Variablen aus layout.ts", () => {
-    expect(gridVars(4, "terminal")).toEqual({ "--cols": "4", "--card-w": "197px", "--card-h": "118px", "--card-gap": "10px" });
-    expect(gridVars(2, "vscode")["--card-h"]).toBe("58px");
+    expect(gridVars(4)).toEqual({ "--cols": "4", "--card-w": "197px", "--card-h": "118px", "--card-gap": "10px" });
   });
 
   it("stehen im Raster nur als diese Variablen, nicht als eigene Zahlen", () => {
@@ -85,7 +79,7 @@ describe("Breite eines Terminal-Blocks", () => {
     expect(blockWidth(wt([2], 0))).toBe(2);
   });
 
-  it("zählt bei VS Code Karten plus ＋-Karte", () => {
+  it("zählt ohne Fensterlage Karten plus ＋-Karte", () => {
     expect(blockWidth({ rows: [], screenCols: 0, tiles: tiles(2), connected: true })).toBe(3);
   });
 });
