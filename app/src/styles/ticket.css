@@ -6,8 +6,26 @@
   padding: 18px 20px;
 }
 
+/* Das Feld wie ein Segment-Grund: Overlay, runde Ecken, Fokus als Haarlinie statt des
+ * schwarzen Browser-Rands. */
 .ticket-input {
+  box-sizing: border-box;
   width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--hl-med);
+  border-radius: 10px;
+  background: var(--overlay);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.ticket-input:focus {
+  border-color: var(--hl-high);
+  background: var(--card);
 }
 
 .ticket-buttons {
@@ -17,7 +35,38 @@
   margin-top: 6px;
 }
 
+/* Beide Knöpfe in der Form von „Panel neu starten“, nur etwas größer. */
+.confirm-cancel,
+.confirm-go {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--hl-med);
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--subtle);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.confirm-cancel:hover {
+  border-color: var(--hl-high);
+  background: var(--hl-low);
+  color: var(--ink);
+}
+
 .ticket-go {
+  border-color: var(--ink);
   background: var(--ink);
   color: var(--panel);
+  font-weight: 600;
+}
+
+.ticket-go:hover {
+  opacity: 0.88;
 }
