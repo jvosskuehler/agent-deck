@@ -39,6 +39,7 @@ pub mod hotkey;
 pub mod monitor;
 pub mod overlay;
 pub mod procs;
+pub mod taskbar;
 pub mod window;
 
 mod guard;

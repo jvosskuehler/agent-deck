@@ -8,6 +8,8 @@
 //! Fokuswechsel für alle Agentenfenster, damit gekachelte Fenster gleich aussehen.
 //! Dazu bekommt ihr Rand die Grundfarbe des Terminals: der Win11-Rand ist sonst
 //! halbdurchsichtig, zwischen zwei Kacheln schien eine Fuge Hintergrund durch.
+//! Und jedes Agentenfenster kommt einmal in die eigene Taskleisten-Gruppe der Agenten
+//! (eigener Knopf mit eigenem Symbol statt des Terminal-Knopfs, `deck_win::taskbar`).
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use deck_win::Hwnd;
 use deck_win::effects::Desktop;
 use deck_win::focus::Corners;
 use deck_win::frame_fx::Design;
+use deck_win::taskbar::TaskbarGroup;
 
 use crate::applog::note;
 use crate::wt_host::{HostMap, WtHost};
@@ -31,6 +34,10 @@ pub struct FrameWatch {
     hosts: HostMap,
     last_fg: Option<Hwnd>,
     squared: HashSet<Hwnd>,
+    /// Taskleisten-Gruppe der Agenten; `None` = Fenster bleiben beim Terminal-Knopf.
+    group: Option<TaskbarGroup>,
+    /// Fenster, die schon in der Gruppe stehen (unabhängig vom hell/dunkel-Wechsel).
+    grouped: HashSet<Hwnd>,
     /// Modus (hell/dunkel), in dem `squared` gestylt wurde.
     styled_light: Option<Option<bool>>,
     pub target: Option<Hwnd>,
@@ -40,8 +47,20 @@ pub struct FrameWatch {
 }
 
 impl FrameWatch {
-    pub fn new(desktop: Arc<dyn Desktop>, hosts: HostMap, seed: u64) -> FrameWatch {
-        FrameWatch { desktop, hosts, last_fg: None, squared: HashSet::new(), styled_light: None, target: None, design: None, seed: 0, rng: seed | 1 }
+    pub fn new(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGroup>, seed: u64) -> FrameWatch {
+        FrameWatch {
+            desktop,
+            hosts,
+            last_fg: None,
+            squared: HashSet::new(),
+            group,
+            grouped: HashSet::new(),
+            styled_light: None,
+            target: None,
+            design: None,
+            seed: 0,
+            rng: seed | 1,
+        }
     }
 
     fn random(&mut self) -> u64 {
@@ -63,11 +82,26 @@ impl FrameWatch {
             self.squared.clear();
         }
         let border = paper_for(light);
-        for w in self.desktop.class_windows(WINDOW_CLASS) {
-            if !self.squared.contains(&w.hwnd) && self.is_agent_title(&w.title) {
+        let windows = self.desktop.class_windows(WINDOW_CLASS);
+        // Zugegangene Fenster vergessen: Windows vergibt ein Handle später neu, das neue
+        // Fenster bliebe sonst ungestylt.
+        let open: HashSet<Hwnd> = windows.iter().map(|w| w.hwnd).collect();
+        self.squared.retain(|h| open.contains(h));
+        self.grouped.retain(|h| open.contains(h));
+        for w in windows {
+            if !self.is_agent_title(&w.title) {
+                continue;
+            }
+            if !self.squared.contains(&w.hwnd) {
                 let _ = self.desktop.set_corners(w.hwnd, Corners::Square);
                 let _ = self.desktop.set_border(w.hwnd, border);
                 self.squared.insert(w.hwnd);
+            }
+            if let Some(group) = &self.group
+                && self.grouped.insert(w.hwnd)
+                && let Err(e) = self.desktop.join_taskbar_group(w.hwnd, group)
+            {
+                note(format!("Taskleisten-Gruppe für {}: {e}", w.title));
             }
         }
     }
@@ -98,7 +132,7 @@ impl FrameWatch {
 
 /// Den Rahmen-Thread starten. Fehlt die Grafikkarte, gibt es eben keinen Rahmen (einmal
 /// ins Log), das Deck läuft weiter.
-pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap) {
+pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGroup>) {
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
     std::thread::Builder::new()
         .name("focus-frame".into())
@@ -110,7 +144,7 @@ pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap) {
                     return;
                 }
             };
-            let mut watch = FrameWatch::new(desktop, hosts, seed);
+            let mut watch = FrameWatch::new(desktop, hosts, group, seed);
             let mut since_watch = Instant::now();
             let mut t0 = Instant::now();
             let mut logged = false;
@@ -160,7 +194,7 @@ mod tests {
         let d = Arc::new(FakeDesktop::default());
         d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
         d.add_wt(Hwnd(6), "B1", Rect::new(0, 0, 10, 10), false);
-        let mut w = FrameWatch::new(d.clone(), hosts(), 42);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
         d.set_foreground(Hwnd(6), "B1", WINDOW_CLASS);
         assert!(!w.step(), "B ist kein Terminal-Block");
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
@@ -181,7 +215,7 @@ mod tests {
     fn border_follows_the_windows_theme() {
         let d = Arc::new(FakeDesktop::default());
         d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
-        let mut w = FrameWatch::new(d.clone(), hosts(), 42);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
         d.set_light(Some(false));
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
@@ -192,5 +226,50 @@ mod tests {
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
         assert_eq!(d.bordered(), vec![(Hwnd(5), 0x191724), (Hwnd(5), 0xFAF4ED)], "Moduswechsel färbt neu");
+    }
+
+    fn group() -> Option<TaskbarGroup> {
+        Some(TaskbarGroup { app_id: "Agents".into(), icon: "a.ico".into(), name: "Agent Deck".into() })
+    }
+
+    #[test]
+    fn each_agent_window_joins_the_taskbar_group_once_and_foreign_windows_never() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        d.add_wt(Hwnd(6), "PowerShell", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), group(), 42);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        d.set_light(Some(false));
+        d.set_foreground(Hwnd(6), "PowerShell", WINDOW_CLASS);
+        w.step();
+        assert_eq!(d.grouped(), vec![(Hwnd(5), "Agents".to_string())], "einmal, auch über einen Moduswechsel");
+    }
+
+    #[test]
+    fn a_reused_handle_of_a_new_agent_window_joins_again() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), group(), 42);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        d.remove_wt(Hwnd(5));
+        d.set_foreground(Hwnd(9), "Editor", "Chrome_WidgetWin_1");
+        w.step();
+        d.add_wt(Hwnd(5), "A2", Rect::new(0, 0, 10, 10), false);
+        d.set_foreground(Hwnd(5), "A2", WINDOW_CLASS);
+        w.step();
+        assert_eq!(d.grouped().len(), 2);
+        assert_eq!(d.cornered(), vec![Hwnd(5), Hwnd(5)], "auch Ecken und Rand kommen neu");
+    }
+
+    #[test]
+    fn without_a_group_the_windows_stay_with_the_terminal() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        assert!(d.grouped().is_empty());
     }
 }

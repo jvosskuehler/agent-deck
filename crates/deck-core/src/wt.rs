@@ -20,6 +20,11 @@ pub const WINDOW_PREFIX: &str = "deck-";
 /// Verstecktes Profil mit `closeOnExit: always` (sonst bleibt „[process exited …]“).
 pub const PROFILE: &str = "Agent Deck";
 pub const PID_SUFFIX: &str = ".wtpid";
+/// Taskleisten-Kennung der Agentenfenster: eine eigene Gruppe neben den normalen
+/// Terminals (`deck_win::taskbar`). Ohne Firmennamen, das Repo ist öffentlich.
+pub const TASKBAR_APP_ID: &str = "AgentDeck.Agents";
+/// Name dieser Gruppe in Sprungliste und Einstellungen.
+pub const TASKBAR_NAME: &str = "Agent Deck";
 /// Fensterklasse aller Windows-Terminal-Fenster.
 pub const WINDOW_CLASS: &str = "CASCADIA_HOSTING_WINDOW_CLASS";
 /// Grund der WT-Schemata `papier-ebenen` (hell) und `papier-ebenen-nacht` (dunkel).

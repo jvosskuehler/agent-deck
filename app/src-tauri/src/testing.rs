@@ -12,6 +12,7 @@ use deck_win::console_input::Step;
 use deck_win::effects::{ConsoleInput, Desktop, Processes};
 use deck_win::focus::Corners;
 use deck_win::monitor::Monitor;
+use deck_win::taskbar::TaskbarGroup;
 use deck_win::procs::ProcessInfo;
 use deck_win::{Hwnd, Rect, Result, WindowInfo};
 
@@ -27,6 +28,7 @@ struct Desk {
     focused: Vec<Hwnd>,
     corners: Vec<Hwnd>,
     borders: Vec<(Hwnd, u32)>,
+    grouped: Vec<(Hwnd, String)>,
     light: Option<bool>,
     restored: Vec<Hwnd>,
     monitors: Vec<Monitor>,
@@ -60,6 +62,14 @@ impl FakeDesktop {
     }
     pub fn bordered(&self) -> Vec<(Hwnd, u32)> {
         self.0.lock().unwrap().borders.clone()
+    }
+    /// Fenster, die in eine Taskleisten-Gruppe gestellt wurden, mit deren Kennung.
+    pub fn grouped(&self) -> Vec<(Hwnd, String)> {
+        self.0.lock().unwrap().grouped.clone()
+    }
+    /// Ein Agentenfenster ist zugegangen.
+    pub fn remove_wt(&self, hwnd: Hwnd) {
+        self.0.lock().unwrap().wt.retain(|(w, _)| w.hwnd != hwnd);
     }
     pub fn set_light(&self, light: Option<bool>) {
         self.0.lock().unwrap().light = light;
@@ -163,6 +173,10 @@ impl Desktop for FakeDesktop {
     }
     fn light_theme(&self) -> Option<bool> {
         self.0.lock().unwrap().light
+    }
+    fn join_taskbar_group(&self, hwnd: Hwnd, group: &TaskbarGroup) -> Result<()> {
+        self.0.lock().unwrap().grouped.push((hwnd, group.app_id.clone()));
+        Ok(())
     }
 }
 

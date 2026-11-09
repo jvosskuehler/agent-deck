@@ -112,6 +112,11 @@ pub fn run() {
     let mut wt = WtHost::new(setup, fx, Worker::spawn("wt-host"), now);
     wt.retile = !trial;
     let host_map = wt.host_map();
+    let agent_group = deck_win::taskbar::TaskbarGroup {
+        app_id: deck_core::wt::TASKBAR_APP_ID.into(),
+        icon: paths.agent_icon(),
+        name: deck_core::wt::TASKBAR_NAME.into(),
+    };
     let hosts = Hosts { vscode: broker.clone(), wt };
     let lang = deck_core::i18n::Lang::from_settings(&paths.claude_settings);
     let services = Services::system(&paths, broker.clone(), desktop.clone(), procs, lang, trial, Arc::new(poll::wake));
@@ -199,7 +204,7 @@ pub fn run() {
             if !trial {
                 hotkey::start(handle, combo);
                 hotkey::start_front(handle, front_combos);
-                focus_frame::start(desktop, host_map);
+                focus_frame::start(desktop, host_map, Some(agent_group));
             }
             Ok(())
         })

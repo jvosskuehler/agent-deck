@@ -19,6 +19,10 @@ pub const WT_AGENT_FILE: &str = "wt_agent.ps1";
 /// Stil des Rings um den aktiven Chat (VS Code), ebenso eingebaut.
 pub const GLOW_CSS: &str = include_str!("../../../resources/agent-deck-glow.css");
 pub const GLOW_CSS_FILE: &str = "agent-deck-glow.css";
+/// Taskleisten-Symbol der Terminal-Agenten (`tools/make_icons.py`), ebenso eingebaut.
+/// Windows liest es aus einer Datei, darum muss es auf der Platte liegen.
+pub const AGENT_ICON: &[u8] = include_bytes!("../../../resources/agent-taskbar.ico");
+pub const AGENT_ICON_FILE: &str = "agent-taskbar.ico";
 
 #[derive(Debug, Clone)]
 pub struct Paths {
@@ -68,6 +72,10 @@ impl Paths {
     pub fn glow_css(&self) -> PathBuf {
         self.app_dir.join(GLOW_CSS_FILE)
     }
+
+    pub fn agent_icon(&self) -> PathBuf {
+        self.app_dir.join(AGENT_ICON_FILE)
+    }
 }
 
 /// Wo das Python-Deck seine Laufzeitdateien hatte. `DECK_LEGACY_ROOT` überschreibt;
@@ -112,9 +120,11 @@ pub fn prepare(p: &Paths, legacy: &[PathBuf], take_over: bool) {
         let _ = paths::atomic_write(&marker, crate::now().to_string().as_bytes());
         note("Laufzeitdateien gehören ab jetzt dieser Fassung");
     }
-    for (path, text) in [(p.wt_agent_script(), WT_AGENT_SCRIPT), (p.glow_css(), GLOW_CSS)] {
-        if fs::read_to_string(&path).ok().as_deref() != Some(text)
-            && let Err(e) = paths::atomic_write(&path, text.as_bytes())
+    let built_in: [(PathBuf, &[u8]); 3] =
+        [(p.wt_agent_script(), WT_AGENT_SCRIPT.as_bytes()), (p.glow_css(), GLOW_CSS.as_bytes()), (p.agent_icon(), AGENT_ICON)];
+    for (path, bytes) in built_in {
+        if fs::read(&path).ok().as_deref() != Some(bytes)
+            && let Err(e) = paths::atomic_write(&path, bytes)
         {
             note(format!("{} nicht schreibbar: {e}", path.display()));
         }
@@ -157,6 +167,7 @@ mod tests {
         assert_eq!(fs::read_to_string(p.app_dir.join("tickets.json")).unwrap(), r#"{"A1": "X-1"}"#);
         assert_eq!(fs::read_to_string(p.app_dir.join("tickets.json.bak")).unwrap(), "{}", "alter Stand bleibt liegen");
         assert_eq!(fs::read_to_string(p.wt_agent_script()).unwrap(), WT_AGENT_SCRIPT);
+        assert_eq!(fs::read(p.agent_icon()).unwrap(), AGENT_ICON);
         assert!(p.state_dir.is_dir());
         assert!(!p.app_dir.join(TAKEOVER_MARKER).exists());
 

@@ -14,6 +14,7 @@ use crate::dpi;
 use crate::focus::{self, Corners};
 use crate::monitor::{self, Monitor};
 use crate::procs::{self, ProcessInfo};
+use crate::taskbar::{self, TaskbarGroup};
 use crate::types::{Error, Hwnd, Rect, Result};
 use crate::window::{self, WindowInfo};
 
@@ -51,6 +52,10 @@ pub trait Desktop: Send + Sync {
     /// Windows-Apps im hellen Modus? `None` = unbekannt.
     fn light_theme(&self) -> Option<bool> {
         None
+    }
+    /// Eigener Taskleisten-Knopf: das Fenster in `group` stellen.
+    fn join_taskbar_group(&self, _hwnd: Hwnd, _group: &TaskbarGroup) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -144,6 +149,9 @@ impl Desktop for Win32Desktop {
     }
     fn light_theme(&self) -> Option<bool> {
         focus::apps_use_light_theme()
+    }
+    fn join_taskbar_group(&self, hwnd: Hwnd, group: &TaskbarGroup) -> Result<()> {
+        taskbar::join_group(hwnd, group)
     }
 }
 
