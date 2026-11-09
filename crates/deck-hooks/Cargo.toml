@@ -1,0 +1,27 @@
+[package]
+name = "deck-hooks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+# Zwei kleine Programme statt der Python-Hooks. Startzeit zählt (jeder Prompt und
+# jeder Tool-Aufruf startet sie), darum nur deck-core, serde_json und für die
+# Prozesskette die windows-Crate.
+[[bin]]
+name = "deck-report"
+path = "src/bin/deck-report.rs"
+
+[[bin]]
+name = "deck-statusline"
+path = "src/bin/deck-statusline.rs"
+
+[dependencies]
+deck-core = { version = "0.2.0", path = "../deck-core" }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

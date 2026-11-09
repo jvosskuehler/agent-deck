@@ -1,0 +1,43 @@
+[package]
+name = "deck-services"
+description = "Hintergrunddienste des Agent Deck: Usage, Zusammenfassung, worktrees, VS-Code-Neustart, Einsammeln, Glow, Extension, Einrichtung, Wächter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+# Der Wächter: ein kleines eigenes Programm, das die App neu startet, wenn sie
+# verschwunden ist (aus `deck/ops/watchdog.py`). Er muss neben der App ausgeliefert
+# werden; Herzschlag und Protokoll siehe src/heartbeat.rs.
+[[bin]]
+name = "deck-watchdog"
+path = "src/bin/deck-watchdog.rs"
+
+[dependencies]
+deck-core = { version = "0.2.0", path = "../deck-core" }
+deck-win = { version = "0.2.0", path = "../deck-win" }
+# AES-256-GCM für das Token von Claude Desktop (Chromium-„v10“-Blob). Die Python-
+# Fassung nahm Windows CNG; eine reine Rust-Crate ist hier kürzer und testbar.
+aes-gcm = "0.10.3"
+base64 = "0.23.1"
+# Ortszeit für die Protokollzeilen. `poller.log` wird von `doctor.py` des gemeinsamen
+# Pollers nach Datum und Stunde ausgewertet; das Format muss exakt passen.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+# `Retry-After` als HTTP-Datum.
+httpdate = "1.0.3"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+# HTTP für den Usage-Endpoint. native-tls = Schannel mit dem Zertifikatsspeicher von
+# Windows, win-system-proxy = Proxy aus den Windows-Einstellungen: beides wie bei
+# Pythons urllib, damit ein Firmennetz hier nicht anders aussieht als vorher.
+ureq = { version = "3.5.1", default-features = false, features = ["native-tls", "win-system-proxy"] }
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -1,0 +1,215 @@
+/* Grundlagen aller Ansichten: Schrift, Farben, Atmen.
+ *
+ * Papier-Look „02 Farbfeld“ (docs/DESIGN.md): Rosé Pine Dawn hell, „Graphit“ dunkel, IBM
+ * Plex Mono. Hell oder dunkel folgt dem System wie das Terminal-Profil „Agent Deck“. Was je
+ * Zustand gerechnet wird (Tönung, Atmen, Griff), steht in src/logic/palette.ts und
+ * status.ts und kommt als Inline-Stil; hier nur, was fest ist. */
+
+:root {
+  /* Flächen */
+  --desk: #e6dfd6;
+  --panel: #faf4ed;
+  --panel-border: #dfdad9;
+  --panel-shadow: rgba(87, 82, 121, 0.55);
+  --card: #fffaf3;
+  --overlay: #f2e9e1;
+  --hl-low: #f4ede8;
+  --hl-med: #dfdad9;
+  --hl-high: #cecacd;
+  --hover: rgba(87, 82, 121, 0.05);
+  --soft-hover: rgba(127, 120, 150, 0.12);
+  --seg-on: #fffaf3;
+
+  /* Schrift */
+  --ink: #575279;
+  --subtle: #797593;
+  --dim: #6e6a86;
+  --muted: #9893a5;
+  --meta: #575279;
+  --ref: #6a5590;
+  --bypass: #8f3f58;
+
+  /* Blockkopf, ＋-Karte, Leiste */
+  --rail: #dfdad9;
+  --rail-hot: #9893a5;
+  --bar-line: #ece4dc;
+  --add-border: #cecacd;
+  --add-border-hot: #9893a5;
+  --add-ink: #9893a5;
+  --add-ink-hot: #6e6a86;
+
+  /* Signalfarben außerhalb der Karten: Pigment für Flächen, Ink für Text. */
+  --ok-pig: #4fa36a;
+  --ok-ink: #2c7247;
+  --warn-pig: #e8813f;
+  --warn-ink: #a4441c;
+  --on-warn: #3a1c06;
+  --err-pig: #c4536f;
+  --err-ink: #a13d59;
+  --on-err: #fffaf3;
+  --knob: #fffaf3;
+
+  --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --font-sans: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", sans-serif;
+
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: normal;
+  color: var(--ink);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  color-scheme: light dark;
+}
+
+/* Dunkel „Graphit“ (09.11.2026): dieselben Werte wie das Terminal-Schema
+ * papier-ebenen-nacht. Warmes Graphit statt Lila, Schrift in der Farbe des hellen Papiers. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #0f0e0d;
+    --panel: #1d1c1b;
+    --panel-border: #2b2927;
+    --panel-shadow: rgba(0, 0, 0, 0.7);
+    --card: #242220;
+    --overlay: #2b2927;
+    --hl-low: #21201f;
+    --hl-med: #3a3734;
+    --hl-high: #4a4744;
+    --hover: rgba(230, 224, 214, 0.05);
+    --soft-hover: rgba(142, 138, 132, 0.14);
+    --seg-on: #3a3734;
+
+    --ink: #e6e0d6;
+    --subtle: #8e8a84;
+    --dim: #8e8a84;
+    --muted: #6f6b66;
+    --meta: #cfc9bf;
+    --ref: #bda2e0;
+    --bypass: #f497a8;
+
+    --rail: #3a3734;
+    --rail-hot: #6f6b66;
+    --bar-line: #2b2927;
+    --add-border: #3a3734;
+    --add-border-hot: #6f6b66;
+    --add-ink: #6f6b66;
+    --add-ink-hot: #8e8a84;
+
+    --ok-pig: #86d2a3;
+    --ok-ink: #86d2a3;
+    --warn-pig: #f5a27c;
+    --warn-ink: #f5a27c;
+    --on-warn: #1d1c1b;
+    --err-pig: #f08a9e;
+    --err-ink: #f08a9e;
+    --on-err: #1d1c1b;
+    --knob: #e6e0d6;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* Panel, Griff und Tooltip sind durchsichtige Fenster: der Grund kommt von der Ansicht. */
+  background: transparent;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Tönung als Farbe registriert, damit die Karte beim Statuswechsel weich überblendet
+ * statt umzuspringen (Verläufe selbst lassen sich nicht animieren). */
+@property --tint {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+/* Atmen: Deckkraft 0,45 ↔ 1 in 3 s (Griff, Punkte). Nur Deckkraft, damit es der
+ * Compositor übernimmt und kein Bild je Frame neu gemalt wird (im Python-Deck kostete
+ * das spürbar CPU). */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.breathe {
+  animation: breathe 3s ease-in-out infinite;
+}
+
+/* Atmen der Kartenfläche bei Rückfrage und denkt: tiefer (0,15 ↔ 1), weil die Ebene nur
+ * eine leichte Tönung über der ohnehin getönten Karte ist. */
+@keyframes breathe-fill {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.breathe-fill {
+  animation: breathe-fill 3s ease-in-out infinite;
+}
+
+/* Aufblühen nach einem Statuswechsel: einmal kräftig, in ≈ 1 s abklingend. */
+@keyframes bloom {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breathe,
+  .breathe-fill {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+/* Im Browser (Mock) steht jede Ansicht auf einer Fläche, die den Desktop vertritt. */
+.mock-stage {
+  position: relative;
+  min-height: 100vh;
+  background: var(--desk);
+  overflow: hidden;
+}

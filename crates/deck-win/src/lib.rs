@@ -1,0 +1,50 @@
+//! Die Win32-Schicht des Agent Deck: Fenster finden, fokussieren und anordnen, Monitore
+//! und DPI, Prozesse, Tasten in fremde Konsolen, der Fokus-Rahmen als Overlay, globale
+//! Tastenkürzel und DPAPI. Portiert aus `deck/platform/` der Python-Fassung.
+//!
+//! Für die App gilt: was nach außen wirkt, ruft sie über die Traits in [`effects`] auf,
+//! damit Tests Attrappen bekommen. Zusätzlich sperrt [`forbid_effects`] alle echten
+//! Eingriffe prozessweit; in den Unit-Tests dieser Crate sind sie immer gesperrt.
+//!
+//! Koordinaten sind echte Bildschirmpixel (Per-Monitor-V2, siehe [`dpi`]), Rechtecke
+//! immer (links, oben, rechts, unten), siehe [`Rect`].
+//!
+//! Der Fokus-Rahmen folgt dem Stand der Python-Fassung vom 2026-11-06 (vier animierte
+//! Designs, gezeichnet auf der Grafikkarte): [`frame_fx`] rechnet je Bild die Parameter,
+//! [`frame_gpu_overlay`] zeigt sie mit demselben Shader (`frame.hlsl`) über
+//! DirectComposition. [`frame_render`] ist derselbe Shader auf der CPU (Prüfstein und
+//! Rückfall), [`frame_overlay`] zeigt dessen Bilder in vier Layered-Streifen.
+//!
+//! Nicht portiert, weil es nur für tkinter nötig war: Per-Pixel-Alpha für das
+//! Griff-Fenster (`layered.py`; der Griff ist jetzt WebView), Timer-Auflösung
+//! (`timing.py`), Fensterbeschnitt (`clip.py`), der Tk-Oberflächenfaktor in `dpi.py`.
+//! Ebenso der UI-Automation-Rückfall `wt_uia.py`: jeder Agent hat heute ein eigenes
+//! Windows-Terminal-Fenster.
+
+#![cfg(windows)]
+
+pub mod arrange;
+pub mod console_input;
+pub mod dpapi;
+pub mod dpi;
+pub mod effects;
+pub mod focus;
+pub mod frame_fx;
+pub mod frame_gpu;
+pub mod frame_gpu_overlay;
+pub mod frame_layout;
+pub mod frame_overlay;
+pub mod frame_render;
+pub mod hotkey;
+pub mod monitor;
+pub mod overlay;
+pub mod procs;
+pub mod taskbar;
+pub mod window;
+
+mod guard;
+mod types;
+
+pub use guard::{effects_forbidden, forbid_effects};
+pub use types::{Error, Hwnd, Rect, Result};
+pub use window::{WT_WINDOW_CLASS, WindowInfo};

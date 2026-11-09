@@ -1,0 +1,23 @@
+/* Dialog „Ticket zuweisen“: dieselben Bausteine wie die Einstellungen, im Papier-Look.
+ * Der Knopf ist in Tinte statt bernsteinfarben: Zuweisen ist keine Warnung. */
+
+.ticket {
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.ticket-input {
+  width: 100%;
+}
+
+.ticket-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.ticket-go {
+  background: var(--ink);
+  color: var(--panel);
+}

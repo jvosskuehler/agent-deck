@@ -1,51 +1,5 @@
-# ── Laufzeit-State des Decks ─────────────────────────────────────────────
-# bindstore.py legt diese Dateien neben dem Code ab. Sie sind pro Rechner
-# verschieden (welches VS-Code-Fenster welcher Buchstabe ist, welches Ticket an
-# welchem Slot hängt) und gehören darum niemandem als Vorgabe. Beim ersten Start
-# entstehen sie neu; Vorlagen liegen als *.example daneben.
-bindings.json
-deck_settings.json
-slot_order.json
-win_order.json
-slot_effort.json
-tickets.json
-# Welche Buchstaben in Windows Terminal leben ({Buchstabe: Repo-Ordner}, ops/wt_host).
-wt_hosts.json
-# Der Neustart-Plan (welche Kachel welche Claude-Session hatte). Lebt nur zwischen
-# "alle Fenster zu" und "alle Chats zurueck"; ein geglueckter Lauf loescht ihn.
-restart_plan.json
-
-# Lokale Claude-Code-Freigaben des jeweiligen Mitwirkenden (Pfade, erlaubte
-# Kommandos). Gehen niemanden sonst etwas an; die geteilten Projektregeln stehen
-# in CLAUDE.md.
-.claude/settings.local.json
-
-# ── Python ───────────────────────────────────────────────────────────────
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.venv/
-venv/
-
-# Sicherungen, die hook_setup.py neben settings.json legt - falls jemand die Datei
-# zum Probelauf ins Repo kopiert.
-*.bak-*
-
-# ── .NET ─────────────────────────────────────────────────────────────────
-bin/
-obj/
-# Der gebaute Fokus-Rahmen (install.ps1 baut ihn aus focus-frame/ dorthin).
-focus-frame/out/
-*.user
-*.suo
-.vs/
-
-# ── Sonstiges ────────────────────────────────────────────────────────────
-# Worktrees, die das Deck für Ticket-Zuweisungen anlegt (Suffix .wt)
-*.wt/
-# Logs (regulär unter %LOCALAPPDATA%\claude-agent-deck, hier nur zur Sicherheit)
+/target/
+node_modules/
+/app/dist/
+/app/src-tauri/gen/
 *.log
-*.log.1

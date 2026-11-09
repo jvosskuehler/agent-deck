@@ -1,0 +1,56 @@
+/* Der Griff (DESIGN.md, „Panel, Leiste, Griff“). Empfohlene Fenstergröße: 152 × 30
+ * an oben/unten, 30 × 152 an links/rechts (Kapsel plus Raum für den Schein). */
+
+.handle-window {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.handle-window[data-native] {
+  position: fixed;
+  inset: 0;
+}
+
+/* Im Browser: ein Fenster in Griffgröße an der Kante der Ersatzfläche. */
+.mock-stage .handle-window {
+  position: absolute;
+  left: calc(50% - 76px);
+  top: 0;
+  width: 152px;
+  height: 30px;
+}
+
+.handle-window[data-edge="top"] {
+  align-items: flex-start;
+  padding-top: 3px;
+}
+
+.handle-window[data-edge="bottom"] {
+  align-items: flex-end;
+  padding-bottom: 3px;
+}
+
+.handle-window[data-edge="left"] {
+  justify-content: flex-start;
+  padding-left: 3px;
+}
+
+.handle-window[data-edge="right"] {
+  justify-content: flex-end;
+  padding-right: 3px;
+}
+
+.handle {
+  width: 120px;
+  height: 7px;
+  border-radius: 7px;
+  transition:
+    background-color 400ms ease,
+    box-shadow 400ms ease;
+}
+
+.handle[data-vertical] {
+  width: 7px;
+  height: 120px;
+}
