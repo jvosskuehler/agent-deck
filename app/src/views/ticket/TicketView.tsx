@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TicketView as Ticket } from "../../bindings/TicketView";
 import { commands, isNative } from "../../ipc";
 import { useTicket } from "../../ipc/hooks";
-import { t } from "../../logic/i18n";
+import { langFromView, t } from "../../logic/i18n";
 import "../../styles/settings.css";
 import "../../styles/ticket.css";
 
@@ -20,7 +20,7 @@ export function TicketView() {
 }
 
 function TicketForm({ ticket }: { ticket: Ticket }) {
-  const lang = ticket.lang === "en" ? "en" : "de";
+  const lang = langFromView(ticket.lang);
   const [draft, setDraft] = useState(ticket.current);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {

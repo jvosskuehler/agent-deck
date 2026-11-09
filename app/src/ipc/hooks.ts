@@ -7,13 +7,19 @@
 import { useEffect, useState } from "react";
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
-import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
 import type { TooltipView } from "../bindings/TooltipView";
 import type { EventName, EventPayloads } from "./contract";
 import { commands, getBackend } from "./index";
 
-function useLive<E extends EventName>(event: E, initial: () => Promise<EventPayloads[E]>): EventPayloads[E] | null {
+type Live<E extends EventName> = [EventPayloads[E] | null, (value: EventPayloads[E]) => void];
+
+/**
+ * Startwert plus jedes Ereignis. Ein Startwert null (es gibt noch nichts, etwa keinen
+ * Ticket-Dialog) lässt den Wert null. Der Setzer gibt einen eigenen Stand vor, bis das
+ * nächste Ereignis kommt.
+ */
+function useLive<E extends EventName>(event: E, initial: () => Promise<EventPayloads[E] | null>): Live<E> {
   const [value, setValue] = useState<EventPayloads[E] | null>(null);
   useEffect(() => {
     let gotEvent = false;
@@ -33,44 +39,29 @@ function useLive<E extends EventName>(event: E, initial: () => Promise<EventPayl
     };
     // initial ist je Ansicht fest; eine neue Funktion je Render soll nicht neu abonnieren.
   }, [event]);
-  return value;
+  return [value, setValue];
 }
 
 export function useDeckView(): DeckView | null {
-  return useLive("deck://view", commands.getView);
+  return useLive("deck://view", commands.getView)[0];
 }
 
 export function useDock(): DockView | null {
-  return useLive("deck://dock", commands.getDock);
+  return useLive("deck://dock", commands.getDock)[0];
 }
 
-export function useSettings(): [SettingsView | null, (s: SettingsView) => void] {
-  const live = useLive("deck://settings", commands.getSettings);
-  const [local, setLocal] = useState<SettingsView | null>(null);
-  // Die Antwort auf set_setting kann vor dem Ereignis ankommen; beides ist derselbe
-  // Stand, gezeigt wird der jeweils letzte.
-  useEffect(() => setLocal(live), [live]);
-  return [local ?? live, setLocal];
+/**
+ * Einstellungen samt Setzer für das sofortige Zeigen einer Auswahl. Die Antwort auf
+ * set_setting kann vor dem Ereignis ankommen; beides ist derselbe Stand, gezeigt wird
+ * der jeweils letzte. Darum genügt ein Stand für beides.
+ */
+export function useSettings(): Live<"deck://settings"> {
+  return useLive("deck://settings", commands.getSettings);
 }
 
 /** Inhalt des Ticket-Dialogs; jedes Öffnen schickt den Slot neu. */
 export function useTicket(): TicketView | null {
-  const [ticket, setTicket] = useState<TicketView | null>(null);
-  useEffect(() => {
-    let gotEvent = false;
-    const off = getBackend().listen("deck://ticket", (p) => {
-      gotEvent = true;
-      setTicket(p);
-    });
-    commands
-      .getTicket()
-      .then((v) => {
-        if (!gotEvent && v) setTicket(v);
-      })
-      .catch((err) => console.warn("[deck] Startwert für deck://ticket fehlt:", err));
-    return off;
-  }, []);
-  return ticket;
+  return useLive("deck://ticket", commands.getTicket)[0];
 }
 
 /** Tooltip-Inhalt; `null`, sobald Rust ihn ausblendet. */

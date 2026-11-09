@@ -5,7 +5,7 @@
 // Spalten statt in einer Reihe, das Ziel wird darum in zwei Richtungen gesucht.
 
 /** Zeigerweg (px), ab dem aus einem Druck ein Ziehen wird. Darunter bleibt es ein Klick. */
-export const DRAG_THRESHOLD = 8;
+const DRAG_THRESHOLD = 8;
 
 /** Hat sich der Zeiger weit genug bewegt, um zu ziehen? (Manhattan-Abstand wie in Python.) */
 export function passedThreshold(dx: number, dy: number, threshold = DRAG_THRESHOLD): boolean {

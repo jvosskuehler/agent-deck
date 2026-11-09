@@ -18,13 +18,13 @@ export type Scheme = "light" | "dark";
  * Kartengrund. Auf Graphit wurde Gold so braun und Grün oliv; feste Flächen je Modus
  * bleiben klar.
  */
-export interface Tone {
+interface Tone {
   fill: string;
   pig: string;
   ink: string;
 }
 
-export interface Palette {
+interface Palette {
   /** Grund jeder Karte unter der Tönung. */
   card: string;
   /** Fläche einer ruhigen Karte (idle, none, unknown). */

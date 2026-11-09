@@ -1,12 +1,12 @@
 // Die ＋-Karte am Reihenende: so groß wie eine Karte ihres Blocks, gestrichelt, leise.
 
-import type { CSSProperties } from "react";
+import type { GridPlace } from "../../logic/layout";
 
 interface Props {
   label: string;
   onClick(): void;
   /** Fester Platz im Raster, wenn die Karten davor fest liegen. */
-  place?: CSSProperties;
+  place?: GridPlace;
 }
 
 export function AddTile({ label, onClick, place }: Props) {

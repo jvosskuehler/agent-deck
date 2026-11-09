@@ -4,14 +4,44 @@ import type { BlockView } from "../bindings/BlockView";
 import type { Host } from "../bindings/Host";
 import { screenCells } from "./reorder";
 
+// Die einzige Quelle der Kartenmaße: das CSS bekommt sie als Variablen (gridVars), es
+// trägt keine eigenen Zahlen dafür.
 export const CARD_W = 197;
 export const CARD_GAP = 10;
-export const MAX_COLS = 4;
-export const TERMINAL_H = 118;
-export const VSCODE_H = 58;
+const MAX_COLS = 4;
+const TERMINAL_H = 118;
+const VSCODE_H = 58;
 
 export function cardHeight(host: Host): number {
   return host === "terminal" ? TERMINAL_H : VSCODE_H;
+}
+
+/**
+ * CSS-Variablen für das Kartenraster eines Blocks (`.block-grid` in block.css): Spalten,
+ * Kartenbreite, Kartenhöhe und Abstand.
+ */
+export function gridVars(cols: number, host: Host): Record<"--cols" | "--card-w" | "--card-h" | "--card-gap", string> {
+  return {
+    "--cols": String(cols),
+    "--card-w": `${CARD_W}px`,
+    "--card-h": `${cardHeight(host)}px`,
+    "--card-gap": `${CARD_GAP}px`,
+  };
+}
+
+/** Fester Platz im Raster (CSS-Grid, ab 1 gezählt) für Zellnummer = Reihe · cols + Spalte. */
+export interface GridPlace {
+  gridRow: number;
+  gridColumn: number;
+}
+
+/**
+ * Platz der Karte an Position <index>, wenn die Karten feste Zellen haben (siehe
+ * `screenCells`); ohne Zellen brechen sie dicht um und brauchen keinen.
+ */
+export function placeAt(cells: readonly number[] | undefined, index: number, cols: number): GridPlace | undefined {
+  if (!cells) return undefined;
+  return { gridRow: Math.floor(cells[index] / cols) + 1, gridColumn: (cells[index] % cols) + 1 };
 }
 
 /**

@@ -4,10 +4,12 @@
 // Terminal-Karte (hoch): Status | Modell · Effort, darunter der Sessiontitel, unten
 // Ticket/PR | Modus. VS-Code-Karte (flach): dieselben zwei Zeilen ohne Titel.
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import type { Host } from "../../bindings/Host";
 import type { TileView } from "../../bindings/TileView";
+import { propsEqual } from "../../logic/equal";
 import { t, type Lang } from "../../logic/i18n";
+import type { GridPlace } from "../../logic/layout";
 import type { Point } from "../../logic/reorder";
 import {
   bloomFill,
@@ -49,10 +51,10 @@ interface Props {
   settling: boolean;
   handlers: TileHandlers;
   /** Fester Platz im Raster (Windows Terminal: wie das Fenster auf dem Bildschirm). */
-  place?: CSSProperties;
+  place?: GridPlace;
 }
 
-export function Tile({ tile, host, lang, offset, lifted, landing, settling, handlers, place }: Props) {
+function TileCard({ tile, host, lang, offset, lifted, landing, settling, handlers, place }: Props) {
   const scheme = useScheme();
   const look = tileLook(tile.status, scheme);
   const [bloomKey, endBloom] = useBloom({ status: tile.status, changedAt: tile.statusChangedAt });
@@ -157,6 +159,13 @@ export function Tile({ tile, host, lang, offset, lifted, landing, settling, hand
     </div>
   );
 }
+
+/**
+ * Eine Karte zeichnet nur neu, wenn sich etwas an ihr ändert: nicht bei jedem Poll, der
+ * eine andere Karte betrifft, und beim Ziehen nur, wenn sie selbst rückt (propsEqual
+ * vergleicht Karte, Verschiebung, Platz und Handler nach Inhalt).
+ */
+export const Tile = memo(TileCard, propsEqual);
 
 /**
  * Merkt sich den vorigen Stand der Karte und liefert einen Schlüssel, solange sie

@@ -11,14 +11,15 @@
 // natürliche Größe. Frei schwebend (Kante „off“) zieht ein Druck auf leere Fläche das
 // Panel mit, die Ecke unten rechts zoomt; beides führt Rust aus (panel_drag).
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import type { DeckView } from "../../bindings/DeckView";
 import { commands, getBackend, isNative } from "../../ipc";
 import { useDeckView, useDock } from "../../ipc/hooks";
-import { gutterSide, normalizeEdge, normalizePhase, panelRadius, panelShadow, SHADOW_GUTTER, type Edge } from "../../logic/dock";
+import { gutterStyle, normalizeEdge, normalizePhase, panelRadius, panelShadow, type Edge } from "../../logic/dock";
 import { langFromView, t } from "../../logic/i18n";
 import { blockWidth, columnsFor } from "../../logic/layout";
-import { applyOrder, pinFirst, sameOrder } from "../../logic/reorder";
+import { createPendingOrder } from "../../logic/pendingOrder";
+import { applyOrder, pinFirst } from "../../logic/reorder";
 import { Block } from "./Block";
 import { BottomBar } from "./BottomBar";
 import { DevTooltip } from "./DevTooltip";
@@ -27,10 +28,9 @@ import { usePanelSize } from "./usePanelSize";
 import { useSlide } from "./useSlide";
 import { useTileTip } from "./useTileTip";
 import "../../styles/panel.css";
+import "../../styles/block.css";
+import "../../styles/bar.css";
 import "../../styles/tile.css";
-
-/** So lange hält die Oberfläche eine eben gezogene Reihenfolge, bis Rust sie bestätigt. */
-const PENDING_MS = 1500;
 
 export function PanelView() {
   const view = useDeckView();
@@ -60,7 +60,8 @@ export function PanelView() {
   }, [tip.cancel]);
   const holdEnd = useCallback(() => commands.panelHold(false), []);
 
-  const { pendingTiles, pendingBlocks, holdTiles, holdBlocks } = usePendingOrder(view);
+  const pending = usePendingOrder(view);
+  const { tiles: pendingTiles, blocks: pendingBlocks } = pending.state;
 
   const blocks = view?.blocks ?? [];
   const home = blocks.find((b) => b.home)?.letter ?? null;
@@ -85,7 +86,7 @@ export function PanelView() {
     onDragStart: holdStart,
     onDragEnd: holdEnd,
     onCommit: (next) => {
-      holdBlocks(next);
+      pending.holdBlocks(next);
       commands.reorderBlocks(next);
     },
   });
@@ -145,11 +146,11 @@ export function PanelView() {
                   order={order}
                   cols={cols}
                   lang={lang}
-                  offsetY={blockDrag.offsetOf(letter)}
+                  shift={blockDrag.shift}
                   lifted={blockDrag.liftedLetter === letter}
                   landing={blockDrag.landing}
                   settling={blockDrag.settling}
-                  head={blockDrag}
+                  head={blockDrag.handlers}
                   tiles={tileHandlers}
                   onFocusSlot={commands.focusSlot}
                   onFocusBlock={commands.focusBlock}
@@ -160,7 +161,7 @@ export function PanelView() {
                     commands.showBlockMenu(l);
                   }}
                   onReorder={(l, slots) => {
-                    holdTiles(l, slots);
+                    pending.holdTiles(l, slots);
                     commands.reorderTiles(l, slots);
                   }}
                   onCreate={commands.createAgent}
@@ -219,13 +220,6 @@ function startMove(e: PointerEvent<HTMLElement>) {
   commands.panelDrag("move", e.clientX, e.clientY);
 }
 
-/** Schattenraum an der Seite gegenüber der Kante. */
-function gutterStyle(edge: Edge): CSSProperties {
-  const side = gutterSide(edge);
-  const key = `padding${side[0].toUpperCase()}${side.slice(1)}` as "paddingBottom";
-  return { [key]: SHADOW_GUTTER };
-}
-
 /**
  * Im Browser vertritt eine Box das Tauri-Fenster: so groß, wie das Panel meldet, an
  * der Kante der Ersatzfläche. Sie schneidet ab wie das echte Fenster, damit das Gleiten
@@ -252,48 +246,15 @@ function mockWindowStyle(edge: Edge, size: { width: number; height: number } | n
 }
 
 /**
- * Eine eben gezogene Reihenfolge gilt sofort, nicht erst, wenn Rust sie im nächsten
- * Takt zurückschickt; sonst sprängen die Karten nach dem Ablegen einmal zurück. Sobald
- * Rust dieselbe Reihenfolge meldet oder die Frist abläuft, gilt wieder allein Rust.
+ * Die eben gezogene Reihenfolge, bis Rust sie bestätigt oder die Frist abläuft
+ * (logic/pendingOrder.ts).
  */
 function usePendingOrder(view: DeckView | null) {
-  const [pendingTiles, setPendingTiles] = useState<Record<string, string[]>>({});
-  const [pendingBlocks, setPendingBlocks] = useState<string[] | null>(null);
-
+  const [order] = useState(createPendingOrder);
+  const state = useSyncExternalStore(order.subscribe, order.get);
   useEffect(() => {
-    if (!view) return;
-    setPendingTiles((p) => {
-      const next = { ...p };
-      let changed = false;
-      for (const b of view.blocks) {
-        const want = next[b.letter];
-        if (want && sameOrder(want, b.tiles.map((x) => x.slot))) {
-          delete next[b.letter];
-          changed = true;
-        }
-      }
-      return changed ? next : p;
-    });
-    setPendingBlocks((p) => (p && sameOrder(p, view.blocks.map((b) => b.letter)) ? null : p));
-  }, [view]);
-
-  const holdTiles = useCallback((letter: string, slots: string[]) => {
-    setPendingTiles((p) => ({ ...p, [letter]: slots }));
-    window.setTimeout(
-      () => setPendingTiles((p) => {
-        if (p[letter] !== slots) return p;
-        const next = { ...p };
-        delete next[letter];
-        return next;
-      }),
-      PENDING_MS,
-    );
-  }, []);
-
-  const holdBlocks = useCallback((letters: string[]) => {
-    setPendingBlocks(letters);
-    window.setTimeout(() => setPendingBlocks((p) => (p === letters ? null : p)), PENDING_MS);
-  }, []);
-
-  return { pendingTiles, pendingBlocks, holdTiles, holdBlocks };
+    if (view) order.confirm(view);
+  }, [order, view]);
+  useEffect(() => () => order.dispose(), [order]);
+  return { state, holdTiles: order.holdTiles, holdBlocks: order.holdBlocks };
 }

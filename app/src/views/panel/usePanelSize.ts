@@ -5,7 +5,7 @@
 import { useEffect, useState, type RefObject } from "react";
 import { commands } from "../../ipc";
 
-export interface Size {
+interface Size {
   width: number;
   height: number;
 }

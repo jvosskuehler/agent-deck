@@ -30,7 +30,7 @@ export const CLOSE_MS = 180;
  */
 export const SHADOW_GUTTER = 24;
 
-export interface SlideTiming {
+interface SlideTiming {
   durationMs: number;
   easing: string;
 }
@@ -103,6 +103,15 @@ export function panelShadow(edge: Edge): string {
     case "right":
       return `-12px 0 24px -12px ${c}`;
   }
+}
+
+type GutterPadding = Partial<Record<"paddingTop" | "paddingBottom" | "paddingLeft" | "paddingRight", number>>;
+
+/** Schattenraum an der Seite gegenüber der Kante, als Innenabstand der Messbox. */
+export function gutterStyle(edge: Edge): GutterPadding {
+  const side = gutterSide(edge);
+  const key = `padding${side[0].toUpperCase()}${side.slice(1)}` as keyof GutterPadding;
+  return { [key]: SHADOW_GUTTER };
 }
 
 /** Seite, an der das Panel-Fenster Schattenraum braucht (gegenüber der Kante). */
