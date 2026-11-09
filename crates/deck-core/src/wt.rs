@@ -44,7 +44,7 @@ pub const KEY_REPEAT_DELAY_S: f64 = 0.09;
 pub const PASTE_START: &str = "\x1b[200~";
 pub const PASTE_END: &str = "\x1b[201~";
 
-/// Tasten wie `KEYMAP` in extension/extension.js; Unbekanntes geht roh durch.
+/// Tasten wie `KEYMAP` in extension/panes.js; Unbekanntes geht roh durch.
 pub fn keymap(key: &str) -> Option<&'static str> {
     Some(match key {
         "enter" => "\r",

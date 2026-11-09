@@ -2,9 +2,12 @@
 //!
 //! Zwischen App und Extension laufen newline-getrennte JSON-Zeilen über TCP
 //! 127.0.0.1:8765. Die Strings hier sind der Vertrag: wer einen ändert, ändert ihn in
-//! `extension/extension.js` mit. Die Extension kann diese Datei nicht importieren, sie
-//! spiegelt die Strings von Hand; hier gebündelt wird aus einem Tippfehler wenigstens
-//! auf der Rust-Seite ein Übersetzungsfehler statt eines still verpuffenden Kommandos.
+//! `extension/commands.js` (Kommandos) bzw. `extension/extension.js` (Meldungen) mit. Die
+//! Extension kann diese Datei nicht importieren, sie spiegelt die Strings von Hand; hier
+//! gebündelt wird aus einem Tippfehler wenigstens auf der Rust-Seite ein
+//! Übersetzungsfehler statt eines still verpuffenden Kommandos. Auf der JS-Seite liest
+//! `extension/test/commands.test.js` diese Datei und prüft, dass jedes `CMD_*` dort
+//! eine Wirkung hat und jedes `TYPE_*` gesendet wird.
 
 // ── Kommandos: App → Extension (JSON-Feld "cmd") ────────────────────────────
 

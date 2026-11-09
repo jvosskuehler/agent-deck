@@ -1,7 +1,6 @@
 // Welche Prozesse duerfen zum Abschiessen angeboten werden? - reine Auswahl-Logik
 // OHNE vscode/child_process, damit sie sich mit Node allein pruefen laesst. Die
-// Tests dazu gab es nur in der Python-Fassung
-// (`git show 2856494:tests/test_extension_killable.py`).
+// Tests stehen in extension/test/killable.test.js (`node --test extension/test`).
 //
 // Der Zuschnitt ist bewusst eng. Unter EINEM VS-Code-Fenster haengen schnell 100
 // Prozesse; angeboten wird davon nur, was tatsaechlich einen TCP-Port haelt - denn
@@ -68,7 +67,10 @@ const DECK_CMD = /agent-deck|claude-agent-deck|deck-(?:watchdog|report|statuslin
 // verlangt claude als BEFEHL), und hier waere das Uebersehen teuer - der Nutzer
 // killte seine eigene Session. Darum zusaetzlich ein Blick auf den Pfad, aber eng
 // am Ordnernamen: `\claude\` und `\.claude\` treffen, `claude-experiments\` nicht.
-const CLAUDE_PATH = /[\\/]\.?claude[\\/]/i;
+// Dazu das npm-Paket: die globale npm-Installation startet
+// `node ...\node_modules\@anthropic-ai\claude-code\cli.js`, und `claude-code\` traf
+// die erste Regel nicht (gefunden beim Portieren der Tests, 2026-11-09).
+const CLAUDE_PATH = /[\\/]\.?claude[\\/]|[\\/]@anthropic-ai[\\/]claude-code[\\/]/i;
 
 function num(v) {
   const n = Number(v);
@@ -100,7 +102,10 @@ function keepReason(p, opts) {
   for (const [re, grund] of KEEP) if (re.test(name)) return grund;
   const cmd = pcmd(p);
   if (CLAUDE_PATH.test(cmd)) return "Claude-Session (per Pfad erkannt)";
-  if (DECK_CMD.test(cmd)) return "Agent Deck selbst";
+  // Auch am NAMEN: WMI liefert die Kommandozeile nicht immer (Prozess eines anderen
+  // Kontos oder erhoeht, dann ist sie leer). Ein agent-deck.exe ohne Kommandozeile
+  // ist trotzdem das Deck.
+  if (DECK_CMD.test(cmd) || DECK_CMD.test(name)) return "Agent Deck selbst";
   if (o.selfPid && pid(p) === num(o.selfPid)) return "dieses VS-Code-Fenster";
   return null;
 }
@@ -173,13 +178,22 @@ function portBlockers(scan, opts) {
     if (n != null && !byPid.has(n)) byPid.set(n, p);
   }
   const inTree = o.all ? null : descendantPids(vscodeRoots(procs), procs);
+  // Wer den Broker-Port haelt, ist das Panel - und zwar mit ALLEN seinen Ports, nicht
+  // nur mit diesem einen. Lauscht er noch woanders, stuende er sonst ueber den
+  // anderen Port doch in der Liste.
+  const skipOwners = new Set();
+  for (const l of listen) {
+    const owner = num(l && (l.OwningProcess != null ? l.OwningProcess : l.owningProcess));
+    const port = num(l && (l.LocalPort != null ? l.LocalPort : l.localPort));
+    if (owner != null && port != null && skip.has(port)) skipOwners.add(owner);
+  }
 
   const found = new Map(); // pid -> Eintrag
   for (const l of listen) {
     const owner = num(l && (l.OwningProcess != null ? l.OwningProcess : l.owningProcess));
     const port = num(l && (l.LocalPort != null ? l.LocalPort : l.localPort));
     if (owner == null || port == null) continue;
-    if (skip.has(port)) continue;             // Broker-Port: nie anbieten
+    if (skip.has(port) || skipOwners.has(owner)) continue; // Broker-Port samt Besitzer: nie anbieten
     if (owner <= 4) continue;                 // System/Idle halten die SMB-Ports
     if (inTree && !inTree.has(owner)) continue;
     const p = byPid.get(owner);

@@ -1,6 +1,7 @@
 //! Der Broker: schlanker TCP-Server, über den das Deck mit den VS-Code-Extensions
 //! spricht (`deck/net/broker.py`). Newline-getrenntes JSON, Vokabular in
-//! `deck_core::protocol`, Gegenstelle `extension/extension.js`.
+//! `deck_core::protocol`, Gegenstelle `extension/broker.js` (Leitung) und
+//! `extension/commands.js` (Kommandos).
 //!
 //! - Jede Extension verbindet sich und meldet sich mit `hello` (Workspace, Ordner,
 //!   Remote, evtl. Buchstabe und Slots), danach mit `terminals` bei jeder Änderung.

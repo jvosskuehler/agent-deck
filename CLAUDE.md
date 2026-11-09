@@ -34,7 +34,9 @@ app/src-tauri/          Die App: Fenster, Andocken, Broker zur VS-Code-Extension
                         Befehle für die Oberfläche.
 app/src/                React-Oberfläche: Panel, Kacheln, Griff, Tooltip, Einstellungen.
 app/src/bindings/       aus Rust erzeugte TypeScript-Typen (nicht von Hand ändern).
-extension/              VS-Code-Extension (JavaScript, unverändertes Protokoll).
+extension/              VS-Code-Extension (JavaScript, unverändertes Protokoll). Nur
+                        extension.js lädt `vscode`, die Module daneben laufen unter Node
+                        allein; Tests in extension/test/.
 docs/DESIGN.md          verbindliche Gestaltung.
 ```
 
@@ -52,6 +54,7 @@ cargo test -p deck-core export_bindings              # TS-Typen nach app/src/bin
 cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
+node --test "extension/test/*.test.js"               # Extension (Node allein, ohne VS Code)
 ```
 
 `cargo` liegt unter `%USERPROFILE%\.cargo\bin` (rustup, ohne PATH-Eintrag installiert).
@@ -89,13 +92,18 @@ nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `
    (MSYS macht aus `/c` den Pfad `C:\`, `cmd` liest dann das Hook-JSON als Befehl).
 4. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
 5. **Das Protokoll zur Extension** (newline-getrenntes JSON über TCP 127.0.0.1:8765) ist
-   `deck-core::protocol` und `extension/extension.js`. Wer einen String ändert, ändert beide.
+   `deck-core::protocol` und `extension/commands.js` (Kommandos) bzw. `extension/extension.js`
+   (Meldungen). Wer einen String ändert, ändert beide; `extension/test/commands.test.js`
+   gleicht die beiden Seiten ab.
    **Kein `SO_REUSEADDR`** auf dem Broker-Port (Windows erlaubt sonst zwei Listener).
 6. **VS Code lädt die Extension nur, wenn sie in `~/.vscode/extensions/extensions.json`
    registriert ist**, der Ordner allein beweist nichts; dort stehen alle Extensions des
    Nutzers, also nur ergänzen. Fehlt eine der Nebendateien, lädt VS Code gar nichts.
+   Kopiert wird nur die oberste Ebene von `extension/`: neue Module gehören direkt dorthin,
+   nie in einen Unterordner (`extension/test/` bleibt dadurch draußen).
 7. **`Ctrl+Alt+K` (Extension) ist eine Sicherheitsfrage:** Claude, Sitzung 0 und der
-   Broker-Port bleiben gesperrt (`extension/killable.js`).
+   Broker-Port samt seinem Besitzer und die Programme des Decks bleiben gesperrt
+   (`extension/killable.js`, Tests in `extension/test/killable.test.js`).
 
 ## Fallen, die schon einmal wehgetan haben
 

@@ -39,6 +39,12 @@ jobs:
         working-directory: app
         run: pnpm test
 
+      - name: Extension-Tests
+        # Node allein, ohne VS Code und ohne npm-Pakete. Ein Muster statt des Ordners:
+        # seit Node 21 nimmt `--test` Glob-Muster, ein nackter Ordnername wird als
+        # Datei gesucht und scheitert. Die Anfuehrungszeichen lassen das Muster bei Node.
+        run: node --test "extension/test/*.test.js"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy

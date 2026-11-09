@@ -18,6 +18,7 @@
   ],
   "extensionKind": ["ui"],
   "main": "./extension.js",
+  "scripts": { "test": "node --test test/*.test.js" },
   "contributes": {
     "commands": [
       { "command": "agentDeck.createAgent", "title": "Agent Deck: Neues Claude-Terminal anlegen" },

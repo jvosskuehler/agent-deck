@@ -282,3 +282,30 @@ fn id_and_folder_match_the_package_json_of_the_extension() {
     assert_eq!(EXT_ID, format!("{}.{}", pkg["publisher"].as_str().unwrap(), pkg["name"].as_str().unwrap()));
     assert_eq!(EXT_DIR, pkg["name"].as_str().unwrap());
 }
+
+/// Die ECHTE Extension aus dem Repo, nicht die Attrappe aus `rig()`: nach dem Kopieren
+/// muss jedes Modul da sein, das ein anderes per `require("./x")` lädt. Kopiert wird
+/// nur die oberste Ebene von `extension/` (`source_files`); ein Modul in einem
+/// Unterordner fehlte installiert, und VS Code lüde die Extension gar nicht.
+#[test]
+fn the_real_extension_is_copied_complete_and_without_its_tests() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("extension");
+    let d = tempfile::tempdir().unwrap();
+    let installed = d.path().join(EXT_DIR);
+    let changed = copy_files(&source, &installed).unwrap();
+    assert!(changed.iter().any(|n| n == "extension.js") && changed.iter().any(|n| n == "package.json"), "{changed:?}");
+    assert!(!installed.join("test").exists(), "die Tests gehören nicht in die installierte Extension");
+
+    let mut seen = 0;
+    for name in changed.iter().filter(|n| n.ends_with(".js")) {
+        let code = std::fs::read_to_string(installed.join(name)).unwrap();
+        for part in code.split("require(\"./").skip(1) {
+            let module = part.split('"').next().unwrap();
+            assert!(!module.contains('/'), "{name}: require(\"./{module}\") liegt nicht auf der obersten Ebene");
+            assert!(installed.join(format!("{module}.js")).is_file(), "{name} braucht {module}.js, installiert fehlt es");
+            seen += 1;
+        }
+    }
+    assert!(seen >= 9, "extension.js lädt seine Module über require(\"./…\"), gefunden: {seen}");
+    assert_eq!(compare_files(&source, &installed), FileCheck::default());
+}
