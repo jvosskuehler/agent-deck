@@ -11,7 +11,6 @@ use deck_core::auto_compact;
 use deck_core::claude::settings::{MODEL_CHOICES, WriteValues, effort_label, effort_spec, read_values, write_values};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
-use deck_core::pystr::py_str;
 use deck_core::view::SettingsView;
 use serde_json::Value;
 
@@ -32,7 +31,7 @@ impl Deck {
         let cur = read_values(&self.paths.claude_settings);
         let model = self
             .setting_str("model")
-            .or_else(|| cur.model.as_ref().map(py_str).filter(|m| !m.is_empty()))
+            .or_else(|| cur.model.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).map(String::from))
             .unwrap_or_else(|| MODEL_CHOICES[0].1.to_string());
         let mode = cur.mode.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("auto").to_string();
         let effort = effort_label(cur.effort.as_ref().and_then(Value::as_str), cur.ultracode).to_string();

@@ -86,9 +86,9 @@ fn an_older_answer_is_rebuilt_from_five_hour_and_seven_day() {
 }
 
 #[test]
-fn percent_rounds_like_python() {
+fn percent_rounds_half_up_to_whole_numbers() {
     let limits = parse_usage(&json!({"limits": [{"kind": "session", "percent": 12.5}, {"kind": "five_hour_x", "percent": 13.5}]}), DE);
-    assert_eq!(limits[0].percent, Some(12));
+    assert_eq!(limits[0].percent, Some(13));
     assert_eq!(limits[1].percent, Some(14));
     assert_eq!(limits[1].label, "Five Hour X");
 }

@@ -14,9 +14,6 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-
-use crate::pyjson;
-
 /// Name des Ordners unter `%LOCALAPPDATA%`, gemeinsam mit der Python-Fassung.
 pub const APP_DIR_NAME: &str = "claude-agent-deck";
 
@@ -108,7 +105,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs::rename(&tmp, path)
 }
 
-/// JSON atomar schreiben, Byte für Byte wie Pythons `json.dump(data, f)`.
+/// JSON atomar schreiben, kompakt und als UTF-8.
 pub fn save_json(path: &Path, data: &Value) -> io::Result<()> {
-    atomic_write(path, pyjson::dumps(data).as_bytes())
+    atomic_write(path, &serde_json::to_vec(data)?)
 }

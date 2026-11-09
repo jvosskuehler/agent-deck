@@ -1,6 +1,6 @@
 //! Die Claude-Code-Hooks als kleine Programme: `deck-report <status>` und
-//! `deck-statusline`. Gleiche Dateien, gleiche Felder, gleiche Ausgabe wie die
-//! Python-Fassung (`deck/claude/hooks/report.py`, `statusline.py`, `resolve.py`).
+//! `deck-statusline`. Hervorgegangen aus der Python-Fassung (`deck/claude/hooks/report.py`,
+//! `statusline.py`, `resolve.py`); Dateien und Felder sind dieselben geblieben.
 //!
 //! **Ein Hook endet nie mit Fehler.** Bei UserPromptSubmit und PreToolUse liest Claude
 //! Code einen Exit ≠ 0 als Veto gegen Prompt bzw. Tool-Aufruf. Darum laufen beide
@@ -42,15 +42,12 @@ pub fn read_stdin() -> Option<Vec<u8>> {
 
 /// Das Hook-JSON aus den rohen Bytes. Claude Code liefert IMMER UTF-8; wer die
 /// Konsolen-Codepage nimmt, macht aus „ö“ Mojibake, das dann in der Zustandsdatei und
-/// im Tooltip landet. Kein, leeres oder kaputtes stdin → leeres Objekt. Ein gültiges
-/// JSON, das kein Objekt ist, kommt unverändert zurück (die Aufrufer brechen dann ab,
-/// wie die Python-Fassung an `data.get` scheitert).
-pub fn parse_stdin(raw: Option<&[u8]>) -> Value {
-    let empty = Value::Object(Map::new());
-    let Some(raw) = raw else { return empty };
-    let text = String::from_utf8_lossy(raw);
-    if deck_core::pystr::strip(&text).is_empty() {
-        return empty;
+/// im Tooltip landet. Kein, leeres, kaputtes stdin oder ein JSON, das kein Objekt ist →
+/// leeres Objekt: der Hook meldet dann eben nur, was er ohne Eingabe weiß.
+pub fn parse_stdin(raw: Option<&[u8]>) -> Map<String, Value> {
+    // Verlustbehaftet dekodieren: ein kaputtes Byte kostet ein Zeichen, nicht die Eingabe.
+    match raw.map(|r| serde_json::from_str::<Value>(&String::from_utf8_lossy(r))) {
+        Some(Ok(Value::Object(m))) => m,
+        _ => Map::new(),
     }
-    serde_json::from_str(&text).unwrap_or(empty)
 }

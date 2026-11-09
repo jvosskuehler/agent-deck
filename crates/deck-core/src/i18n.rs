@@ -13,7 +13,6 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::pystr::strip;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Lang {
@@ -27,7 +26,7 @@ impl Lang {
     /// Deutsch (auch ein Nicht-Text: Python fiele dort in seinen Fehlerzweig).
     pub fn normalize(value: Option<&Value>) -> Lang {
         match value {
-            Some(Value::String(s)) if strip(s).to_lowercase().starts_with("en") => Lang::English,
+            Some(Value::String(s)) if s.trim().to_lowercase().starts_with("en") => Lang::English,
             _ => Lang::German,
         }
     }

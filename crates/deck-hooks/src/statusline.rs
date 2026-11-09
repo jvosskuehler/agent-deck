@@ -7,15 +7,17 @@
 //! Leerlauf weiter, und `live.json` bleibt frisch genug, dass das Deck vor dem Ablauf
 //! kompaktieren kann (`deck_core::auto_compact`).
 //!
-//! Gibt IMMER eine Zeile aus (auch ohne Slot), Zeichen für Zeichen wie `statusline.py`,
-//! als UTF-8-Bytes: über die Konsolen-Codepage wurde aus „für“ „f◆r“. Zahlen behalten
-//! ihren JSON-Typ (eine ganze Zahl bleibt ganz), gerundet wird wie Pythons `round`.
+//! Gibt IMMER eine Zeile aus (auch ohne Slot), als UTF-8-Bytes: über die
+//! Konsolen-Codepage wurde aus „für“ „f◆r“. Felder mit falschem Typ gelten als fehlend
+//! (`deck_core::field`). Prozent und Kosten behalten in `live.json` ihren JSON-Typ,
+//! Token-Zahlen sind ganze Zahlen.
 
 use deck_core::claude::hook_setup::STATUSLINE_REFRESH_S;
 use deck_core::i18n::Lang;
 use deck_core::paths::{live_path, load_json, save_json, state_path};
-use deck_core::prompt_cache::{CacheLevel, number, view, working};
-use deck_core::pystr::{PyNum, char_len, py_str, splitlines, squash_ws, strip, take_chars, truthy, truthy_opt};
+use deck_core::field::{number, raw_number, text};
+use deck_core::prompt_cache::{CacheLevel, view, working};
+use deck_core::text::{char_len, first_line, squash_ws, take_chars};
 use serde_json::{Map, Value};
 
 use crate::cache_scan::cache_until;
@@ -26,101 +28,90 @@ use crate::status_extras::{limits, pr_of, pr_part};
 pub const SEP: &str = "  ·  ";
 pub const TITLE_MAX: usize = 70;
 
-/// `_num(*vals)`: der erste Wert, der eine Zahl ist (ein Wahrheitswert zählt mit).
-fn num(vals: &[Option<&Value>]) -> Option<Value> {
-    vals.iter().flatten().find(|v| PyNum::from_value(v).is_some()).map(|v| (*v).clone())
+/// Eine Token-Zahl: eine nicht negative JSON-Zahl, ganz gemacht.
+fn tokens(v: Option<&Value>) -> Option<u64> {
+    let v = v?;
+    v.as_u64().or_else(|| v.as_f64().filter(|f| *f >= 0.0).map(|f| f.round() as u64))
 }
 
-/// Tokens der aktuellen Nachricht (best effort über wechselnde Feldnamen). `None` im
-/// äußeren Option heißt: Python wäre hier gescheitert (`current_usage` kein Objekt).
-fn msg_tokens(cw: &Map<String, Value>) -> Option<Option<Value>> {
-    let empty = Map::new();
-    let cur = match truthy_opt(cw.get("current_usage")) {
-        None => &empty,
-        Some(Value::Object(m)) => m,
-        Some(_) => return None,
-    };
-    let i = num(&[cur.get("input_tokens"), cur.get("input")]);
-    let o = num(&[cur.get("output_tokens"), cur.get("output")]);
-    if i.is_none() && o.is_none() {
-        return Some(num(&[cw.get("total_output_tokens")]));
+/// Tokens der aktuellen Nachricht (Ein- plus Ausgabe, die Feldnamen wechselten über die
+/// Versionen); ohne beide die Ausgabe der ganzen Session.
+fn msg_tokens(cw: &Map<String, Value>) -> Option<u64> {
+    let cur = cw.get("current_usage").and_then(Value::as_object);
+    let first = |keys: [&str; 2]| cur.and_then(|c| keys.iter().find_map(|k| tokens(c.get(*k))));
+    match (first(["input_tokens", "input"]), first(["output_tokens", "output"])) {
+        (None, None) => tokens(cw.get("total_output_tokens")),
+        (i, o) => Some(i.unwrap_or(0) + o.unwrap_or(0)),
     }
-    // `(i or 0) + (o or 0)`: ein falscher Wert wird zur ganzen 0.
-    let part = |v: Option<Value>| v.filter(truthy).and_then(|v| PyNum::from_value(&v)).unwrap_or(PyNum::Int(0));
-    Some(Some(part(i).py_add(part(o)).to_value()))
 }
 
 /// Wie groß der Kontext gerade ist, in Tokens: alles, was die letzte Anfrage
 /// hineingegeben hat (frisch, neu gecacht, aus dem Cache gelesen); die Ausgabe zählt
 /// nicht mit. Das Deck kompaktiert erst ab einer Mindestgröße; Prozent taugen dafür
 /// nicht, weil das Fenster 200k oder 1M groß sein kann.
-fn ctx_tokens(cw: &Map<String, Value>) -> Option<Value> {
+fn ctx_tokens(cw: &Map<String, Value>) -> Option<u64> {
     let cur = cw.get("current_usage").and_then(Value::as_object);
     let keys = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"];
-    let vals: Vec<Option<PyNum>> = keys.iter().map(|k| cur.and_then(|c| c.get(*k)).and_then(PyNum::from_value)).collect();
+    let vals: Vec<Option<u64>> = keys.iter().map(|k| tokens(cur.and_then(|c| c.get(*k)))).collect();
     if vals.iter().any(Option::is_some) {
-        let sum = vals.into_iter().fold(PyNum::Int(0), |acc, v| acc.py_add(v.unwrap_or(PyNum::Int(0))));
-        return Some(sum.to_value());
+        return Some(vals.into_iter().flatten().sum());
     }
-    let pct = num(&[cw.get("used_percentage")]).and_then(|v| PyNum::from_value(&v))?;
-    let size = num(&[cw.get("context_window_size")]).and_then(|v| PyNum::from_value(&v)).filter(|s| s.as_f64() != 0.0)?;
-    PyNum::Float(pct.as_f64() * size.as_f64() / 100.0).to_value().into()
+    let pct = number(cw.get("used_percentage"))?;
+    let size = number(cw.get("context_window_size")).filter(|s| *s > 0.0)?;
+    let t = pct * size / 100.0;
+    (t >= 0.0).then(|| t.round() as u64)
 }
 
-/// Die Live-Werte in der Feldreihenfolge der Python-Fassung. `None`: Python wäre an
-/// einem kaputten Feld gescheitert und hätte gar nichts ausgegeben.
-pub fn extract(data: &Map<String, Value>, now: f64) -> Option<Map<String, Value>> {
+/// Text aus einem Feld, das ein Objekt (`{key: "…"}`) oder direkt ein Text sein kann.
+fn text_or_in<'a>(v: Option<&'a Value>, key: &str) -> Option<&'a str> {
+    match v? {
+        Value::Object(m) => text(m.get(key)),
+        other => text(Some(other)),
+    }
+}
+
+fn or_null<T: Into<Value>>(v: Option<T>) -> Value {
+    v.map_or(Value::Null, Into::into)
+}
+
+/// Die Live-Werte für `live.json`, in fester Feldreihenfolge.
+pub fn extract(data: &Map<String, Value>, now: f64) -> Map<String, Value> {
     let model = match data.get("model") {
-        Some(Value::Object(m)) => truthy_opt(m.get("display_name")).or(m.get("id")).cloned(),
-        Some(v @ Value::String(_)) => Some(v.clone()),
-        _ => None,
-    };
-    let effort = match data.get("effort") {
-        Some(Value::Object(e)) => e.get("level").cloned(),
-        Some(v @ Value::String(_)) => Some(v.clone()),
-        _ => None,
+        Some(Value::Object(m)) => text(m.get("display_name")).or_else(|| text(m.get("id"))),
+        other => text(other),
     };
     let empty = Map::new();
     let cw = data.get("context_window").and_then(Value::as_object).unwrap_or(&empty);
-    let cost = data.get("cost").and_then(Value::as_object).unwrap_or(&empty);
-    let mut rec = Map::new();
-    rec.insert("model".into(), model.unwrap_or(Value::Null));
-    rec.insert("effort".into(), effort.unwrap_or(Value::Null));
-    rec.insert("ctx_pct".into(), num(&[cw.get("used_percentage")]).unwrap_or(Value::Null));
-    let msg = msg_tokens(cw)?;
-    rec.insert("ctx_tokens".into(), ctx_tokens(cw).unwrap_or(Value::Null));
-    rec.insert("msg_tokens".into(), msg.unwrap_or(Value::Null));
-    rec.insert("cost_usd".into(), num(&[cost.get("total_cost_usd")]).unwrap_or(Value::Null));
-    rec.insert("session_name".into(), data.get("session_name").filter(|v| v.is_string()).cloned().unwrap_or(Value::Null));
+    let cost = data.get("cost").and_then(Value::as_object);
     let cache = cache_until(data);
-    rec.insert("cache_until".into(), cache.map_or(Value::Null, |c| c.0.into()));
-    rec.insert("cache_ttl".into(), cache.map_or(Value::Null, |c| c.1.into()));
+    let mut rec = Map::new();
+    rec.insert("model".into(), or_null(model));
+    rec.insert("effort".into(), or_null(text_or_in(data.get("effort"), "level")));
+    rec.insert("ctx_pct".into(), or_null(raw_number(cw.get("used_percentage")).cloned()));
+    rec.insert("ctx_tokens".into(), or_null(ctx_tokens(cw)));
+    rec.insert("msg_tokens".into(), or_null(msg_tokens(cw)));
+    rec.insert("cost_usd".into(), or_null(raw_number(cost.and_then(|c| c.get("total_cost_usd"))).cloned()));
+    rec.insert("session_name".into(), or_null(data.get("session_name").and_then(Value::as_str)));
+    rec.insert("cache_until".into(), or_null(cache.map(|c| c.0)));
+    rec.insert("cache_ttl".into(), or_null(cache.map(|c| c.1)));
     rec.insert("limits".into(), Value::Object(limits(data.get("rate_limits"))));
-    rec.insert("pr".into(), pr_of(data.get("pr")).map_or(Value::Null, Value::Object));
+    rec.insert("pr".into(), or_null(pr_of(data.get("pr"))));
     rec.insert("ts".into(), now.into());
-    Some(rec)
+    rec
 }
 
 /// „B2 · ORPH-4116“: welche Kachel dieses Pane ist und woran es arbeitet. Ticket: im
 /// Deck zugewiesen (tickets.json) oder vom Agenten gemeldet (`state\<slot>.ticket`).
-/// `None`: Python wäre gescheitert (dann bleibt das Etikett leer).
-pub fn label(slot: &str, env: &HookEnv) -> Option<String> {
-    let tickets = match load_json(&env.app_dir.join(deck_core::paths::TICKETS_FILE)) {
-        Some(Value::Object(m)) => m,
-        Some(v) if truthy(&v) => return None,
-        _ => Map::new(),
-    };
-    let mut ticket = truthy_opt(tickets.get(slot)).map(py_str).unwrap_or_default();
+pub fn label(slot: &str, env: &HookEnv) -> String {
+    let tickets = load_json(&env.app_dir.join(deck_core::paths::TICKETS_FILE));
+    let mut ticket = text(tickets.as_ref().and_then(|t| t.get(slot))).unwrap_or_default().to_string();
     if ticket.is_empty() {
         let path = deck_core::paths::found_ticket_path(&env.state_dir, slot);
         if let Ok(bytes) = std::fs::read(path) {
-            // Python liest strikt UTF-8; ein Dekodierfehler bricht das Etikett ab.
-            let text = String::from_utf8(bytes).ok()?.replace("\r\n", "\n");
-            let first = splitlines(strip(&text)).first().copied().unwrap_or("");
-            ticket = take_chars(first, 40).to_string();
+            ticket = take_chars(first_line(String::from_utf8_lossy(&bytes).trim()), 40).to_string();
         }
     }
-    Some(if ticket.is_empty() { slot.to_string() } else { format!("{slot} · {ticket}") })
+    if ticket.is_empty() { slot.to_string() } else { format!("{slot} · {ticket}") }
 }
 
 /// Kopfzeile des Chats, fett: „B2 · ORPH-4116 · PR #347 freigegeben · Überschrift“.
@@ -155,14 +146,14 @@ pub fn cache_part(until: f64, ttl: f64, now: f64, lang: Lang) -> String {
 pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
     let head = header(label, rec.get("session_name").and_then(Value::as_str), rec.get("pr"), lang);
     let mut parts = Vec::new();
-    if let Some(m) = truthy_opt(rec.get("model")) {
-        parts.push(py_str(m));
+    if let Some(m) = text(rec.get("model")) {
+        parts.push(m.to_string());
     }
-    if let Some(e) = truthy_opt(rec.get("effort")) {
-        parts.push(format!("effort {}", py_str(e)));
+    if let Some(e) = text(rec.get("effort")) {
+        parts.push(format!("effort {e}"));
     }
-    if let Some(p) = rec.get("ctx_pct").and_then(PyNum::from_value) {
-        parts.push(format!("ctx {}%", p.round_str()));
+    if let Some(p) = number(rec.get("ctx_pct")) {
+        parts.push(format!("ctx {p:.0}%"));
     }
     // Ohne Ablaufzeit (auch 0.0 = schon kalt laut Claude Code) kein Countdown.
     let nonzero = |k: &str| number(rec.get(k)).filter(|v| *v != 0.0);
@@ -174,24 +165,22 @@ pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
     if !quota.is_empty() {
         parts.push(quota);
     }
-    if let Some(c) = rec.get("cost_usd").and_then(PyNum::from_value) {
-        parts.push(format!("${:.2}", c.as_f64()));
+    if let Some(c) = number(rec.get("cost_usd")) {
+        parts.push(format!("${c:.2}"));
     }
     let body = parts.join(SEP);
     if head.is_empty() { body } else { format!("{head}\n{body}") }
 }
 
 /// Ein Lauf: Live-Datei schreiben (wenn ein Slot feststeht) und die Zeile liefern.
-/// `None` = keine Ausgabe (Python wäre gescheitert).
-pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> Option<String> {
-    let parsed = crate::parse_stdin(stdin);
-    let mut rec = extract(parsed.as_object()?, env.now)?;
+pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
+    let mut rec = extract(&crate::parse_stdin(stdin), env.now);
     // Deck-Zustand ist Beiwerk: ein Fehler hier macht nie die Statuszeile kaputt.
     let mut lbl = String::new();
     if let Some(slot) = env.resolve_slot()
         && save_json(&live_path(&env.state_dir, &slot), &Value::Object(rec.clone())).is_ok()
     {
-        lbl = label(&slot, env).unwrap_or_default();
+        lbl = label(&slot, env);
         // Arbeitet der Agent, kein Timer (`prompt_cache::working`). Nur die Anzeige:
         // live.json behält die Ablaufzeit, das Deck entscheidet selbst.
         let st = load_json(&state_path(&env.state_dir, &slot));
@@ -204,5 +193,5 @@ pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> Option<String> {
     let shows_cache = !rec.get("cache_until").is_none_or(Value::is_null);
     let shows_pr = !rec.get("pr").is_none_or(Value::is_null);
     let lang = if shows_cache || shows_pr { Lang::from_settings(&env.claude_settings) } else { Lang::German };
-    Some(line(&rec, &lbl, lang))
+    line(&rec, &lbl, lang)
 }

@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use deck_core::paths;
-use deck_core::pystr::strip;
 use serde_json::Value;
 
 pub struct HookEnv {
@@ -62,15 +61,10 @@ pub fn unix_now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
-/// `int(k)` für einen pidmap-Schlüssel.
-fn py_int(k: &str) -> Option<i64> {
-    strip(k).replace('_', "").parse().ok()
-}
-
 /// Alle `pidmap-*.json` zu `{pid: slot}` vereinen (PIDs sind global eindeutig).
-/// Kaputte Dateien zählen nicht; ein unlesbarer Schlüssel beendet seine Datei, die
-/// Einträge davor bleiben (wie in Python, das dort mitten in der Schleife abbricht).
-pub fn load_pidmap(dir: &Path) -> HashMap<i64, Value> {
+/// Kaputte Dateien zählen nicht, ebenso Einträge, deren Schlüssel keine PID oder deren
+/// Wert kein Slot-Name ist.
+pub fn load_pidmap(dir: &Path) -> HashMap<u32, String> {
     let mut out = HashMap::new();
     let Ok(rd) = fs::read_dir(dir) else { return out };
     let mut names: Vec<String> = rd.flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
@@ -78,20 +72,19 @@ pub fn load_pidmap(dir: &Path) -> HashMap<i64, Value> {
     for name in names.iter().filter(|n| n.starts_with("pidmap-") && n.ends_with(".json")) {
         let Some(Value::Object(m)) = paths::load_json(&dir.join(name)) else { continue };
         for (k, v) in m {
-            let Some(pid) = py_int(&k) else { break };
-            out.insert(pid, v);
+            if let (Ok(pid), Some(slot)) = (k.trim().parse(), v.as_str().filter(|s| !s.is_empty())) {
+                out.insert(pid, slot.to_string());
+            }
         }
     }
     out
 }
 
-/// Ersten eigenen Vorfahren finden, der in der pidmap steht: dessen Slot. Ist der dort
-/// eingetragene Wert kein Text (oder leer), gibt es keinen Slot.
+/// Ersten eigenen Vorfahren finden, der in der pidmap steht: dessen Slot.
 pub fn slot_from_procs(dir: &Path, ancestors: &dyn Fn() -> Vec<u32>) -> Option<String> {
     let pm = load_pidmap(dir);
     if pm.is_empty() {
         return None;
     }
-    let hit = ancestors().into_iter().find_map(|pid| pm.get(&i64::from(pid)))?;
-    hit.as_str().filter(|s| !s.is_empty()).map(String::from)
+    ancestors().into_iter().find_map(|pid| pm.get(&pid).cloned())
 }

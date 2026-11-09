@@ -12,7 +12,7 @@
 //!    `PENDING_AUTO_TTL` abläuft.
 
 use crate::config::{AUTO_MAX_TRIES, AUTO_READY_GRACE, PENDING_AUTO_TTL};
-use crate::pystr::py_float;
+use crate::field::number;
 use crate::slot_state::SlotState;
 
 /// Fortschritt eines vorgemerkten Slots.
@@ -53,7 +53,7 @@ pub enum AutoStep {
 }
 
 fn ts_of(st: &SlotState) -> f64 {
-    st.get("ts").and_then(py_float).unwrap_or(0.0)
+    number(st.get("ts")).unwrap_or(0.0)
 }
 
 /// Ein Takt für einen Slot. `cycle` ist die Shift+Tab-Reihenfolge, `target`/`start`

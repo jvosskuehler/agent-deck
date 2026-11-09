@@ -10,7 +10,7 @@
 use serde_json::Value;
 
 use crate::claude::refs::Turn;
-use crate::pystr::{char_len, rstrip, skip_chars, splitlines, squash_ws, strip, take_chars};
+use crate::text::{char_len, skip_chars, squash_ws, take_chars};
 
 const INSTRUCTION_DE: &str = "Unten steht der Verlauf eines Coding-Chats zwischen einem Nutzer und einem KI-Agenten. Fasse in EINEM knappen deutschen Satz (hoechstens 12 Woerter) zusammen, WORUM es in dem Chat geht bzw. woran gerade gearbeitet wird - nur das Thema/die Aufgabe, keine Meta-Kommentare ueber den Chat selbst. Antworte ausschliesslich mit diesem einen Satz: ohne Anfuehrungszeichen, ohne Praefix, ohne Aufzaehlung, und benutze KEINE Tools.\n\n--- Chat ---\n";
 
@@ -31,7 +31,7 @@ fn turn_of(rec: &Value) -> Option<Turn> {
     match rec.get("type")?.as_str()? {
         "user" => {
             // Eine Liste ist ein Tool-Ergebnis, kein getippter Text.
-            let text = strip(content?.as_str()?);
+            let text = content?.as_str()?.trim();
             if text.is_empty() || text.starts_with('<') || text.starts_with("Caveat:") {
                 return None;
             }
@@ -43,10 +43,10 @@ fn turn_of(rec: &Value) -> Option<Turn> {
                 .iter()
                 .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
                 .filter_map(|b| b.get("text").and_then(Value::as_str))
-                .map(strip)
+                .map(str::trim)
                 .filter(|p| !p.is_empty())
                 .collect();
-            let text = strip(&parts.join("\n")).to_string();
+            let text = parts.join("\n").trim().to_string();
             (!text.is_empty()).then(|| ("assistant".into(), text))
         }
         _ => None,
@@ -60,7 +60,7 @@ pub fn extract_turns<S: AsRef<str>>(lines: &[S]) -> Vec<Turn> {
     lines
         .iter()
         .filter_map(|ln| {
-            let s = strip(ln.as_ref());
+            let s = ln.as_ref().trim();
             if s.is_empty() {
                 return None;
             }
@@ -100,7 +100,7 @@ pub fn transcript_lines(text: &str) -> Vec<&str> {
 fn fmt_turn(role: &str, text: &str, per_turn: usize) -> String {
     let mut text = squash_ws(text);
     if char_len(&text) > per_turn {
-        text = format!("{}…", rstrip(take_chars(&text, per_turn)));
+        text = format!("{}…", take_chars(&text, per_turn).trim_end());
     }
     let role = match role {
         "user" => "User",
@@ -139,25 +139,25 @@ pub fn build_digest(turns: &[Turn], max_chars: usize, per_turn: usize) -> String
 /// Anführungszeichen und ein Präfix („Zusammenfassung:“ …) weg, Leerraum geglättet,
 /// hart auf `max_len` gekürzt.
 pub fn clean_summary(raw: &str, max_len: usize) -> String {
-    let Some(first) = splitlines(raw).into_iter().map(strip).find(|l| !l.is_empty()) else {
+    let Some(first) = raw.lines().map(str::trim).find(|l| !l.is_empty()) else {
         return String::new();
     };
     let mut text = first.to_string();
     let (head, tail) = (text.chars().next(), text.chars().next_back());
     if char_len(&text) >= 2 && head.is_some_and(|c| QUOTES.contains(c)) && tail.is_some_and(|c| QUOTES.contains(c)) {
         let inner: String = text.chars().skip(1).take(char_len(&text) - 2).collect();
-        text = strip(&inner).to_string();
+        text = inner.trim().to_string();
     }
     for pre in ["zusammenfassung:", "thema:", "summary:", "worum es geht:", "topic:"] {
         let n = pre.chars().count();
         if take_chars(&text, n).to_lowercase() == pre {
-            text = strip(skip_chars(&text, n)).to_string();
+            text = skip_chars(&text, n).trim().to_string();
             break;
         }
     }
     let mut text = squash_ws(&text);
     if char_len(&text) > max_len {
-        text = format!("{}…", rstrip(take_chars(&text, max_len)));
+        text = format!("{}…", take_chars(&text, max_len).trim_end());
     }
     text
 }

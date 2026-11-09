@@ -34,10 +34,11 @@ pub fn norm_account(value: Option<&Value>) -> Option<String> {
 }
 
 /// Konto aus der Antwort von `api/oauth/profile`: `account.email_address`, sonst
-/// `account.email`. Ein leeres erstes Feld zählt wie ein fehlendes (Pythons `or`).
+/// `account.email`. Ein leeres erstes Feld zählt wie ein fehlendes (wie im Python-Poller,
+/// sonst stünden in beiden Fassungen verschiedene Konten im gemeinsamen Cache).
 pub fn account_from_profile(body: &Value) -> Option<String> {
     let acc = body.get("account")?;
-    let pick = |k: &str| acc.get(k).filter(|v| deck_core::pystr::truthy(v));
+    let pick = |k: &str| acc.get(k).filter(|v| deck_core::field::text(Some(v)).is_some());
     norm_account(pick("email_address").or_else(|| pick("email")))
 }
 

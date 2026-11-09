@@ -188,7 +188,7 @@ pub fn merge(settings: &Map<String, Value>, bin_dir: &str, opts: MergeOptions) -
     }
 
     let cur = settings.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str);
-    let cur_owner = cur.filter(|c| !crate::pystr::strip(c).is_empty()).map(owner);
+    let cur_owner = cur.filter(|c| !c.trim().is_empty()).map(owner);
     if cur_owner == Some(Owner::Foreign) && !opts.force_statusline {
         notes.push(("warn", "statusLine gehoert einem anderen Werkzeug und bleibt stehen — Modell, Effort und \
                             Kontext-% bleiben auf den Kacheln leer (mit --force ersetzen)".into()));
@@ -308,7 +308,7 @@ pub fn audit(
         }
     }
     let cur = settings.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str);
-    match cur.filter(|c| !crate::pystr::strip(c).is_empty()) {
+    match cur.filter(|c| !c.trim().is_empty()) {
         None => out.push(("warn", "statusLine fehlt — Modell, Effort und Kontext-% bleiben auf den Kacheln leer".into())),
         Some(c) => match owner(c) {
             Owner::Foreign => out.push(("warn", "statusLine gehoert einem anderen Werkzeug — Modell, Effort und Kontext-% bleiben leer".into())),

@@ -10,7 +10,7 @@
 //!   (offen, Review fehlt oder ist nicht verlangt).
 
 use deck_core::i18n::Lang;
-use deck_core::pystr::PyNum;
+use deck_core::field::{number, raw_number};
 use serde_json::{Map, Value};
 
 /// Die Limits, die gezeigt werden, mit Kurzname; alles andere (`spend_limit` …) nicht.
@@ -26,8 +26,8 @@ pub fn limits(raw: Option<&Value>) -> Map<String, Value> {
     let mut out = Map::new();
     for (key, _) in LIMITS {
         let Some(lim) = raw.and_then(|r| r.get(key)).and_then(Value::as_object) else { continue };
-        let Some(pct) = lim.get("used_percentage").filter(|v| PyNum::from_value(v).is_some()) else { continue };
-        let resets_at = lim.get("resets_at").filter(|v| PyNum::from_value(v).is_some()).cloned().unwrap_or(Value::Null);
+        let Some(pct) = raw_number(lim.get("used_percentage")) else { continue };
+        let resets_at = raw_number(lim.get("resets_at")).cloned().unwrap_or(Value::Null);
         let mut entry = Map::new();
         entry.insert("pct".into(), pct.clone());
         entry.insert("resets_at".into(), resets_at);
@@ -43,12 +43,11 @@ pub fn limits_part(limits: Option<&Value>, now: f64) -> String {
     let mut parts = Vec::new();
     for (key, short) in LIMITS {
         let Some(lim) = limits.and_then(|l| l.get(key)).and_then(Value::as_object) else { continue };
-        let Some(pct) = lim.get("pct").and_then(PyNum::from_value) else { continue };
-        if lim.get("resets_at").and_then(PyNum::from_value).is_some_and(|r| r.as_f64() <= now) {
+        let Some(p) = number(lim.get("pct")) else { continue };
+        if number(lim.get("resets_at")).is_some_and(|r| r <= now) {
             continue;
         }
-        let text = format!("{short} {}%", pct.round_str());
-        let p = pct.as_f64();
+        let text = format!("{short} {p:.0}%");
         parts.push(match p {
             p if p < 50.0 => text,
             p if p < 80.0 => format!("{YELLOW}{text}\x1b[0m"),

@@ -15,7 +15,6 @@ use crate::binding::is_placeholder_ws;
 use crate::paths::{
     BINDINGS_FILE, EFFORT_FILE, ORDER_FILE, SETTINGS_FILE, TICKETS_FILE, WIN_ORDER_FILE, load_json, save_json,
 };
-use crate::pystr::{py_str, strip};
 
 /// Die Laufzeitdaten der Bindung. Die Felder mutiert der Aufrufer direkt und ruft danach
 /// das passende `save_*`.
@@ -45,7 +44,7 @@ impl BindStore {
         s.bindings = s.load_bindings();
         s.effort = string_map(load_json(&s.path(EFFORT_FILE)), |v| v.as_str().map(String::from));
         s.tickets = string_map(load_json(&s.path(TICKETS_FILE)), |v| {
-            v.as_str().filter(|t| !strip(t).is_empty()).map(String::from)
+            v.as_str().filter(|t| !t.trim().is_empty()).map(String::from)
         });
         s.settings = match load_json(&s.path(SETTINGS_FILE)) {
             Some(Value::Object(m)) => m,
@@ -75,11 +74,10 @@ impl BindStore {
         let total = raw.len();
         let clean: BTreeMap<String, String> = raw
             .into_iter()
-            .filter(|(_, v)| match v {
-                Value::String(s) => !is_placeholder_ws(Some(s)),
-                other => crate::pystr::truthy(other) && !is_placeholder_ws(Some(&py_str(other))),
+            .filter_map(|(w, v)| match v {
+                Value::String(s) if !is_placeholder_ws(Some(&s)) => Some((w, s)),
+                _ => None,
             })
-            .map(|(w, v)| (w, py_str(&v)))
             .collect();
         if clean.len() != total {
             self.save(BINDINGS_FILE, to_object(&clean));

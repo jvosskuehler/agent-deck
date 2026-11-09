@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::i18n::Lang;
 use crate::isotime::parse_iso;
-use crate::pystr::{PyNum, py_str, round_half_even, truthy};
+use crate::field::{flag, number, text};
 use crate::view::{LimitView, UsageView};
 
 pub const GREEN: &str = "#6ee7a8";
@@ -166,9 +166,7 @@ fn limit_label(lim: &serde_json::Map<String, Value>, lang: Lang) -> String {
             .and_then(Value::as_object)
             .and_then(|s| s.get("model"))
             .and_then(Value::as_object)
-            .and_then(|m| m.get("display_name"))
-            .filter(|v| truthy(v))
-            .map(py_str);
+            .and_then(|m| text(m.get("display_name")));
         return match model {
             Some(m) => format!("{m} {}", lang.l("(Woche)", "(week)")),
             None => lang.l("Woche (Modell)", "Week (model)").into(),
@@ -181,12 +179,9 @@ fn limit_label(lim: &serde_json::Map<String, Value>, lang: Lang) -> String {
     if t.is_empty() { "Limit".into() } else { t }
 }
 
-/// `round(v)` für Zahlen, sonst `None`.
+/// Auf ganze Prozent gerundet; keine Zahl → `None`.
 fn pct(v: Option<&Value>) -> Option<i64> {
-    match PyNum::from_value(v?)? {
-        PyNum::Int(i) => i64::try_from(i).ok(),
-        PyNum::Float(f) => Some(round_half_even(f) as i64),
-    }
+    number(v).map(|f| f.round() as i64)
 }
 
 fn opt_str(v: Option<&Value>) -> Option<String> {
@@ -207,7 +202,7 @@ pub fn parse_usage(data: &Value, lang: Lang) -> Vec<Limit> {
                 percent: pct(lim.get("percent")),
                 severity: opt_str(lim.get("severity")).unwrap_or_default(),
                 resets_at: opt_str(lim.get("resets_at")),
-                active: lim.get("is_active").is_some_and(truthy),
+                active: flag(lim.get("is_active")),
                 stale: false,
             })
             .collect();

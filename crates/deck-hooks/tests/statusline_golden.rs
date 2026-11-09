@@ -40,7 +40,7 @@ fn full() -> Value {
 }
 
 fn run_with(env: &HookEnv, stdin: &Value) -> String {
-    run(env, Some(stdin.to_string().as_bytes())).unwrap()
+    run(env, Some(stdin.to_string().as_bytes()))
 }
 
 #[test]

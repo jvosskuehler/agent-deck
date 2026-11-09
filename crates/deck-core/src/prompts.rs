@@ -8,7 +8,7 @@ use std::path::Path;
 
 use crate::binding::{jira_key, ticket_branch, ticket_slug};
 use crate::paths::worktree_marker_path;
-use crate::pystr::squash_ws;
+use crate::text::squash_ws;
 
 /// Prompt für ein zugewiesenes Ticket in einem Repo. Platzhalter: {jira_key} {ticket}
 /// {branch} {slug} {wt_marker} {task}.
@@ -82,7 +82,7 @@ pub fn ticket_prompt(
     jira_prefix: &str,
     hub_root: Option<&str>,
 ) -> String {
-    let trimmed = crate::pystr::strip(ticket);
+    let trimmed = ticket.trim();
     let branch = Some(ticket_branch(ticket, None)).filter(|b| !b.is_empty()).unwrap_or_else(|| format!("ticket/{trimmed}"));
     let slug = Some(ticket_slug(ticket)).filter(|s| !s.is_empty()).unwrap_or_else(|| "ticket".into());
     let jira = Some(jira_key(ticket, Some(jira_prefix))).filter(|j| !j.is_empty()).unwrap_or_else(|| trimmed.into());

@@ -10,9 +10,9 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
+use deck_core::field::flag;
 use deck_core::isotime::parse_iso;
 use deck_core::prompt_cache::{TTL_1H, TTL_5M, number, ttl_seconds};
-use deck_core::pystr::truthy_opt;
 use serde_json::{Map, Value};
 
 /// So viel vom Transcript-Ende wird gelesen. Die letzte Anfrage steht fast immer in den
@@ -45,16 +45,15 @@ pub fn ttl_of(entry: &Map<String, Value>) -> Option<u32> {
         return marks
             .iter()
             .filter_map(Value::as_object)
-            .filter_map(|m| match truthy_opt(m.get("value")) {
-                None => ttl_seconds(Some(&default)),
+            .filter_map(|m| match m.get("value") {
                 Some(Value::Object(v)) => ttl_seconds(Some(v.get("ttl").unwrap_or(&default))),
-                Some(_) => None,
+                _ => ttl_seconds(Some(&default)),
             })
             .min();
     }
     let usage = obj(obj(entry.get("message")).and_then(|m| m.get("usage")));
     let made = obj(usage.and_then(|u| u.get("cache_creation")));
-    let has = |k: &str| truthy_opt(made.and_then(|m| m.get(k))).is_some();
+    let has = |k: &str| number(made.and_then(|m| m.get(k))).is_some_and(|n| n > 0.0);
     if has("ephemeral_1h_input_tokens") {
         Some(TTL_1H)
     } else if has("ephemeral_5m_input_tokens") {
@@ -81,7 +80,7 @@ pub fn scan<'a>(lines: impl DoubleEndedIterator<Item = &'a str>) -> Option<Scan>
         }
         // Auch die angeschnittene erste Zeile fällt hier heraus.
         let Ok(Value::Object(entry)) = serde_json::from_str::<Value>(line) else { continue };
-        if truthy_opt(entry.get("isSidechain")).is_some() {
+        if flag(entry.get("isSidechain")) {
             continue;
         }
         let kind = entry.get("type").and_then(Value::as_str);

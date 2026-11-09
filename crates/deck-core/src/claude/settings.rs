@@ -13,8 +13,7 @@ use std::time::SystemTime;
 use serde_json::{Map, Value};
 
 use crate::paths::{atomic_write, home_dir};
-use crate::pyjson::dumps_pretty;
-use crate::pystr::{py_str, strip, truthy};
+use crate::field::flag;
 
 /// `%USERPROFILE%\.claude\settings.json`, dieselbe Datei, in der Hooks und statusLine
 /// stehen.
@@ -82,10 +81,10 @@ pub fn load(path: &Path) -> Map<String, Value> {
     }
 }
 
-/// Atomar und eingerückt schreiben, Umlaute bleiben lesbar (wie `json.dump(indent=2,
-/// ensure_ascii=False)`).
+/// Atomar und eingerückt schreiben (zwei Leerzeichen, Umlaute bleiben lesbar); die
+/// Schlüssel behalten ihre Reihenfolge (`preserve_order`).
 pub fn save(data: &Map<String, Value>, path: &Path) -> std::io::Result<()> {
-    atomic_write(path, dumps_pretty(&Value::Object(data.clone())).as_bytes())
+    atomic_write(path, &serde_json::to_vec_pretty(data)?)
 }
 
 /// Die gesteuerten Werte, roh wie in der Datei (nicht gesetzt → `None`).
@@ -109,7 +108,7 @@ pub fn read_values(path: &Path) -> ClaudeValues {
         model: non_null(d.get("model")),
         mode: non_null(perms.and_then(|p| p.get("defaultMode"))),
         effort: non_null(d.get("effortLevel")),
-        ultracode: d.get("ultracode").is_some_and(truthy),
+        ultracode: flag(d.get("ultracode")),
         language: non_null(d.get("language")),
     }
 }
@@ -201,9 +200,7 @@ pub fn label_to_value(choices: &[(&str, &'static str)], label: &str) -> &'static
 /// vor `[` (`opus` aus `opus[1m]`, auch aus `claude-opus-5`). Nichts passt → erster
 /// Eintrag.
 pub fn value_to_label<'a>(choices: &[(&'a str, &str)], value: Option<&Value>, contains: bool) -> &'a str {
-    if let Some(v) = value.filter(|v| !v.is_null()) {
-        let raw = py_str(v);
-        let s = strip(&raw);
+    if let Some(s) = value.and_then(Value::as_str).map(str::trim) {
         if let Some((l, _)) = choices.iter().find(|(_, val)| *val == s) {
             return l;
         }
