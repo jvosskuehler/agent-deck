@@ -14,9 +14,10 @@
 
 use std::path::{Path, PathBuf};
 
+use deck_core::paths::atomic_write_with;
 use serde_json::{Map, Value, json};
 
-use crate::fsutil::{atomic_write_with, backup, normcase};
+use crate::fsutil::{backup, normcase};
 use crate::guard;
 use crate::report::{Grade, Report};
 

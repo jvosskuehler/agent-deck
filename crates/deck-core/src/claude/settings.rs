@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 
 use crate::paths::{atomic_write, home_dir};
 use crate::pyjson::dumps_pretty;
-use crate::pystr::{py_str, strip, truthy};
+use crate::pystr::truthy;
 
 /// `%USERPROFILE%\.claude\settings.json`, dieselbe Datei, in der Hooks und statusLine
 /// stehen.
@@ -28,21 +28,9 @@ pub fn settings_path() -> PathBuf {
 pub const MODEL_CHOICES: [(&str, &str); 4] =
     [("Opus (1M)", "opus[1m]"), ("Fable", "fable"), ("Sonnet", "sonnet"), ("Haiku", "haiku")];
 
-/// Start-Permission-Modi. Fehlte Bypass, machte das Einstellungsfenster beim nächsten
-/// Speichern still „Auto“ daraus.
-pub const MODE_CHOICES: [(&str, &str); 5] = [
-    ("Auto", "auto"),
-    ("Standard", "default"),
-    ("Accept Edits", "acceptEdits"),
-    ("Plan", "plan"),
-    ("Bypass", BYPASS_MODE),
-];
-
 /// Bypass = Claude Code fragt nie. Den Warnhinweis beim ersten Start bestätigt der
 /// Mensch selbst; `skipDangerousModePermissionPrompt` schreibt das Deck bewusst nicht.
 pub const BYPASS_MODE: &str = "bypassPermissions";
-
-pub const LANG_CHOICES: [(&str, &str); 2] = [("Englisch", "english"), ("Deutsch", "german")];
 
 /// Effort-Auswahl. „Ultracode“ ist KEIN effortLevel, sondern xhigh plus der Schalter
 /// `ultracode`; die Auswahl bildet also auf zwei Felder ab.
@@ -190,32 +178,4 @@ impl DefaultModeCache {
         self.hits.insert(path.to_path_buf(), (stamp, mode.clone()));
         mode
     }
-}
-
-/// Anzeige → Wert (Rückfall: erster Eintrag).
-pub fn label_to_value(choices: &[(&str, &'static str)], label: &str) -> &'static str {
-    choices.iter().find(|(l, _)| *l == label).map_or(choices[0].1, |(_, v)| *v)
-}
-
-/// Wert → Anzeige. Erst exakt, dann (mit `contains`) per Teilstring auf dem Basisnamen
-/// vor `[` (`opus` aus `opus[1m]`, auch aus `claude-opus-5`). Nichts passt → erster
-/// Eintrag.
-pub fn value_to_label<'a>(choices: &[(&'a str, &str)], value: Option<&Value>, contains: bool) -> &'a str {
-    if let Some(v) = value.filter(|v| !v.is_null()) {
-        let raw = py_str(v);
-        let s = strip(&raw);
-        if let Some((l, _)) = choices.iter().find(|(_, val)| *val == s) {
-            return l;
-        }
-        if contains && !s.is_empty() {
-            let sl = s.to_lowercase();
-            for (l, val) in choices {
-                let base = val.split('[').next().unwrap_or("").to_lowercase();
-                if !base.is_empty() && (sl.contains(&base) || base.contains(&sl)) {
-                    return l;
-                }
-            }
-        }
-    }
-    choices[0].0
 }

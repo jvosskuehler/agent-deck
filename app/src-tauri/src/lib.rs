@@ -35,6 +35,7 @@ pub mod ui_windows;
 pub mod window_sync;
 pub mod worker;
 pub mod wt_host;
+pub mod wt_setup;
 pub mod wt_tiles;
 
 #[cfg(test)]
@@ -64,7 +65,8 @@ use crate::hosts::Hosts;
 use crate::services::Services;
 use crate::state::AppState;
 use crate::worker::Worker;
-use crate::wt_host::{WtEffects, WtHost};
+use crate::wt_host::WtHost;
+use crate::wt_setup::WtEffects;
 
 /// Unix-Sekunden als Float, wie `ts` in den Zustandsdateien.
 pub fn now() -> f64 {
@@ -95,7 +97,7 @@ pub fn run() {
         console: Arc::new(HelperConsole::beside_exe()),
         launcher: Arc::new(launcher::ProcessLauncher),
     };
-    let setup = wt_host::real_setup(&paths.app_dir, &paths.state_dir, paths.wt_agent_script());
+    let setup = wt_setup::real_setup(&paths.app_dir, &paths.state_dir, paths.wt_agent_script());
     let wt = WtHost::new(setup, fx, Worker::spawn("wt-host"), now);
     let host_map = wt.host_map();
     let agent_group = deck_win::taskbar::TaskbarGroup {
@@ -109,10 +111,10 @@ pub fn run() {
     let mut deck = Deck::new(paths.clone(), hosts, desktop.clone(), services);
     deck.ensure_home_terminal();
     let edge = deck.dock_edge();
-    let along = dock::saved_along(&deck.store.settings);
+    let along = deck_core::dock::saved_along(&deck.store.settings);
     let mut dock_ctl = DockCtl::new(edge, along);
-    dock_ctl.free = dock::saved_free(&deck.store.settings);
-    dock_ctl.zoom_user = dock::saved_zoom(&deck.store.settings);
+    dock_ctl.free = deck_core::dock::saved_free(&deck.store.settings);
+    dock_ctl.zoom_user = deck_core::dock::saved_zoom(&deck.store.settings);
     // Wie Python: fehlt der Schlüssel, gilt die Vorgabe; ein leerer Wert schaltet ab.
     let combo = match deck.store.settings.get("jump_hotkey") {
         Some(serde_json::Value::String(s)) => s.clone(),

@@ -17,7 +17,8 @@ use crate::hosts::Hosts;
 use crate::services::Services;
 use crate::testing::{FakeConsole, FakeDesktop, FakeLauncher, FakeProcesses, FakeVsCode};
 use crate::worker::Worker;
-use crate::wt_host::{WtEffects, WtHost, WtSetup};
+use crate::wt_host::WtHost;
+use crate::wt_setup::{WtEffects, WtSetup};
 
 static CLOCK: AtomicU64 = AtomicU64::new(1_000_000);
 
