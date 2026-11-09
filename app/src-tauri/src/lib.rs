@@ -24,6 +24,7 @@ pub mod hotkey;
 pub mod launcher;
 pub mod menu;
 pub mod native;
+pub mod orphans;
 pub mod poll;
 pub mod services;
 pub mod settings;
@@ -170,6 +171,8 @@ pub fn run() {
             commands::show_block_menu,
             commands::panel_hold,
             commands::panel_drag,
+            orphans::kill_orphan,
+            orphans::kill_all_orphans,
         ])
         .setup(move |app| {
             let handle = app.handle();

@@ -175,6 +175,9 @@ export function PanelView() {
             lang={lang}
             onOpenUsage={commands.openUsagePage}
             onOpenSettings={commands.openSettings}
+            orphans={view?.orphans ?? []}
+            onKillOrphan={commands.killOrphan}
+            onKillAllOrphans={commands.killAllOrphans}
           />
           {edge === "off" && (
             <span
@@ -215,7 +218,7 @@ export function PanelView() {
 function startMove(e: PointerEvent<HTMLElement>) {
   if (e.button !== 0) return;
   const target = e.target as Element;
-  if (target.closest("button, input, [role='button'], .tile, .usage-tip, .panel-grip")) return;
+  if (target.closest("button, input, [role='button'], .tile, .usage-tip, .orphans-pop, .panel-grip")) return;
   e.preventDefault();
   commands.panelDrag("move", e.clientX, e.clientY);
 }

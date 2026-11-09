@@ -251,6 +251,7 @@ impl Deck {
             usage,
         };
         let mut view = build_deck_view(&input, &mut self.memory);
+        view.orphans = self.services.orphan_rows(now, self.lang);
         for b in &mut view.blocks {
             b.binding = self.binding(&b.letter);
         }

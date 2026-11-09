@@ -67,6 +67,10 @@ export interface Commands {
   get_ticket: { args: Record<string, never>; ret: TicketView | null };
   /** Ticket zuweisen (Text) oder abbrechen (null); schließt den Dialog. */
   submit_ticket: { args: { ticket: string | null }; ret: void };
+  /** „Läuft noch ohne Fenster“: eine Zeile beenden (Baum, mit Nachweis; Fehler stehen in der Zeile). */
+  kill_orphan: { args: { id: string }; ret: void };
+  /** „Alle beenden“. */
+  kill_all_orphans: { args: Record<string, never>; ret: void };
 }
 
 export type CommandName = keyof Commands;

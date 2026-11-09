@@ -19,6 +19,7 @@
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
 //! | [`vscode_ext`] | `ops/vscode_ext.py` + Kopierschritt aus `install.ps1` | nichts |
 //! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`orphans`] | (neu) „Läuft noch ohne Fenster“ | den Scan-Thread |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
@@ -27,6 +28,7 @@ pub mod guard;
 pub mod heartbeat;
 pub mod install;
 pub mod logfile;
+pub mod orphans;
 pub mod report;
 pub mod summary;
 pub mod usage;

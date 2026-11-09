@@ -153,6 +153,38 @@ pub struct DeckView {
     pub urgent: Option<Status>,
     /// Oberflächensprache, „de“ oder „en“.
     pub lang: String,
+    /// „Läuft noch ohne Fenster“: Prozesse aus geschlossenen Agentenfenstern, fertig
+    /// sortiert. Leer = der Hinweis in der Leiste fehlt ganz.
+    #[serde(default)]
+    pub orphans: Vec<OrphanView>,
+}
+
+/// Eine Zeile in „Läuft noch ohne Fenster“: ein Prozessbaum aus einem geschlossenen
+/// Agentenfenster (`deck_core::orphans`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct OrphanView {
+    /// Kennung für `kill_orphan` (`pid-startzeit`, als Text: die Startzeit ist größer,
+    /// als eine JavaScript-Zahl genau fasst).
+    pub id: String,
+    pub pid: u32,
+    /// Lauschende TCP-Ports des ganzen Baums, aufsteigend.
+    pub ports: Vec<u16>,
+    /// `:3000`, `:3000 :3001`, `:3000 +2` oder „kein Port“.
+    pub port_text: String,
+    /// Programm ohne `.exe` (`node`, `dotnet`).
+    pub program: String,
+    /// Kurze Kommandozeile (`pnpm nx serve management-ui`).
+    pub command: String,
+    /// Volle Kommandozeile für den Hover.
+    pub command_full: String,
+    /// Herkunft: „A2 · zu seit 14 min“.
+    pub origin: String,
+    /// Wird gerade beendet.
+    pub busy: bool,
+    /// Beenden ist gescheitert: warum.
+    pub error: Option<String>,
 }
 
 /// Inhalt des Hover-Tooltips einer Kachel.

@@ -1,26 +1,31 @@
 // Untere Leiste: links die Nutzung (Ampelpunkt, „Session 34 %“, „Woche 61 %“), rechts das
-// Zahnrad. Hover über der Nutzung zeigt Resets, weitere Limits, Stand und Fehler; Klick
+// Zahnrad, davor (nur wenn es welche gibt) „2 ohne Fenster“ (OrphanHint.tsx). Hover über der Nutzung zeigt Resets, weitere Limits, Stand und Fehler; Klick
 // öffnet claude.ai/settings/usage.
 //
 // Der Hover-Text steht im Panel selbst über der Leiste, nicht in einem eigenen Fenster:
 // das Panel-Fenster ist genau so groß wie sein Inhalt, nach unten wäre kein Platz.
 
 import { useState } from "react";
+import type { OrphanView } from "../../bindings/OrphanView";
 import type { UsageView } from "../../bindings/UsageView";
 import { t, type Lang } from "../../logic/i18n";
 import type { Scheme } from "../../logic/palette";
 import { dotColor, percentText } from "../../logic/usage";
 import { useScheme } from "../useScheme";
 import { GearIcon } from "../icons";
+import { OrphanHint } from "./OrphanHint";
 
 interface Props {
   usage: UsageView | null;
   lang: Lang;
   onOpenUsage(): void;
   onOpenSettings(): void;
+  orphans: OrphanView[];
+  onKillOrphan(id: string): void;
+  onKillAllOrphans(): void;
 }
 
-export function BottomBar({ usage, lang, onOpenUsage, onOpenSettings }: Props) {
+export function BottomBar({ usage, lang, onOpenUsage, onOpenSettings, orphans, onKillOrphan, onKillAllOrphans }: Props) {
   const [tipOpen, setTipOpen] = useState(false);
   const scheme = useScheme();
 
@@ -49,6 +54,7 @@ export function BottomBar({ usage, lang, onOpenUsage, onOpenSettings }: Props) {
         </button>
       )}
       <span className="bar-spacer" />
+      {orphans.length > 0 && <OrphanHint orphans={orphans} lang={lang} onKill={onKillOrphan} onKillAll={onKillAllOrphans} />}
       <button
         type="button"
         className="bar-gear"

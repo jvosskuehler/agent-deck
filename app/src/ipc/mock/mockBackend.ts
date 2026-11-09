@@ -4,7 +4,8 @@
 //
 // Startwerte über die Adresse: ?lang=en, ?edge=left, ?phase=closed, ?mode=bypassPermissions,
 // ?still=1 (keine Zustandswechsel, für Screenshots), ?blocks=3 (dritter Block, Remote),
-// ?binding=A (Block A wartet auf den Klick in ein Fenster), ?zoom=0.8.
+// ?binding=A (Block A wartet auf den Klick in ein Fenster), ?zoom=0.8, ?orphans=0 (keine
+// Prozesse ohne Fenster), ?orphanError=1 (eine Zeile mit Fehler vom letzten Beenden).
 // Playwright steuert über window.__deckMock.
 
 import type { DeckView } from "../../bindings/DeckView";
@@ -14,7 +15,8 @@ import type { Status } from "../../bindings/Status";
 import type { TileView } from "../../bindings/TileView";
 import { langFromSetting, type Lang } from "../../logic/i18n";
 import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRect, Unlisten } from "../contract";
-import { initialBlocks, initialSettings, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
+import type { OrphanView } from "../../bindings/OrphanView";
+import { initialBlocks, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
 
@@ -58,7 +60,17 @@ export function createMockBackend(): Backend {
   const bindingLetter = params.get("binding");
   if (bindingLetter) for (const b of blocks) b.binding = b.letter === bindingLetter;
 
-  const view = (): DeckView => ({ blocks, usage: usage(lang), urgent: urgentOf(blocks), lang });
+  let orphans: OrphanView[] = params.get("orphans") === "0" ? [] : mockOrphans(lang, params.get("orphanError") === "1");
+  const view = (): DeckView => ({ blocks, usage: usage(lang), urgent: urgentOf(blocks), lang, orphans });
+  // Beenden wie im echten Deck: erst „beendet…“, dann verschwindet die Zeile.
+  const killOrphans = (ids: string[]) => {
+    orphans = orphans.map((o) => (ids.includes(o.id) ? { ...o, busy: true, error: null } : o));
+    pushView();
+    window.setTimeout(() => {
+      orphans = orphans.filter((o) => !ids.includes(o.id));
+      pushView();
+    }, 700);
+  };
 
   const emit = <E extends EventName>(event: E, payload: EventPayloads[E]) => {
     handlers.get(event)?.forEach((h) => h(structuredClone(payload)));
@@ -155,6 +167,8 @@ export function createMockBackend(): Backend {
       if (key === "language") {
         lang = langFromSetting(String(value));
         relabel();
+        const keep = new Set(orphans.map((o) => o.id));
+        orphans = mockOrphans(lang, params.get("orphanError") === "1").filter((o) => keep.has(o.id));
         pushView();
       }
       if (key === "dockEdge") {
@@ -172,6 +186,8 @@ export function createMockBackend(): Backend {
     tooltip_content_size: () => undefined,
     get_ticket: () => ({ slot: "B3", current: "", lang }),
     submit_ticket: ({ ticket }) => console.info("[mock] Ticket", ticket),
+    kill_orphan: ({ id }) => killOrphans([id]),
+    kill_all_orphans: () => killOrphans(orphans.map((o) => o.id)),
   };
 
   function originOf(slot: string): string[] {
