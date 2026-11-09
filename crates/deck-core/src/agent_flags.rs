@@ -9,7 +9,6 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::pystr::strip;
 
 /// Eine Session-ID ist eine UUID. Keine Kosmetik: der Wert landet ungeschützt in einer
 /// Shell-Zeile (`claude --resume "<id>"`), und eine Datei ist kein Beweis.
@@ -37,7 +36,7 @@ fn cli_mode(mode: &str) -> Option<&'static str> {
 
 /// Ist das eine brauchbare Session-ID (UUID, Rand-Leerraum egal)?
 pub fn valid_session(sid: &str) -> bool {
-    UUID.is_match(strip(sid))
+    UUID.is_match(sid.trim())
 }
 
 /// Die Flag-Zeile für `claude`, fertig zitiert, in fester Reihenfolge. Was die Prüfungen
@@ -46,19 +45,19 @@ pub fn valid_session(sid: &str) -> bool {
 pub fn flags(session_id: Option<&str>, model: Option<&str>, effort: Option<&str>, mode: Option<&str>) -> String {
     let mut parts = Vec::new();
     if let Some(sid) = session_id.filter(|s| valid_session(s)) {
-        parts.push(format!("--resume \"{}\"", strip(sid)));
+        parts.push(format!("--resume \"{}\"", sid.trim()));
     }
-    if let Some(m) = model.map(strip).filter(|m| MODEL.is_match(m)) {
+    if let Some(m) = model.map(str::trim).filter(|m| MODEL.is_match(m)) {
         parts.push(format!("--model \"{m}\""));
     }
     if let Some(e) = effort {
-        let lvl = strip(e).to_lowercase();
+        let lvl = e.trim().to_lowercase();
         let lvl = if lvl == "ultracode" { "xhigh".to_string() } else { lvl };
         if EFFORTS.contains(&lvl.as_str()) {
             parts.push(format!("--effort {lvl}"));
         }
     }
-    if let Some(cli) = mode.and_then(|m| cli_mode(&strip(m).to_lowercase())) {
+    if let Some(cli) = mode.and_then(|m| cli_mode(&m.trim().to_lowercase())) {
         parts.push(format!("--permission-mode {cli}"));
     }
     parts.join(" ")

@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use crate::pystr::py_float;
+use crate::field::number;
 use crate::slot_state::SlotState;
 
 pub const PRIORITY: [&str; 2] = ["waiting", "done"];
@@ -22,7 +22,7 @@ pub fn queue<S: AsRef<str>>(states: &HashMap<String, SlotState>, shown: &[S]) ->
         let Some(status) = st.get("status").and_then(|v| v.as_str()) else { continue };
         let Some(prio) = PRIORITY.iter().position(|p| *p == status) else { continue };
         // `float(st.get("ts") or 0)`, ein kaputter Wert zählt als 0.
-        let ts = st.get("ts").and_then(py_float).unwrap_or(0.0);
+        let ts = number(st.get("ts")).unwrap_or(0.0);
         cands.push((prio, ts, slot.to_string()));
     }
     cands.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)).then(a.2.cmp(&b.2)));

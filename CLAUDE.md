@@ -81,7 +81,9 @@ nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `
 
 1. **Zustandsdateien** `%LOCALAPPDATA%\claude-agent-deck\state\<slot>.json` (Hooks schreiben,
    App liest; zwei Prozesse). Feldnamen snake_case, `ts` Unix-Sekunden als Float. Immer
-   atomar schreiben (`.tmp` + ersetzen), nie mit Sperre lesen. `deck-report` und
+   atomar schreiben (`.tmp` + ersetzen, kompaktes UTF-8-JSON über serde), nie mit Sperre
+   lesen. Gelesen wird tolerant: ein Feld mit falschem Typ gilt als fehlend
+   (`deck_core::field`), kein Hook scheitert daran. `deck-report` und
    `deck-statusline` schreiben, die App liest; das Format bleibt stabil, wer ein Feld
    ändert, ändert beide Seiten. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 2. **Laufzeitdateien der App** (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts …)
@@ -113,7 +115,9 @@ nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `
 - **Usage-Werte:** ein Limit hinter seinem `resets_at` ist keine Zahl mehr (→ „—“); ein
   alter Wert wird matt gezeigt, nicht versteckt; das Deck pollt den Endpoint **nicht**
   selbst nach, wenn der gemeinsame Poller (`claude-usage-shared`) einen Cache hat. Der
-  Endpoint ist eng limitiert, 429 heißt zurückweichen.
+  Endpoint ist eng limitiert, 429 heißt zurückweichen. `%LOCALAPPDATA%\claude-usage\usage.json`
+  liest und schreibt weiter auch der Tray-Poller in Python: Felder, `account` und
+  Zahlentypen bleiben, wie `usage/shared_format_tests.rs` sie festhält.
 - **Ein maximiertes Fenster klebt an seinem Monitor:** erst `SW_SHOWNORMAL` auf die
   Zielfläche, dann maximieren.
 - **Ein halb ausgefahrenes Deck ist der eine unzulässige Zustand.** Die Ein-/Ausklapp-

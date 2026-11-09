@@ -136,19 +136,19 @@ fn after_a_compact_there_is_no_timer_until_the_next_request() {
     let path = write(dir.path(), &compacted);
     let data = obj(json!({"prompt_cache": {"warm": true, "ttl": "1h", "expires_at": 1_794_182_611}, "transcript_path": path}));
     assert_eq!(cache_until(&data), None);
-    let rec = extract(&data, 7.0).unwrap();
+    let rec = extract(&data, 7.0);
     assert!(rec["cache_until"].is_null() && !line(&rec, "", Lang::German).contains("cache"));
 }
 
 #[test]
 fn the_context_size_in_tokens_for_auto_compact() {
     // Prozent taugen nicht als Schwelle: das Fenster ist 200k oder 1M groß.
-    let tokens = |cw: Value| extract(&obj(json!({"context_window": cw})), 0.0).unwrap()["ctx_tokens"].clone();
+    let tokens = |cw: Value| extract(&obj(json!({"context_window": cw})), 0.0)["ctx_tokens"].clone();
     let cw = json!({"current_usage": {"input_tokens": 3, "cache_creation_input_tokens": 1000,
                                       "cache_read_input_tokens": 199_000, "output_tokens": 500},
                     "used_percentage": 20, "context_window_size": 1_000_000});
     assert_eq!(tokens(cw), json!(200_003), "Ausgabe zählt nicht mit");
-    assert_eq!(tokens(json!({"used_percentage": 20, "context_window_size": 1_000_000})), json!(200_000.0));
+    assert_eq!(tokens(json!({"used_percentage": 20, "context_window_size": 1_000_000})), json!(200_000), "ganze Tokens");
     assert_eq!(tokens(json!({})), Value::Null);
 }
 
@@ -166,8 +166,8 @@ fn while_the_agent_works_the_line_shows_no_timer_but_the_live_file_keeps_it() {
     };
     std::fs::create_dir_all(&env.state_dir).unwrap();
     let stdin = json!({"model": "opus", "prompt_cache": {"warm": true, "ttl": "1h", "expires_at": 1_794_181_000}}).to_string();
-    assert_eq!(run(&env, Some(stdin.as_bytes())).unwrap(), "\x1b[1mA1\x1b[0m\nopus  ·  cache 16 min");
+    assert_eq!(run(&env, Some(stdin.as_bytes())), "\x1b[1mA1\x1b[0m\nopus  ·  cache 16 min");
     save_json(&state_path(&env.state_dir, "A1"), &json!({"status": "running", "ts": env.now - 30.0})).unwrap();
-    assert_eq!(run(&env, Some(stdin.as_bytes())).unwrap(), "\x1b[1mA1\x1b[0m\nopus");
+    assert_eq!(run(&env, Some(stdin.as_bytes())), "\x1b[1mA1\x1b[0m\nopus");
     assert_eq!(load_json(&live_path(&env.state_dir, "A1")).unwrap()["cache_until"], json!(1_794_181_000.0));
 }

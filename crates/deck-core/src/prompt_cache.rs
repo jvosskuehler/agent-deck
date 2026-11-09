@@ -25,14 +25,7 @@ pub enum CacheLevel {
     Cold,
 }
 
-/// Eine JSON-Zahl, aber kein Wahrheitswert (Python: `isinstance(v, (int, float))` und
-/// nicht `bool`). Der Wert kommt aus einer Datei eines anderen Prozesses.
-pub fn number(v: Option<&Value>) -> Option<f64> {
-    match v? {
-        Value::Number(n) => n.as_f64(),
-        _ => None,
-    }
-}
+pub use crate::field::number;
 
 /// `"1h"` / `"5m"` (so schreiben API und Claude Code die Laufzeit) oder eine positive
 /// Zahl → Sekunden. Alles andere → `None`.

@@ -13,7 +13,7 @@ use std::path::Path;
 use serde_json::{Map, Value};
 
 use crate::paths::{load_json, save_json, state_path};
-use crate::pystr::{py_str, splitlines, strip, take_chars};
+use crate::text::{first_line, take_chars};
 
 /// Ein Slot-Zustand, wie der report-Hook ihn schreibt.
 pub type SlotState = Map<String, Value>;
@@ -61,8 +61,8 @@ pub fn read_all(dir: &Path) -> HashMap<String, SlotState> {
             continue;
         }
         if let Some(Value::Object(d)) = load_json(&dir.join(&name)) {
-            let key = match d.get("slot") {
-                Some(v) => py_str(v),
+            let key = match d.get("slot").and_then(Value::as_str) {
+                Some(s) => s.to_string(),
                 None => name[..name.len() - 5].to_string(),
             };
             out.insert(key, d);
@@ -94,12 +94,11 @@ fn read_markers(dir: &Path, suffix: &str, max: usize) -> HashMap<String, String>
         // Python liest strikt UTF-8; eine Datei, die das nicht ist, zählt nicht.
         let Ok(text) = String::from_utf8(bytes) else { continue };
         let text = text.replace("\r\n", "\n");
-        let val = strip(&text);
+        let val = text.trim();
         if val.is_empty() {
             continue;
         }
-        let first = splitlines(val).into_iter().next().unwrap_or("");
-        out.insert(slot.to_string(), take_chars(strip(first), max).to_string());
+        out.insert(slot.to_string(), take_chars(first_line(val), max).to_string());
     }
     out
 }

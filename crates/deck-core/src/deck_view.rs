@@ -13,7 +13,8 @@ use crate::claude::refs::{Refs, refs_card_label};
 use crate::config::{STALE_S, TICKET_AUTODETECT_ON_CARD, WINDOWS};
 use crate::i18n::{Lang, status_label};
 use crate::ordering::{apply_order, pin_first};
-use crate::pystr::{py_str, take_chars, truthy_opt};
+use crate::field::text;
+use crate::text::take_chars;
 use crate::slot_state::SlotState;
 use crate::status_model::{VALID_STATUSES, dominant_status, initial_status, is_fresh, is_lost, normalize_status, resolve_effort};
 use crate::view::{BlockView, DeckView, Host, Status, TileView, UsageView};
@@ -102,7 +103,7 @@ pub fn short_model(name: &str) -> String {
 }
 
 fn str_field(st: Option<&SlotState>, key: &str) -> String {
-    st.and_then(|s| truthy_opt(s.get(key))).map(py_str).unwrap_or_default()
+    st.and_then(|s| text(s.get(key))).unwrap_or_default().to_string()
 }
 
 impl DeckInput<'_> {

@@ -15,7 +15,7 @@ use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
-use crate::pystr::chars_before;
+use crate::text::chars_before;
 
 /// Ein Gesprächszug: (Rolle, Text). Rolle `user` zählt doppelt.
 pub type Turn = (String, String);
@@ -148,7 +148,7 @@ fn iter_turns(turns: &[Turn]) -> impl Iterator<Item = (&str, i64, usize)> {
 /// „Ticket …“ davor gibt Bonus, bei Gleichstand gewinnt die zuletzt erwähnte.
 /// `min_score` hält einmalige Nebenbei-Nennungen des Agenten draußen.
 pub fn find_ticket(turns: &[Turn], project: Option<&str>, min_score: i64) -> String {
-    let proj = crate::pystr::strip(project.unwrap_or("")).to_uppercase();
+    let proj = project.unwrap_or("").trim().to_uppercase();
     let proj_re = (!proj.is_empty())
         .then(|| Regex::new(&format!(r"(?i){}-(\d{{1,6}})", regex::escape(&proj))).expect("proj_re"));
     let mut hits = Hits::default();
@@ -235,5 +235,5 @@ pub fn refs_card_label(refs: &Refs, max_chars: usize) -> String {
     if !refs.ticket.is_empty() {
         return refs.ticket.clone();
     }
-    format!("{}…", crate::pystr::take_chars(&both, max_chars.saturating_sub(1)))
+    format!("{}…", crate::text::take_chars(&both, max_chars.saturating_sub(1)))
 }

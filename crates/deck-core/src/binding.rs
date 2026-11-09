@@ -8,7 +8,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::config::{JIRA_PROJECT_KEY, TICKET_BRANCH_PREFIX, VSCODE_MARKER};
-use crate::pystr::strip;
 
 /// „Kein echtes Projekt“ → nicht binden (sonst Phantom-Kachel): leer und das reservierte
 /// `unknown`, das alte Extensions für ein Fenster ohne Ordner meldeten. Preis: ein
@@ -17,7 +16,7 @@ pub fn is_placeholder_ws(ws: Option<&str>) -> bool {
     match ws {
         None => true,
         Some(s) => {
-            let low = strip(s).to_lowercase();
+            let low = s.trim().to_lowercase();
             low.is_empty() || low == "unknown"
         }
     }
@@ -34,15 +33,15 @@ static REMOTE_TAG: LazyLock<Regex> = LazyLock::new(|| {
 
 /// `agent-deck [SSH: host]` → `agent-deck`. Ohne Marker unverändert.
 pub fn strip_remote_tag(name: &str) -> String {
-    strip(&REMOTE_TAG.replace(name, "")).to_string()
+    REMOTE_TAG.replace(name, "").trim().to_string()
 }
 
 /// Aus `datei - repo - Visual Studio Code` den Namen ziehen, unter dem das Panel dieses
 /// Fenster führt: Ordnername MIT Remote-Anhängsel, genau wie die Extension ihn meldet.
 pub fn window_from_title(title: &str) -> String {
     let t = title.replace('●', " ");
-    let t = strip(&t);
-    let parts: Vec<&str> = t.split(" - ").map(strip).filter(|p| !p.is_empty()).collect();
+    let t = t.trim();
+    let parts: Vec<&str> = t.split(" - ").map(str::trim).filter(|p| !p.is_empty()).collect();
     if let Some(i) = parts.iter().position(|p| *p == VSCODE_MARKER)
         && i >= 1
     {
@@ -61,7 +60,7 @@ pub fn repo_from_title(title: &str) -> String {
 /// alles andere zu einem `-` zusammengefasst, Ränder getrimmt.
 /// `ABC-123: Login fix` → `abc-123-login-fix`.
 pub fn ticket_slug(ticket: &str) -> String {
-    let lower = strip(ticket).to_lowercase();
+    let lower = ticket.trim().to_lowercase();
     let mut slug = String::with_capacity(lower.len());
     for ch in lower.chars() {
         let ch = if ch.is_alphanumeric() { ch } else { '-' };
@@ -88,15 +87,15 @@ static KEY_FORM: LazyLock<Regex> =
 /// Projektteil groß; nur eine Nummer (auch mit `#`) → Projekt davor (ohne Projekt bleibt
 /// sie roh); sonst unverändert. Leer → leer.
 pub fn jira_key(ticket: &str, project: Option<&str>) -> String {
-    let t = strip(ticket);
+    let t = ticket.trim();
     if t.is_empty() {
         return String::new();
     }
     if let Some(c) = KEY_FORM.captures(t) {
         return format!("{}-{}", c[1].to_uppercase(), &c[2]);
     }
-    let num = strip(t.trim_start_matches('#'));
-    let proj = strip(project.unwrap_or(JIRA_PROJECT_KEY)).to_uppercase();
+    let num = t.trim_start_matches('#').trim();
+    let proj = project.unwrap_or(JIRA_PROJECT_KEY).trim().to_uppercase();
     if !proj.is_empty() && !num.is_empty() && num.chars().all(char::is_numeric) {
         return format!("{proj}-{num}");
     }

@@ -1,4 +1,4 @@
-//! report-Hook (Python `test_hooks_report.py` und das Verhalten von `report.py`):
+//! report-Hook (aus Python `test_hooks_report.py`):
 //! welche Notification eine echte Rückfrage ist, welche Felder fortgetragen werden und
 //! wie der Slot gefunden wird. Alles gegen Wegwerf-Ordner.
 
@@ -73,7 +73,7 @@ fn permission_modes_get_deck_names() {
 }
 
 #[test]
-fn a_report_writes_the_python_fields_in_python_order() {
+fn a_report_writes_its_fields_in_a_fixed_order_as_utf8() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), Some("A1"));
     let rec = run_with(&env, "thinking", json!({"hook_event_name": "UserPromptSubmit", "session_id": "s1",
@@ -81,8 +81,8 @@ fn a_report_writes_the_python_fields_in_python_order() {
     assert_eq!(rec, json!({"slot": "A1", "status": "thinking", "ts": 1000.5, "mode": "plan", "effort": "xhigh",
         "activity": "", "session_id": "s1", "cwd": r"C:\Users\x\Repos\deck", "prompt": "Mach mal für mich"}));
     let raw = std::fs::read_to_string(state_path(&env.state_dir, "A1")).unwrap();
-    assert!(raw.starts_with(r#"{"slot": "A1", "status": "thinking", "ts": 1000.5, "mode": "plan""#), "{raw}");
-    assert!(raw.contains(&format!("f{}u00fcr", '\\')), "ensure_ascii wie Python: {raw}");
+    assert!(raw.starts_with(r#"{"slot":"A1","status":"thinking","ts":1000.5,"mode":"plan""#), "{raw}");
+    assert!(raw.contains("Mach mal für mich"), "Umlaute als UTF-8: {raw}");
 }
 
 #[test]
@@ -112,12 +112,14 @@ fn an_idle_notification_and_a_non_startup_session_start_leave_the_file_alone() {
 }
 
 #[test]
-fn broken_or_missing_stdin_still_reports_and_non_object_json_does_not() {
+fn broken_missing_or_non_object_stdin_still_reports() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), Some("A1"));
     assert!(run("done", &env, || Some(b"{kaputt".to_vec())).is_some());
     assert!(run("done", &env, || None).is_some());
-    assert!(run("done", &env, || Some(b"[1, 2]".to_vec())).is_none());
+    assert!(run("done", &env, || Some(b"[1, 2]".to_vec())).is_some());
+    let rec = run_with(&env, "running", json!({"tool_name": 5, "permission_mode": ["x"], "session_id": 7})).unwrap();
+    assert_eq!((rec["activity"].clone(), rec.get("mode"), rec.get("session_id")), (json!(""), None, None), "falsche Typen fallen weg");
 }
 
 #[test]
@@ -143,9 +145,9 @@ fn the_slot_comes_from_the_first_ancestor_in_a_pidmap() {
     save_json(&state.join("pidmap-B.json"), &json!({"300": "B1", "400": 7})).unwrap();
     std::fs::write(state.join("pidmap-C.json"), "{halb").unwrap();
     let pm = load_pidmap(&state);
-    assert_eq!(pm.len(), 3, "ein unlesbarer Schlüssel beendet seine Datei: {pm:?}");
+    assert_eq!(pm.len(), 3, "Schlüssel ohne PID und Werte ohne Slot zählen nicht: {pm:?}");
     assert_eq!(slot_from_procs(&state, &|| vec![5, 300, 100]).as_deref(), Some("B1"));
-    assert_eq!(slot_from_procs(&state, &|| vec![400, 100]), None, "ein Nicht-Text ist kein Slot");
+    assert_eq!(slot_from_procs(&state, &|| vec![400, 200]).as_deref(), Some("A2"), "ein Nicht-Text ist kein Slot");
     assert_eq!(slot_from_procs(&state, &|| vec![1, 2]), None);
     assert_eq!(slot_from_procs(&dir.path().join("fehlt"), &|| panic!("ohne pidmap keine Prozessliste")), None);
     let mut env = env_in(dir.path(), None);

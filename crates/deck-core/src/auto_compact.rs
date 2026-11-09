@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 
 use crate::prompt_cache::{compact_due, number};
-use crate::pystr::truthy;
 use crate::slot_state::SlotState;
 
 /// Schlüssel in `deck_settings.json`; fehlt er, ist die Automatik an.
@@ -26,9 +25,9 @@ pub const SETTING: &str = "auto_compact";
 /// (`hook_setup::STATUSLINE_REFRESH_S`), eine laufende Session bleibt also frisch.
 pub const LIVE_STALE_S: f64 = 60.0;
 
-/// Ist die Automatik eingeschaltet? Standard an (Python: `bool(settings.get(SETTING, True))`).
+/// Ist die Automatik eingeschaltet? Standard an; nur ein ausdrückliches `false` schaltet ab.
 pub fn enabled(settings: &Map<String, Value>) -> bool {
-    settings.get(SETTING).is_none_or(truthy)
+    settings.get(SETTING).and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// Die Ablaufzeit, für die jetzt `/compact` fällig ist, oder `None`.

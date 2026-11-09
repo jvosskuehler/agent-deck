@@ -1,6 +1,6 @@
 //! Der gemeinsame EIN-Poller (Python `claude-usage-shared/usage_poller.py`, `get_usage`).
 //!
-//! Tray-Monitor, Python-Deck und diese Fassung fragen denselben, eng limitierten
+//! Tray-Monitor (Python) und Deck fragen denselben, eng limitierten
 //! Endpoint. Pollte jedes für sich, wäre das Budget schnell weg (429, eingefrorene
 //! Anzeigen). Darum teilen sich alle Prozesse einen Cache:
 //!
@@ -13,8 +13,9 @@
 //! wenn ein anderer Prozess gerade den Mutex hält. Erst ein fälliger Cache führt zu
 //! genau einem Abruf, mit gelerntem Takt, Backoff und `Retry-After` (`policy.rs`).
 //! Diese Fassung ist damit ein gleichberechtigter Teilnehmer des gemeinsamen Pollers;
-//! sie schreibt dasselbe Format und dasselbe Protokoll (`poller.log`, von `doctor.py`
-//! nach Stunde ausgewertet).
+//! sie schreibt dieselben Felder mit denselben Zahlentypen und dasselbe Protokoll
+//! (`poller.log`, von `doctor.py` nach Stunde ausgewertet). Der Tray liest mit
+//! `json.load`; Trenner und Maskierung sind ihm egal (`shared_format_tests.rs`).
 //!
 //! **Der Cache trägt sein Konto** (`account`, E-Mail klein, seit 2026-11-08). Ein Cache,
 //! dessen Konto nicht das aktuelle ist, gilt als nicht vorhanden: seine Zahl gehört
@@ -172,7 +173,8 @@ impl SharedPoller {
 
     fn write_cache(&self, c: &Value) {
         let suffix = format!(".{}.tmp", std::process::id());
-        let _ = atomic_write_with(&self.cache_path(), deck_core::pyjson::dumps(c).as_bytes(), &suffix);
+        let Ok(bytes) = serde_json::to_vec(c) else { return };
+        let _ = atomic_write_with(&self.cache_path(), &bytes, &suffix);
     }
 
     /// Die aktuelle Nutzung. Lebt der Cache, ohne Abruf; sonst prozessübergreifend
@@ -206,7 +208,7 @@ impl SharedPoller {
                 let name = |a: Option<&str>| a.unwrap_or("unbekannt").to_string();
                 self.log.note(&format!("Kontowechsel {} -> {}: Cache verworfen", name(account_of(&c)), name(acc.as_deref())));
             }
-            let interval = c.get("interval").filter(|v| deck_core::pystr::truthy(v)).cloned();
+            let interval = c.get("interval").filter(|v| v.as_f64().is_some_and(|i| i > 0.0)).cloned();
             let mut fresh = empty();
             if let Some(iv) = interval {
                 fresh["interval"] = iv;
@@ -306,3 +308,7 @@ pub fn read_cache(path: &Path) -> Option<Value> {
 #[cfg(test)]
 #[path = "shared_tests.rs"]
 pub(crate) mod tests;
+
+#[cfg(test)]
+#[path = "shared_format_tests.rs"]
+mod format_tests;

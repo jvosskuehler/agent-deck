@@ -14,7 +14,6 @@
 
 use serde_json::{Value, json};
 
-use crate::pyjson;
 
 pub const WINDOW_PREFIX: &str = "deck-";
 /// Verstecktes Profil mit `closeOnExit: always` (sonst bleibt „[process exited …]“).
@@ -128,7 +127,7 @@ pub fn wanted_or_next<S: AsRef<str>>(win: &str, wanted: Option<&str>, taken: &[S
 /// `agent_flags::flags` und hat Vorrang; sonst nur `--model <model>`. Zerlegt wie von
 /// einer POSIX-Shell, damit die Anführungszeichen wirken. Fehler: offenes Zitat.
 pub fn claude_argv(model: Option<&str>, args: Option<&str>) -> Result<Vec<String>, String> {
-    if let Some(a) = args.filter(|a| !crate::pystr::strip(a).is_empty()) {
+    if let Some(a) = args.filter(|a| !a.trim().is_empty()) {
         return shlex_split(a);
     }
     Ok(match model.filter(|m| !m.is_empty()) {
@@ -238,7 +237,7 @@ fn b64_decode(s: &str) -> Option<Vec<u8>> {
 /// claude-Argumente. Base64, weil die Zeile durch zwei Parser muss (wt.exe, dann
 /// PowerShell) und weder `;` noch Anführungszeichen beide unbeschadet überstehen.
 pub fn launch_spec(slot: &str, state_dir: &str, argv: &[String]) -> String {
-    let raw = pyjson::dumps(&json!({"slot": slot, "state": state_dir, "args": argv}));
+    let raw = json!({"slot": slot, "state": state_dir, "args": argv}).to_string();
     b64_encode(raw.as_bytes())
 }
 
@@ -265,7 +264,7 @@ pub fn wt_argv(wt_exe: &str, slot: &str, cwd: &str, shell: &str, script: &str, s
 /// Fenstertitel eines Windows-Terminal-Fensters → Slot des aktiven Panes, oder `None`
 /// (fremdes Pane, Einstellungen …). Der Titel IST der Slot-Name.
 pub fn slot_from_title(title: Option<&str>) -> Option<String> {
-    let (w, i) = split_slot(crate::pystr::strip(title.unwrap_or("")))?;
+    let (w, i) = split_slot(title.unwrap_or("").trim())?;
     Some(format!("{w}{i}"))
 }
 
@@ -274,8 +273,7 @@ pub fn parse_pidfile(data: &Value) -> Option<(u32, i64)> {
     let int = |v: Option<&Value>| -> Option<i64> {
         match v? {
             Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f.trunc() as i64)),
-            Value::String(s) => crate::pystr::strip(s).parse().ok(),
-            Value::Bool(b) => Some(i64::from(*b)),
+            Value::String(s) => s.trim().parse().ok(),
             _ => None,
         }
     };

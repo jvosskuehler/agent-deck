@@ -5,8 +5,8 @@
 //! benutzen, ohne die Oberfläche nachzuziehen.
 //!
 //! Die Module entsprechen den Python-Modulen der früheren Fassung (`deck/domain`,
-//! `deck/claude`, `deck/i18n.py`); `pystr` und `pyjson` halten die Python-Semantik fest,
-//! in der die geteilten Dateiformate geschrieben sind.
+//! `deck/claude`, `deck/i18n.py`). `field` liest fremdes JSON tolerant, `text` zählt in
+//! Zeichen statt Bytes.
 
 pub mod agent_flags;
 pub mod arrange;
@@ -18,6 +18,7 @@ pub mod binding;
 pub mod claude;
 pub mod config;
 pub mod dock;
+pub mod field;
 pub mod deck_view;
 pub mod front;
 pub mod i18n;
@@ -28,10 +29,9 @@ pub mod paths;
 pub mod prompt_cache;
 pub mod prompts;
 pub mod protocol;
-pub mod pyjson;
-pub mod pystr;
 pub mod slot_state;
 pub mod status_model;
+pub mod text;
 pub mod tooltip;
 pub mod view;
 pub mod wt;

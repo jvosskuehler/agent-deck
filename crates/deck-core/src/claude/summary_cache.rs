@@ -16,7 +16,7 @@ use serde_json::{Map, Value};
 use crate::claude::refs::{Refs, find_refs};
 use crate::claude::summarize::{build_digest, clean_summary, enc_cwd, extract_turns, instruction, transcript_lines};
 use crate::paths::{home_dir, load_json, save_json};
-use crate::pystr::{py_float, truthy};
+use crate::field::number;
 
 /// `~/.claude/projects`: die Transcripts von Claude Code.
 pub fn projects_dir() -> PathBuf {
@@ -82,10 +82,7 @@ pub fn read_cache(dir: &Path, session_id: &str) -> Option<Map<String, Value>> {
 }
 
 fn text_field(cache: &Map<String, Value>, key: &str) -> String {
-    match cache.get(key) {
-        Some(v) if truthy(v) => crate::pystr::py_str(v),
-        _ => String::new(),
-    }
+    cache.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
 /// Nur die schon gecachte Zusammenfassung (schnell, kein Prozess).
@@ -186,8 +183,8 @@ pub fn plan_summary(
     // Alt-Caches ohne "lang" gelten als deutsch.
     let cache_lang = cache.get("lang").and_then(Value::as_str).unwrap_or("german");
     if cached.is_some() && cache_lang == lang {
-        let grown = size as f64 - cache.get("size").and_then(py_float).unwrap_or(0.0).trunc();
-        let age = now - cache.get("ts").and_then(py_float).unwrap_or(0.0);
+        let grown = size as f64 - number(cache.get("size")).unwrap_or(0.0).trunc();
+        let age = now - number(cache.get("ts")).unwrap_or(0.0);
         if grown < gates.min_growth as f64 || age < gates.cooldown {
             return SummaryPlan::Cached(cached);
         }

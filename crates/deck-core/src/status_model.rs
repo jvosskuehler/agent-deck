@@ -3,7 +3,7 @@
 //! xhigh/ultracode-Kollision auf und wann übernimmt das Deck einen per Hook gemeldeten
 //! Permission-Modus. Keine Anzeige, keine Seiteneffekte.
 
-use crate::pystr::PyNum;
+use crate::field::number;
 use crate::slot_state::SlotState;
 
 /// Status, die eine Kachel zeigen kann (die Schlüssel von `GLOW_STYLE` in Python).
@@ -16,7 +16,7 @@ pub const VALID_STATUSES: [&str; 7] = ["idle", "done", "thinking", "running", "w
 pub const DECK_PRIORITY: [&str; 7] = ["waiting", "done", "lost", "thinking", "idle", "unknown", "none"];
 
 fn ts_of(st: &SlotState) -> f64 {
-    st.get("ts").and_then(PyNum::from_value).map_or(0.0, PyNum::as_f64)
+    number(st.get("ts")).unwrap_or(0.0)
 }
 
 /// Meldung frisch = existiert und ist nicht älter als `stale_s` Sekunden. Ein leerer

@@ -10,7 +10,7 @@ use deck_core::binding::{is_placeholder_ws, repo_from_title, strip_remote_tag};
 use deck_core::claude::settings::read_values;
 use deck_core::config::{MODE_START, NEW_AGENT_MODE, STALE_WINDOW_S, VSCODE_MARKER, WINDOWS, terminal_home};
 use deck_core::paths::{load_json, state_path};
-use deck_core::pystr::py_float;
+use deck_core::field::number;
 use deck_core::slot_state::{read_all, write_state};
 
 use crate::deck::Deck;
@@ -157,7 +157,7 @@ impl Deck {
             return;
         }
         for slot in slots {
-            let base = load_json(&state_path(&self.paths.state_dir, slot)).and_then(|v| v.get("ts").and_then(py_float)).unwrap_or(0.0);
+            let base = load_json(&state_path(&self.paths.state_dir, slot)).and_then(|v| number(v.get("ts"))).unwrap_or(0.0);
             self.pending_auto.insert(slot.clone(), PendingAuto::new(base, now));
         }
     }
