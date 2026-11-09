@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>02 Farbfeld</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@500;600&amp;display=swap">
+<style>
+body{margin:0}
+*,*::before,*::after{box-sizing:border-box}
+button{font:inherit;color:inherit;margin:0;padding:0;border:0;background:none;text-align:left;cursor:pointer}
+@keyframes breathe{0%,100%{opacity:.15}50%{opacity:1}}
+.breathe{animation:breathe 3s ease-in-out infinite}
+.hov{position:absolute;inset:0;border-radius:14px;opacity:0;pointer-events:none;transition:opacity .12s ease}
+.tile:hover .hov{opacity:1}
+.x{opacity:0;transform:scale(.85);transition:opacity .12s ease,transform .12s ease}
+.tile:hover .x{opacity:1;transform:scale(1)}
+.add{opacity:.8;transition:opacity .15s ease}
+.add:hover{opacity:1}
+.gear:hover,.usage:hover{background:rgba(127,120,150,.12)}
+</style>
+</helmet>
+<div style="width: 936px; height: 360px; position: relative; overflow: hidden; background: {{c.desk}}; font-family: 'IBM Plex Mono', ui-monospace, Consolas, monospace; color: {{c.text}}">
+<div style="position: absolute; left: 39px; top: 0; padding: 12px 16px 0 22px; background: {{c.panel}}; border: 1px solid {{c.panelBorder}}; border-top: none; border-radius: 0 0 18px 18px; box-shadow: {{c.panelShadow}}">
+<sc-for list="{{blocks}}" as="b" hint-placeholder-count="2">
+<div style="position: relative; display: flex; flex-direction: column; gap: 7px; margin-top: {{b.mt}}px">
+<div style="position: absolute; left: -13px; top: 3px; bottom: 3px; width: 2px; border-radius: 2px; background: {{c.rail}}"></div>
+<div style="display: flex; align-items: baseline; gap: 8px">
+<span style="font-size: 12.5px; font-weight: 600; color: {{c.text}}">{{b.name}}</span>
+<span style="font-size: 11px; color: {{c.dim}}">{{b.host}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, 197px); gap: 10px">
+<sc-for list="{{b.tiles}}" as="t" hint-placeholder-count="3">
+<button class="tile" style="position: relative; display: flex; flex-direction: column; justify-content: {{t.justify}}; height: {{t.h}}px; padding: {{t.pad}}; border-radius: 14px; background: {{t.bg}}; box-shadow: {{t.ring}}">
+<span class="{{t.pulseClass}}" style="position: absolute; inset: 0; border-radius: 14px; pointer-events: none; background: {{t.pulse}}"></span>
+<span class="hov" style="background: {{c.hover}}"></span>
+<span style="position: relative; display: flex; align-items: baseline; gap: 6px; width: 100%">
+<span style="flex: none; font-size: 11px; font-weight: 700; color: {{t.ink}}">{{t.label}}</span>
+<span style="flex: 1"></span>
+<span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10.5px; font-weight: 400; color: {{c.meta}}">{{t.model}}</span>
+</span>
+<sc-if value="{{t.tall}}" hint-placeholder-val="{{true}}">
+<span style="position: relative; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 7px; font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif; font-size: 14px; font-weight: 600; line-height: 1.3; color: {{c.text}}">{{t.title}}</span>
+</sc-if>
+<span style="position: relative; display: flex; align-items: baseline; gap: 6px; width: 100%; margin-top: {{t.footTop}}; font-size: 10.5px">
+<span style="min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 700; color: {{c.ref}}; opacity: {{t.refOpacity}}">{{t.ref}}</span>
+<span style="flex: 1"></span>
+<span style="flex: none; font-weight: 500; color: {{t.modeColor}}">{{t.mode}}</span>
+</span>
+<span class="x" aria-hidden="true" style="position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid {{c.hlHigh}}; background: {{c.card}}; color: {{c.dim}}">
+<svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7"></path></svg>
+</span>
+</button>
+</sc-for>
+<button class="add" aria-label="Neuer Agent" style="height: {{b.h}}px; display: flex; align-items: center; justify-content: center; border: 1.5px dashed {{c.addBorder}}; border-radius: 14px; color: {{c.addInk}}; font-size: 18px; font-weight: 400; text-align: center">+</button>
+</div>
+</div>
+</sc-for>
+<div style="display: flex; align-items: center; gap: 16px; height: 36px; margin: 14px -16px 0 -22px; padding: 0 12px 0 22px; border-top: 1px solid {{c.barLine}}; font-size: 11px; color: {{c.dim}}">
+<button class="usage" style="display: flex; align-items: center; gap: 16px; height: 26px; padding: 0 8px; margin-left: -8px; border-radius: 8px">
+<span style="display: flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{c.dotOk}}"></span>Session <span style="font-weight: 700; color: {{c.text}}">14 %</span></span>
+<span style="display: flex; align-items: center; gap: 6px; white-space: nowrap"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{c.dotHigh}}"></span>Woche <span style="font-weight: 700; color: {{c.text}}">91 %</span></span>
+</button>
+<span style="flex: 1"></span>
+<button class="gear" aria-label="Einstellungen" style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: {{c.dim}}">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+</button>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dunkel":{"editor":"boolean","default":false,"section":"Look"},"$preview":{"width":936,"height":360}}'>
+// 02 Farbfeld: die ganze Karte ist ein Feld in der Statusfarbe, ohne Rand.
+// Am weitesten lesbar; denkt und Rückfrage pulsieren in der Fläche statt zu leuchten.
+const PAL = {
+  light: {
+    desk: '#e6dfd6', panel: '#faf4ed', panelBorder: '#dfdad9', panelShadow: '0 18px 40px -24px rgba(87,82,121,.55)',
+    card: '#fffaf3', idleCard: '#f2e9e1', hover: 'rgba(87,82,121,.05)', text: '#575279', meta: '#575279', dim: '#6e6a86', ref: '#6a5590', bypass: '#8f3f58',
+    rail: '#dfdad9', hlHigh: '#cecacd', addBorder: '#cecacd', addInk: '#9893a5', barLine: '#ece4dc',
+    dotOk: '#5e9a5a', dotHigh: '#b4637a', ring: '#575279', wash: '38', pulse: '24',
+    st: {
+      wait: { pig: '#ea9d34', ink: '#7f4c06' }, think: { pig: '#56949f', ink: '#1f5a72' },
+      done: { pig: '#5e9a5a', ink: '#356b3a' }, lost: { pig: '#b4637a', ink: '#8f3f58' },
+      idle: { pig: '#9893a5', ink: '#575279' }
+    }
+  },
+  dark: {
+    desk: '#0e0d15', panel: '#191724', panelBorder: '#26233a', panelShadow: '0 18px 40px -20px rgba(0,0,0,.7)',
+    card: '#1f1d2e', idleCard: '#26233a', hover: 'rgba(224,222,244,.05)', text: '#e0def4', meta: '#c8c5de', dim: '#908caa', ref: '#c4a7e7', bypass: '#f08aa6',
+    rail: '#403d52', hlHigh: '#524f67', addBorder: '#403d52', addInk: '#6e6a86', barLine: '#26233a',
+    dotOk: '#a6d189', dotHigh: '#eb6f92', ring: '#e0def4', wash: '30', pulse: '1e',
+    st: {
+      wait: { pig: '#f6c177', ink: '#f6c177' }, think: { pig: '#9ccfd8', ink: '#9ccfd8' },
+      done: { pig: '#a6d189', ink: '#a6d189' }, lost: { pig: '#eb6f92', ink: '#f08aa6' },
+      idle: { pig: '#6e6a86', ink: '#a8a4c0' }
+    }
+  }
+};
+const LABEL = { wait: 'Rückfrage', think: 'denkt', done: 'ungelesen', lost: 'getrennt', idle: 'idle' };
+const BLOCKS = [
+  { name: 'Repos', host: 'Windows Terminal', tall: true, tiles: [
+    { s: 'wait', model: 'Opus 5.5 · xhigh', title: 'Agent Deck im Papier-Look', ref: '', mode: 'auto', sel: true },
+    { s: 'think', model: 'Opus 5.5 · xhigh', title: 'Sechs-Tasten-Keypad für Agent-Steuerung', ref: '', mode: 'bypass' },
+    { s: 'done', model: 'Opus 5.5 · high', title: 'Gratismonat: Review-Fixes einarbeiten', ref: 'ORPH-4062', mode: 'auto' }
+  ] },
+  { name: 'orpheus-client-electron', host: 'VS Code', tall: false, tiles: [
+    { s: 'lost', model: 'Opus 5.5 · high', ref: 'ORPH-3192', mode: 'auto' },
+    { s: 'idle', model: 'Opus 5.5 · xhigh', ref: 'PR #347', detected: true, mode: 'plan' }
+  ] }
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const c = this.props.dunkel ? PAL.dark : PAL.light;
+    const blocks = BLOCKS.map((b, bi) => ({
+      name: b.name, host: b.host, mt: bi === 0 ? 0 : 18, h: b.tall ? 118 : 58,
+      tiles: b.tiles.map((t) => {
+        const s = c.st[t.s];
+        const P = s.pig;
+        const idle = t.s === 'idle';
+        const loud = t.s === 'wait' || t.s === 'think';
+        return {
+          label: LABEL[t.s], model: t.model, title: t.title || '', ref: t.ref, mode: t.mode,
+          tall: b.tall, h: b.tall ? 118 : 58, pad: b.tall ? '10px 12px 9px' : '7px 12px',
+          justify: b.tall ? 'flex-start' : 'space-between', footTop: b.tall ? 'auto' : '0',
+          ink: s.ink,
+          bg: idle ? c.idleCard : 'linear-gradient(0deg, ' + P + c.wash + ', ' + P + c.wash + '), ' + c.card,
+          pulse: loud ? P + c.pulse : 'transparent',
+          pulseClass: loud ? 'breathe' : '',
+          ring: t.sel ? '0 0 0 2px ' + c.panel + ', 0 0 0 3.5px ' + c.ring : 'none',
+          refOpacity: t.detected ? 0.6 : 1,
+          modeColor: t.mode === 'bypass' ? c.bypass : c.meta
+        };
+      })
+    }));
+    return { c, blocks };
+  }
+}
+</script>
+</body>
+</html>

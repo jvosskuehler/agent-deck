@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Agent Deck: Glas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible{outline:2px solid #8fb3ff;outline-offset:2px}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; position: relative; overflow: hidden; background: #0a0d13; font-family: Inter, 'Segoe UI', sans-serif; color: #e8eaf0;">
+  <div aria-hidden="true" style="position: absolute; left: 380px; top: 220px; width: 620px; height: 520px; border-radius: 50%; background: #2a3f86; opacity: 0.5; filter: blur(120px);"></div>
+  <div aria-hidden="true" style="position: absolute; left: 980px; top: 420px; width: 520px; height: 460px; border-radius: 50%; background: #5d2a74; opacity: 0.38; filter: blur(130px);"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 1440px; height: 2px; background: rgba(255,255,255,0.12);"></div>
+
+  <main aria-label="Agent Deck" style="position: absolute; left: 56px; top: 0; width: 840px; box-sizing: border-box; padding: 18px 20px 16px; background: rgba(20,23,31,0.72); backdrop-filter: blur(28px) saturate(1.5); border: 1px solid rgba(255,255,255,0.08); border-top: none; border-radius: 0 0 20px 20px; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8); display: flex; flex-direction: column; gap: 14px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span style="font-weight: 700; font-size: 15px;">Agent Deck</span>
+      <span style="font-size: 12px; color: #8f96a8;">7 Agenten · 3 Repos</span>
+      <span style="flex: 1;"></span>
+      <span style="display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 999px; background: rgba(255,180,84,0.14); color: #ffc98a; font-size: 12px; font-weight: 600;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffb454; box-shadow: 0 0 10px #ffb454;"></span>{{waiting}} wartet auf dich</span>
+      <span style="font-size: 11px; color: #8f96a8;">springen mit <kbd style="font-family: inherit; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,0.08); color: #cfd3de;">Strg</kbd> <kbd style="font-family: inherit; padding: 2px 6px; border-radius: 5px; background: rgba(255,255,255,0.08); color: #cfd3de;">&lt;</kbd></span>
+    </div>
+
+    <sc-for list="{{blocks}}" as="b" hint-placeholder-count="3">
+      <section style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+          <span style="width: 20px; height: 20px; border-radius: 6px; background: rgba(255,255,255,0.09); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;">{{b.letter}}</span>
+          <span style="font-weight: 600; color: #cfd3de;">{{b.repo}}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;">
+          <sc-for list="{{b.agents}}" as="a" hint-placeholder-count="3">
+            <button onClick="{{a.pick}}" style="border: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; box-sizing: border-box; height: 116px; padding: 11px 12px 10px; border-radius: 13px; background: {{a.bg}}; box-shadow: {{a.ring}}; display: flex; flex-direction: column; gap: 6px;">
+              <span style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                <span style="font-weight: 700; font-size: 13px;">{{a.slot}}</span>
+                <span style="flex: 1;"></span>
+                <span style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: {{a.c}};"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{a.c}}; box-shadow: 0 0 10px {{a.c}};"></span>{{a.label}}</span>
+              </span>
+              <span class="clamp2" style="font-size: 12.5px; line-height: 1.35; color: #c9cdd8;">{{a.sum}}</span>
+              <span style="margin-top: auto; display: flex; align-items: center; gap: 6px; width: 100%; font-size: 11px; color: #8f96a8;">
+                <span style="color: #b7c4ff; font-weight: 600;">{{a.ref}}</span>
+                <span style="flex: 1;"></span>
+                <span>{{a.modelT}} · {{a.effortT}}</span>
+                <sc-if value="{{a.bypass}}" hint-placeholder-val="{{false}}"><span style="padding: 1px 6px; border-radius: 5px; background: rgba(255,107,107,0.18); color: #ffa3a3; font-weight: 600;">Bypass</span></sc-if>
+              </span>
+            </button>
+          </sc-for>
+          <button aria-label="Neuen Agenten in {{b.repo}} starten" style="border: 1px dashed rgba(255,255,255,0.16); margin: 0; font: inherit; color: #8f96a8; cursor: pointer; height: 116px; border-radius: 13px; background: transparent; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px;">
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+            Agent
+          </button>
+        </div>
+      </section>
+    </sc-for>
+
+    <section aria-label="Ausgewählter Agent" style="border-radius: 14px; background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <span style="font-weight: 700; font-size: 14px;">{{cur.slot}}</span>
+        <span style="font-size: 12px; color: #8f96a8;">{{cur.repo}}</span>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: {{cur.c}};"><span style="width: 7px; height: 7px; border-radius: 50%; background: {{cur.c}};"></span>{{cur.label}} · {{cur.age}}</span>
+        <span style="flex: 1;"></span>
+        <button style="border: 0; font: inherit; font-size: 12px; font-weight: 600; color: #0b0e14; background: #e8eaf0; padding: 7px 12px; border-radius: 9px; cursor: pointer;">Fokussieren</button>
+        <button style="border: 1px solid rgba(255,255,255,0.14); font: inherit; font-size: 12px; font-weight: 500; color: #e8eaf0; background: transparent; padding: 6px 12px; border-radius: 9px; cursor: pointer;">Ticket zuweisen</button>
+        <button style="border: 1px solid rgba(255,107,107,0.35); font: inherit; font-size: 12px; font-weight: 500; color: #ffa3a3; background: transparent; padding: 6px 12px; border-radius: 9px; cursor: pointer;">Schließen</button>
+      </div>
+      <div style="font-size: 13px; color: #c9cdd8;">{{cur.sum}}</div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+        <sc-for list="{{curRows}}" as="row" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 11px; font-weight: 600; color: #8f96a8; letter-spacing: 0.4px;">{{row.label}}</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 3px; padding: 3px; border-radius: 10px; background: rgba(255,255,255,0.05);">
+              <sc-for list="{{row.opts}}" as="o" hint-placeholder-count="4">
+                <sc-if value="{{o.onSafe}}" hint-placeholder-val="{{false}}"><button onClick="{{o.pick}}" style="border: 0; font: inherit; font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.16); color: #ffffff;">{{o.t}}</button></sc-if>
+                <sc-if value="{{o.onDanger}}" hint-placeholder-val="{{false}}"><button onClick="{{o.pick}}" style="border: 0; font: inherit; font-size: 11.5px; font-weight: 600; padding: 5px 8px; border-radius: 7px; cursor: pointer; background: rgba(255,92,92,0.26); color: #ffb8b8;">{{o.t}}</button></sc-if>
+                <sc-if value="{{o.off}}" hint-placeholder-val="{{true}}"><button onClick="{{o.pick}}" style="border: 0; font: inherit; font-size: 11.5px; font-weight: 500; padding: 5px 8px; border-radius: 7px; cursor: pointer; background: transparent; color: #a3a9ba;">{{o.t}}</button></sc-if>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <div style="display: flex; align-items: center; gap: 18px; font-size: 12px; color: #a3a9ba;">
+      <span style="display: flex; align-items: center; gap: 8px;">Session <span style="width: 90px; height: 6px; border-radius: 6px; background: rgba(255,255,255,0.08); overflow: hidden;"><span style="display: block; width: 34%; height: 6px; background: #5cc8ff;"></span></span><strong style="color: #e8eaf0;">34 %</strong> bis 16:40</span>
+      <span style="display: flex; align-items: center; gap: 8px;">Woche <span style="width: 90px; height: 6px; border-radius: 6px; background: rgba(255,255,255,0.08); overflow: hidden;"><span style="display: block; width: 61%; height: 6px; background: #ffb454;"></span></span><strong style="color: #e8eaf0;">61 %</strong> bis Mo</span>
+      <span style="flex: 1;"></span>
+      <button aria-pressed="true" style="border: 0; font: inherit; font-size: 12px; font-weight: 600; color: #e8eaf0; background: rgba(255,255,255,0.12); padding: 7px 12px; border-radius: 9px; cursor: pointer; display: flex; align-items: center; gap: 7px;">
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+        Einstellungen
+      </button>
+    </div>
+    <div aria-hidden="true" style="position: absolute; left: 50%; bottom: -22px; width: 132px; height: 8px; margin-left: -66px; border-radius: 8px; background: {{urgent}}; box-shadow: 0 0 22px {{urgent}}, 0 0 4px {{urgent}};"></div>
+  </main>
+
+  <aside aria-label="Einstellungen" style="position: absolute; right: 56px; top: 56px; width: 448px; box-sizing: border-box; padding: 20px; background: rgba(20,23,31,0.74); backdrop-filter: blur(28px) saturate(1.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; box-shadow: 0 40px 90px -30px rgba(0,0,0,0.8); display: flex; flex-direction: column; gap: 18px;">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <h2 style="margin: 0; font-size: 17px; font-weight: 700;">Einstellungen</h2>
+      <span style="flex: 1;"></span>
+      <sc-if value="{{saved}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: #4ade9a; font-weight: 600;">Gespeichert</span></sc-if>
+      <sc-if value="{{unsaved}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; color: #8f96a8;">Änderungen gelten sofort</span></sc-if>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;"><h3 style="margin: 0; font-size: 13px; font-weight: 700;">Neue Agenten</h3><span style="font-size: 12px; color: #8f96a8;">Vorgaben beim Start</span></div>
+      <sc-for list="{{newRows}}" as="row" hint-placeholder-count="3">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 11px; font-weight: 600; color: #8f96a8; letter-spacing: 0.4px;">{{row.label}}</span>
+          <div style="display: flex; gap: 3px; padding: 3px; border-radius: 10px; background: rgba(255,255,255,0.05);">
+            <sc-for list="{{row.opts}}" as="o" hint-placeholder-count="4">
+              <sc-if value="{{o.onSafe}}" hint-placeholder-val="{{false}}"><button onClick="{{o.pick}}" style="flex: 1; border: 0; font: inherit; font-size: 12px; font-weight: 600; height: 30px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.16); color: #ffffff;">{{o.t}}</button></sc-if>
+              <sc-if value="{{o.onDanger}}" hint-placeholder-val="{{false}}"><button onClick="{{o.pick}}" style="flex: 1; border: 0; font: inherit; font-size: 12px; font-weight: 600; height: 30px; border-radius: 7px; cursor: pointer; background: rgba(255,92,92,0.26); color: #ffb8b8;">{{o.t}}</button></sc-if>
+              <sc-if value="{{o.off}}" hint-placeholder-val="{{true}}"><button onClick="{{o.pick}}" style="flex: 1; border: 0; font: inherit; font-size: 12px; font-weight: 500; height: 30px; border-radius: 7px; cursor: pointer; background: transparent; color: #a3a9ba;">{{o.t}}</button></sc-if>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <sc-if value="{{bypass}}" hint-placeholder-val="{{false}}">
+        <div role="note" style="display: flex; gap: 10px; padding: 10px 12px; border-radius: 11px; background: rgba(255,92,92,0.12); border: 1px solid rgba(255,92,92,0.3); font-size: 12px; line-height: 1.45; color: #ffc4c4;">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
+          <span>Neue Agenten fragen nie nach Erlaubnis. Beim ersten Start bestätigst du das einmal in Claude Code.</span>
+        </div>
+      </sc-if>
+    </section>
+
+    <div aria-hidden="true" style="height: 1px; background: rgba(255,255,255,0.08);"></div>
+
+    <section style="display: flex; flex-direction: column; gap: 12px;">
+      <h3 style="margin: 0; font-size: 13px; font-weight: 700;">Deck</h3>
+      <sc-for list="{{deckRows}}" as="row" hint-placeholder-count="2">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 11px; font-weight: 600; color: #8f96a8; letter-spacing: 0.4px;">{{row.label}}</span>
+          <div style="display: flex; gap: 3px; padding: 3px; border-radius: 10px; background: rgba(255,255,255,0.05);">
+            <sc-for list="{{row.opts}}" as="o" hint-placeholder-count="4">
+              <sc-if value="{{o.on}}" hint-placeholder-val="{{false}}"><button onClick="{{o.pick}}" style="flex: 1; border: 0; font: inherit; font-size: 12px; font-weight: 600; height: 30px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.16); color: #ffffff;">{{o.t}}</button></sc-if>
+              <sc-if value="{{o.off}}" hint-placeholder-val="{{true}}"><button onClick="{{o.pick}}" style="flex: 1; border: 0; font: inherit; font-size: 12px; font-weight: 500; height: 30px; border-radius: 7px; cursor: pointer; background: transparent; color: #a3a9ba;">{{o.t}}</button></sc-if>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="flex: 1; font-size: 13px; color: #cfd3de;">Ring um den aktiven Chat in VS Code</span>
+        <button onClick="{{toggleRing}}" aria-pressed="{{ring}}" aria-label="Ring um den aktiven Chat" style="border: 0; cursor: pointer; width: 44px; height: 26px; border-radius: 26px; padding: 3px; box-sizing: border-box; display: flex; justify-content: {{ringJ}}; background: {{ringBg}};"><span style="width: 20px; height: 20px; border-radius: 50%; background: #ffffff;"></span></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <label for="glas-jira" style="flex: 1; font-size: 13px; color: #cfd3de;">Jira-Präfix für Tickets</label>
+        <input id="glas-jira" type="text" value="{{jira}}" onChange="{{onJira}}" style="width: 96px; box-sizing: border-box; height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: #e8eaf0; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.5px;">
+      </div>
+    </section>
+
+    <div aria-hidden="true" style="height: 1px; background: rgba(255,255,255,0.08);"></div>
+
+    <section style="display: flex; flex-direction: column; gap: 10px;">
+      <h3 style="margin: 0; font-size: 13px; font-weight: 700;">Werkzeuge</h3>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <button style="border: 1px solid rgba(255,255,255,0.14); font: inherit; font-size: 12.5px; color: #e8eaf0; background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 10px; cursor: pointer;">Repo in Terminal öffnen</button>
+        <button style="border: 1px solid rgba(255,255,255,0.14); font: inherit; font-size: 12.5px; color: #e8eaf0; background: rgba(255,255,255,0.04); padding: 8px 12px; border-radius: 10px; cursor: pointer;">VS-Code-Fenster einsammeln</button>
+        <sc-if value="{{askIdle}}" hint-placeholder-val="{{true}}"><button onClick="{{askRestart}}" style="border: 1px solid rgba(255,180,84,0.4); font: inherit; font-size: 12.5px; color: #ffc98a; background: transparent; padding: 8px 12px; border-radius: 10px; cursor: pointer;">VS Code neu starten</button></sc-if>
+      </div>
+      <sc-if value="{{ask}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 11px; background: rgba(255,180,84,0.1); border: 1px solid rgba(255,180,84,0.3);">
+          <span style="flex: 1; font-size: 12px; color: #ffd9ad;">Alle Fenster schließen? Die Chats werden danach wieder aufgenommen.</span>
+          <button onClick="{{noRestart}}" style="border: 0; font: inherit; font-size: 12px; color: #e8eaf0; background: transparent; padding: 6px 10px; border-radius: 8px; cursor: pointer;">Abbrechen</button>
+          <button onClick="{{noRestart}}" style="border: 0; font: inherit; font-size: 12px; font-weight: 600; color: #1a1206; background: #ffb454; padding: 6px 12px; border-radius: 8px; cursor: pointer;">Neu starten</button>
+        </div>
+      </sc-if>
+    </section>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+const ST = { waiting: ['Rückfrage', '#ffb454'], lost: ['getrennt', '#ff6b6b'], done: ['ungelesen', '#4ade9a'], thinking: ['denkt', '#5cc8ff'], idle: ['ruht', '#9a9aab'] };
+const RANK = { waiting: 0, lost: 1, done: 2, thinking: 3, idle: 4 };
+const BLOCKS = [
+  { letter: 'A', repo: 'orpheus-management-api', agents: [
+    { slot: 'A1', status: 'waiting', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'ORPH-4062', sum: 'Fragt: Testuhr in der Stripe-Sandbox auf den 1. vorstellen?', age: 'wartet seit 3 min' },
+    { slot: 'A2', status: 'thinking', model: 'opus[1m]', effort: 'ultracode', mode: 'bypassPermissions', ref: 'ORPH-3773', sum: 'Rechtekonzept: Integrationstests laufen auf dem Titan', age: 'seit 6 min' },
+    { slot: 'A3', status: 'done', model: 'fable', effort: 'high', mode: 'auto', ref: 'PR #180', sum: 'Review-Threads beantwortet und aufgelöst', age: 'vor 4 min' } ] },
+  { letter: 'B', repo: 'orpheus-client-electron', agents: [
+    { slot: 'B1', status: 'idle', model: 'opus[1m]', effort: 'xhigh', mode: 'plan', ref: 'PR #347', sum: 'Schrift-Einstellung: wartet auf das Review', age: 'seit 38 min' },
+    { slot: 'B2', status: 'thinking', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'ORPH-3192', sum: 'Mehrfach-RDS: zweite Sitzung auf der Test-VM', age: 'seit 2 min' } ] },
+  { letter: 'C', repo: 'Repos', agents: [
+    { slot: 'C1', status: 'done', model: 'opus[1m]', effort: 'max', mode: 'auto', ref: 'Deck', sum: 'Bypass eingebaut, 443 Tests grün', age: 'gerade eben' },
+    { slot: 'C2', status: 'lost', model: 'fable', effort: 'medium', mode: 'auto', ref: 'ORPH-4105', sum: 'VS-Code-Fenster antwortet nicht mehr', age: 'seit 12 min' } ] }
+];
+const OPT = {
+  model: [['opus[1m]', 'Opus'], ['fable', 'Fable'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']],
+  mode: [['default', 'Standard'], ['acceptEdits', 'Edits'], ['plan', 'Plan'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass']],
+  effort: [['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max'], ['ultracode', 'ultra']],
+  lang: [['german', 'Deutsch'], ['english', 'English']],
+  edge: [['top', 'Oben'], ['left', 'Links'], ['right', 'Rechts'], ['bottom', 'Unten'], ['off', 'Frei']]
+};
+const LAB = {};
+Object.keys(OPT).forEach(function (k) { LAB[k] = {}; OPT[k].forEach(function (p) { LAB[k][p[0]] = p[1]; }); });
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'A1', ov: {}, model: 'opus[1m]', mode: 'auto', effort: 'xhigh', lang: 'german', edge: 'top', ring: true, jira: 'ORPH', restart: false, saved: false };
+  }
+  put(k, v) { const n = { saved: true }; n[k] = v; this.setState(n); }
+  segs(key, label, val, pick) {
+    return { key: key, label: label, opts: OPT[key].map(function (p) {
+      const on = val === p[0], danger = p[0] === 'bypassPermissions';
+      return { t: p[1], on: on, off: !on, onSafe: on && !danger, onDanger: on && danger, pick: function () { pick(p[0]); } };
+    }) };
+  }
+  agent(a) {
+    const m = Object.assign({}, a, this.state.ov[a.slot] || {});
+    const st = ST[m.status], c = st[1], sel = m.slot === this.state.sel, hot = m.status === 'waiting' || m.status === 'thinking';
+    return Object.assign(m, {
+      label: st[0], c: c, isSel: sel,
+      modelT: LAB.model[m.model], effortT: LAB.effort[m.effort], bypass: m.mode === 'bypassPermissions',
+      bg: 'linear-gradient(180deg, ' + c + (hot ? '22' : '12') + ', rgba(255,255,255,0.03))',
+      ring: sel ? '0 0 0 1.5px rgba(255,255,255,0.8), 0 14px 34px -12px ' + c : 'inset 0 0 0 1px rgba(255,255,255,0.07), 0 14px 34px -' + (hot ? '14' : '22') + 'px ' + c,
+      pick: () => this.setState({ sel: m.slot })
+    });
+  }
+  renderVals() {
+    const s = this.state;
+    const blocks = BLOCKS.map((b) => Object.assign({}, b, { agents: b.agents.map((a) => Object.assign(this.agent(a), { repo: b.repo })) }));
+    const all = [].concat.apply([], blocks.map(function (b) { return b.agents; }));
+    const cur = all.filter(function (a) { return a.isSel; })[0] || all[0];
+    const ov = (k) => (v) => { const o = Object.assign({}, s.ov); o[cur.slot] = Object.assign({}, o[cur.slot] || {}); o[cur.slot][k] = v; this.setState({ ov: o }); };
+    const urgent = all.slice().sort(function (x, y) { return RANK[x.status] - RANK[y.status]; })[0];
+    return {
+      blocks: blocks, cur: cur, urgent: urgent.c,
+      waiting: all.filter(function (a) { return a.status === 'waiting'; }).length,
+      curRows: [this.segs('model', 'Modell', cur.model, ov('model')), this.segs('effort', 'Effort', cur.effort, ov('effort')), this.segs('mode', 'Modus', cur.mode, ov('mode'))],
+      newRows: [this.segs('model', 'Modell', s.model, (v) => this.put('model', v)), this.segs('mode', 'Modus', s.mode, (v) => this.put('mode', v)), this.segs('effort', 'Effort', s.effort, (v) => this.put('effort', v))],
+      deckRows: [this.segs('lang', 'Sprache (Agenten und Deck)', s.lang, (v) => this.put('lang', v)), this.segs('edge', 'Andocken am Bildschirmrand', s.edge, (v) => this.put('edge', v))],
+      bypass: s.mode === 'bypassPermissions',
+      ring: s.ring, ringJ: s.ring ? 'flex-end' : 'flex-start', ringBg: s.ring ? '#4ade9a' : 'rgba(255,255,255,0.18)',
+      toggleRing: () => this.put('ring', !s.ring),
+      jira: s.jira, onJira: (e) => this.put('jira', String(e.target.value).toUpperCase().slice(0, 8)),
+      saved: s.saved, unsaved: !s.saved,
+      askIdle: !s.restart, ask: s.restart,
+      askRestart: () => this.setState({ restart: true }), noRestart: () => this.setState({ restart: false })
+    };
+  }
+}
+</script>
+</body>
+</html>

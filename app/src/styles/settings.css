@@ -1,0 +1,162 @@
+/* Einstellungsfenster: rechte Spalte (aside) von einstellungen-glas.html, im Papier-Look
+ * (styles/base.css). Glas und Unschärfe fallen weg; Flächen sind Creme und Overlay,
+ * Signale nehmen die Pigmente der Statusfarben. */
+
+html:has(.settings),
+body:has(.settings) {
+  background: var(--panel);
+  overflow: auto;
+}
+
+.settings-stage {
+  min-height: 100vh;
+  background: var(--panel);
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 480px;
+  padding: 20px;
+  background: var(--panel);
+  color: var(--ink);
+  line-height: normal;
+}
+
+.set-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.set-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.set-spacer {
+  flex: 1;
+}
+
+.set-status {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.set-status--saved {
+  font-weight: 600;
+  color: var(--ok-ink);
+}
+
+.set-status--error {
+  max-width: 260px;
+  overflow: hidden;
+  font-weight: 600;
+  color: var(--err-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.set-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.set-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.set-h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.set-hint {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.set-divider {
+  height: 1px;
+  background: var(--hl-med);
+}
+
+/* ── Segmente ─────────────────────────────────────────────────────────── */
+
+.set-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.set-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--dim);
+}
+
+.seg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--overlay);
+}
+
+.seg-item {
+  flex: 1;
+  height: 30px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--subtle);
+  text-align: center;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.seg-item:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+/* Gewählt: hell ein Blatt auf dem Overlay, dunkel eine hellere Stufe. */
+.seg-item[data-on] {
+  background: var(--seg-on);
+  box-shadow: 0 1px 2px var(--panel-shadow);
+  color: var(--ink);
+  font-weight: 600;
+  cursor: default;
+}
+
+/* ── Knopf „Panel neu starten“ ───────────────────────────────────────── */
+
+/* Klein, damit die Kopfzeile von „Deck“ so hoch bleibt wie die von „Neue Agenten“;
+ * negativer Rand gleicht den Innenabstand gegen die Grundlinie aus. */
+.tool-btn {
+  margin: -4px 0;
+  padding: 3px 10px;
+  border: 1px solid var(--hl-med);
+  border-radius: 8px;
+  background: transparent;
+  font-size: 11px;
+  color: var(--subtle);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.tool-btn:hover {
+  border-color: var(--hl-high);
+  background: var(--hl-low);
+  color: var(--ink);
+}

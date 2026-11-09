@@ -1,0 +1,35 @@
+//! Fachkern des Agent Decks: alles, was man auf Papier nachrechnen kann.
+//!
+//! Kein Fenster, kein Win32, kein Tauri. Darum ist jedes Modul hier ohne laufendes
+//! Panel testbar (`cargo test -p deck-core`), und die Hooks (`deck-hooks`) können es
+//! benutzen, ohne die Oberfläche nachzuziehen.
+//!
+//! Die Module entsprechen den Python-Modulen der Referenzfassung (`deck/domain`,
+//! `deck/claude`, `deck/i18n.py`); `pystr` und `pyjson` halten die Python-Semantik fest,
+//! die beide Fassungen während der Umstellung teilen müssen.
+
+pub mod arrange;
+pub mod attention;
+pub mod auto_mode;
+pub mod bind_store;
+pub mod binding;
+pub mod claude;
+pub mod config;
+pub mod dock;
+pub mod deck_view;
+pub mod focus_frame;
+pub mod front;
+pub mod i18n;
+pub mod isotime;
+pub mod ordering;
+pub mod paths;
+pub mod prompts;
+pub mod protocol;
+pub mod pyjson;
+pub mod pystr;
+pub mod restart_plan;
+pub mod slot_state;
+pub mod status_model;
+pub mod view;
+pub mod wt;
+pub mod zoom;

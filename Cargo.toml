@@ -1,0 +1,16 @@
+[workspace]
+resolver = "3"
+members = ["app/src-tauri", "crates/deck-core", "crates/deck-win", "crates/deck-hooks", "crates/deck-services"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+authors = ["Jorrit Voßkühler"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

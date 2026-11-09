@@ -1,0 +1,31 @@
+[package]
+name = "agent-deck"
+description = "Agent Deck: Statusübersicht für parallel laufende Claude-Code-Agenten"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+# Eigener Name für die Bibliothek: unter Windows kollidieren lib und bin sonst
+# (https://github.com/rust-lang/cargo/issues/8519).
+name = "agent_deck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+deck-core = { path = "../../crates/deck-core" }
+deck-win = { path = "../../crates/deck-win" }
+deck-services = { path = "../../crates/deck-services" }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

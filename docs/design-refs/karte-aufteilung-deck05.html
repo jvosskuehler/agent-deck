@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Agent Deck: Signalfarben</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+button{font:inherit;color:inherit;margin:0;cursor:pointer;text-align:left}
+button:focus-visible{outline:2px solid #ffffff;outline-offset:3px}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@keyframes breathe{0%,100%{opacity:.35}50%{opacity:1}}
+.breathe{animation:breathe 3s ease-in-out infinite}
+</style>
+</helmet>
+<div style="width: 1080px; height: 560px; position: relative; overflow: hidden; background: #1c1d21; font-family: Inter, 'Segoe UI', sans-serif; color: #f4f4f5;">
+  <main aria-label="Agent Deck" style="position: absolute; left: 90px; top: 0; width: 900px; box-sizing: border-box; padding: 14px 16px 0 20px; background: #000000; border: 1px solid #1a1a1e; border-top: none; border-radius: 0 0 18px 18px; box-shadow: 0 30px 60px -30px #000;">
+
+    <section style="display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <button style="border: 0; background: transparent; padding: 0; font-size: 12.5px; font-weight: 700; color: #f4f4f5;">Repos</button>
+        <span style="font-size: 11px; color: #5f5f68;">Windows Terminal</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; width: 864px;">
+        <sc-for list="{{wt}}" as="a" hint-placeholder-count="5">
+          <button onClick="{{a.pick}}" style="position: relative; box-sizing: border-box; width: 197px; height: 118px; padding: 10px 12px 9px; border-radius: 14px; background: {{a.bg}}; border: 1.5px solid {{a.border}}; color: {{a.fg}}; box-shadow: {{a.ring}}; display: flex; flex-direction: column;">
+            <span aria-hidden="true" class="{{a.cls}}" style="position: absolute; inset: -2px; border-radius: 15px; box-shadow: {{a.glow}}; pointer-events: none;"></span>
+            <span style="display: flex; align-items: baseline; gap: 6px; width: 100%;">
+              <span style="font-size: 11.5px; font-weight: 700; color: {{a.labelC}};">{{a.label}}</span>
+              <span style="flex: 1;"></span>
+              <span style="font-size: 11px; font-weight: 500; color: {{a.sub}};">{{a.model}} · {{a.effort}}</span>
+            </span>
+            <span class="clamp2" style="margin-top: 7px; font-size: 13.5px; font-weight: 700; line-height: 1.3;">{{a.title}}</span>
+            <span style="margin-top: auto; display: flex; gap: 6px; width: 100%; font-size: 11px;">
+              <span style="font-weight: 700; color: {{a.ticketC}};">{{a.ticket}}</span>
+              <span style="flex: 1;"></span>
+              <span style="font-weight: 500; color: {{a.modeC}};">{{a.mode}}</span>
+            </span>
+          </button>
+        </sc-for>
+        <button aria-label="Neuer Agent in Repos" style="width: 36px; height: 118px; border-radius: 12px; border: 1.5px dashed #26262c; background: transparent; color: #5f5f68; font-size: 18px; text-align: center; padding: 0;">+</button>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 8px; margin-top: 18px;">
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <button style="border: 0; background: transparent; padding: 0; font-size: 12.5px; font-weight: 700; color: #f4f4f5;">orpheus-management-api</button>
+        <span style="font-size: 11px; color: #5f5f68;">VS Code</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; width: 864px;">
+        <sc-for list="{{vs}}" as="a" hint-placeholder-count="3">
+          <button onClick="{{a.pick}}" style="position: relative; box-sizing: border-box; width: 197px; height: 58px; padding: 7px 12px; border-radius: 14px; background: {{a.bg}}; border: 1.5px solid {{a.border}}; color: {{a.fg}}; box-shadow: {{a.ring}}; display: flex; flex-direction: column; justify-content: space-between;">
+            <span aria-hidden="true" class="{{a.cls}}" style="position: absolute; inset: -2px; border-radius: 15px; box-shadow: {{a.glow}}; pointer-events: none;"></span>
+            <span style="display: flex; gap: 6px; width: 100%;"><span style="font-size: 11.5px; font-weight: 700; color: {{a.labelC}};">{{a.label}}</span><span style="flex: 1;"></span><span style="font-size: 11px; color: {{a.sub}};">{{a.model}} · {{a.effort}}</span></span>
+            <span style="display: flex; gap: 6px; width: 100%; font-size: 11px;"><span style="font-weight: 700; color: {{a.ticketC}};">{{a.ticket}}</span><span style="flex: 1;"></span><span style="color: {{a.modeC}};">{{a.mode}}</span></span>
+          </button>
+        </sc-for>
+        <button aria-label="Neuer Agent in orpheus-management-api" style="width: 36px; height: 58px; border-radius: 12px; border: 1.5px dashed #26262c; background: transparent; color: #5f5f68; font-size: 18px; text-align: center; padding: 0;">+</button>
+      </div>
+    </section>
+
+    <div style="display: flex; align-items: center; gap: 16px; height: 36px; margin: 14px -16px 0 -20px; padding: 0 12px 0 20px; border-top: 1px solid #141417; font-size: 11.5px; color: #8b8b95;">
+      <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #4ade80;"></span>Session <span style="color: #f4f4f5; font-weight: 600;">34 %</span></span>
+      <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #ffb454;"></span>Woche <span style="color: #f4f4f5; font-weight: 600;">61 %</span></span>
+      <span style="flex: 1;"></span>
+      <button aria-label="Einstellungen" style="width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent; color: #8b8b95; display: flex; align-items: center; justify-content: center; padding: 0;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"></path></svg></button>
+    </div>
+    <div aria-hidden="true" class="breathe" style="position: absolute; left: 50%; bottom: -18px; width: 120px; height: 7px; margin-left: -60px; border-radius: 7px; background: {{urgent}}; box-shadow: 0 0 14px {{urgent}};"></div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":560}}'>
+const S = { waiting: ['Rückfrage', '#ffb454'], thinking: ['denkt', '#5cc8ff'], done: ['ungelesen', '#4ade80'], idle: ['idle', '#8b8b99'], lost: ['getrennt', '#ff6b6b'] };
+const RANK = { waiting: 0, lost: 1, done: 2, thinking: 3, idle: 4 };
+const WT = [
+  { id: 'B1', st: 'waiting', title: 'ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4062', mode: 'auto' },
+  { id: 'B2', st: 'thinking', title: 'ORPH-3773 Rechtekonzept Integrationstests', model: 'Opus 5.5', effort: 'ultracode', ticket: 'ORPH-3773', mode: 'bypass' },
+  { id: 'B3', st: 'done', title: 'PR 180 Review-Threads schließen', model: 'Fable 5.1', effort: 'high', ticket: '#180', mode: 'auto' },
+  { id: 'B4', st: 'thinking', title: 'ORPH-3192 Mehrfach-RDS auf der Test-VM', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-3192', mode: 'auto' },
+  { id: 'B5', st: 'idle', title: 'Agent Deck neues Design', model: 'Opus 5.5', effort: 'max', ticket: '', mode: 'auto' }
+];
+const VS = [
+  { id: 'A1', st: 'thinking', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4107', mode: 'auto' },
+  { id: 'A2', st: 'idle', model: 'Fable 5.1', effort: 'high', ticket: '', mode: 'plan' },
+  { id: 'A3', st: 'lost', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4105', mode: 'auto' }
+];
+
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 'B2' }; }
+  deco(a) {
+    const s = S[a.st], c = s[1], sel = this.state.sel === a.id;
+    const solid = a.st === 'waiting' || a.st === 'done', quiet = a.st === 'idle', hot = a.st === 'waiting' || a.st === 'thinking';
+    const byp = a.mode === 'bypass';
+    return Object.assign({}, a, {
+      label: s[0], c: c, cls: hot ? 'breathe' : '',
+      bg: solid ? c : (quiet ? '#121215' : '#0b0b0e'),
+      border: solid ? c : (quiet ? '#24242a' : c),
+      fg: solid ? '#0b0b0d' : (quiet ? '#a1a1aa' : '#ffffff'),
+      sub: solid ? 'rgba(0,0,0,0.6)' : '#8b8b95',
+      labelC: solid ? '#0b0b0d' : (quiet ? '#8b8b95' : c),
+      ticketC: solid ? 'rgba(0,0,0,0.72)' : '#b7a6ff',
+      modeC: byp ? (solid ? '#8a1c1c' : '#ff8a8a') : (solid ? 'rgba(0,0,0,0.6)' : '#8b8b95'),
+      glow: quiet ? 'none' : (solid ? '0 0 20px -4px ' + c + 'cc' : '0 0 18px -4px ' + c + '99'),
+      ring: sel ? '0 0 0 3px #000000, 0 0 0 4.5px #ffffff' : 'none',
+      pick: () => this.setState({ sel: a.id })
+    });
+  }
+  renderVals() {
+    const wt = WT.map((a) => this.deco(a)), vs = VS.map((a) => this.deco(a));
+    const urgent = wt.concat(vs).slice().sort(function (x, y) { return RANK[x.st] - RANK[y.st]; })[0];
+    return { wt: wt, vs: vs, urgent: urgent.c };
+  }
+}
+</script>
+</body>
+</html>
