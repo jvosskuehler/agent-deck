@@ -64,7 +64,7 @@ fn pick(ev: &RefEvidence) -> (Seen, Seen) {
 
 #[test]
 fn the_strongest_source_wins_for_ticket_and_pr() {
-    let chat = Refs { ticket: "ORPH-1212".into(), pr: "20068".into() };
+    let chat = Refs { ticket: "ORPH-1212".into(), pr: "20068".into(), ..Refs::default() };
     let branches = vec!["feature/ORPH-4062-x".to_string()];
     let dirs = vec!["C:/Repos/wt/4116-ui".to_string()];
     let all = RefEvidence {
@@ -74,6 +74,7 @@ fn the_strongest_source_wins_for_ticket_and_pr() {
         statusline_pr: Some(347),
         title: Some("ORPH-3192 PR 180"),
         chat: Some(&chat),
+        worktree_branch: None,
         prefix: "ORPH",
     };
     let s = |t: &str, src: RefSource, d: bool| Some((t.to_string(), src, d));

@@ -17,7 +17,7 @@ use deck_core::bind_store::BindStore;
 use deck_core::claude::refs::Refs;
 use deck_core::claude::settings::{BYPASS_MODE, DefaultModeCache};
 use deck_core::config::{MODE_CYCLE, WINDOWS};
-use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view, slot_dirs};
+use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view, chat_worktree, slot_dirs};
 use deck_core::front::BackToggle;
 use deck_core::i18n::Lang;
 use deck_core::slot_state::{SlotState, read_all, read_found_tickets, read_found_worktrees, read_live};
@@ -224,7 +224,11 @@ impl Deck {
             .iter()
             .filter(|w| w.connected)
             .flat_map(|w| w.terminals.iter())
-            .flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees))
+            .flat_map(|slot| {
+                let mut d = slot_dirs(slot, &self.states, &self.live, &self.worktrees);
+                d.extend(chat_worktree(slot, &self.states, &self.detected_refs));
+                d
+            })
             .collect();
         let branches = self.services.branches(&dirs, now);
         let prefix = self.jira_prefix();

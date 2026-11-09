@@ -75,6 +75,9 @@ pub enum RefSource {
     Branch,
     /// Aus dem worktree-Ordner (`wt/4116-ui`).
     Folder,
+    /// Aus dem worktree, in dem der Agent laut seinen Werkzeugaufrufen arbeitet
+    /// (Edit, `git -C wt/4116-ui …`), auch wenn sein cwd woanders liegt.
+    Worktree,
     /// Von Claude Code selbst gemeldet (`pr` in der Statuszeile): maßgeblich.
     Statusline,
     /// Aus dem Sessiontitel.

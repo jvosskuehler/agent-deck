@@ -192,7 +192,7 @@ fn rv(text: &str, source: RefSource, detected: bool) -> Seen {
 fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "idle", "ts": NOW, "session_id": "s1"}}));
-    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into() });
+    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into(), ..Refs::default() });
     assert_eq!(refs_of(&f.tile("A1")), (rv("ORPH-1", RefSource::Chat, true), rv("#62", RefSource::Chat, true)));
     f.store.tickets.insert("A1".into(), "4116".into());
     let t = f.tile("A1");
@@ -208,7 +208,7 @@ fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
 fn branch_folder_statusline_and_title_are_read_from_the_agents_folders_and_live_file() {
     let mut f = Fixture::new();
     f.states = map(json!({"B1": {"status": "idle", "ts": NOW, "session_id": "s1", "cwd": "C:/Repos"}}));
-    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into() });
+    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into(), ..Refs::default() });
     f.live = map(json!({"B1": {"session_name": "ORPH-3773 Rechtekonzept", "cwd": "C:/Repos/wt/4116-ui/src"}}));
     assert_eq!(refs_of(&f.tile("B1")).0, rv("ORPH-4116", RefSource::Folder, false), "Ordner vor Titel");
     f.branches.insert("C:/Repos/wt/4116-ui/src".into(), "feature/ORPH-4062-gratis".into());

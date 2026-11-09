@@ -111,6 +111,14 @@ pub fn slot_dirs(
     ref_dirs(worktrees.get(slot).map(String::as_str), lv.as_deref(), st.as_deref())
 }
 
+/// Der worktree, in dem der Agent eines Slots laut seinen Werkzeugaufrufen arbeitet
+/// (`Refs::worktree`). Die App liest auch dafür den Branch, falls sein Name keine
+/// Nummer trägt.
+pub fn chat_worktree(slot: &str, states: &HashMap<String, SlotState>, detected_refs: &HashMap<String, Refs>) -> Option<String> {
+    let sid = states.get(slot).and_then(|s| text(s.get("session_id")))?;
+    detected_refs.get(sid).map(|r| r.worktree.trim().to_string()).filter(|d| !d.is_empty())
+}
+
 /// Modellname fürs Kartenlabel kürzen: „Opus 5 (1M context)“ → „Opus 5 (1M)“.
 pub fn short_model(name: &str) -> String {
     name.replace(" context)", ")")
@@ -185,13 +193,16 @@ impl DeckInput<'_> {
         let lv = self.live.get(slot);
         let dirs = self.dirs_of(slot);
         let branches: Vec<String> = dirs.iter().filter_map(|d| self.branches.get(d).cloned()).collect();
+        let chat = self.detected_refs.get(session_id);
+        let wt_branch = chat.map(|r| r.worktree.as_str()).filter(|d| !d.is_empty()).and_then(|d| self.branches.get(d));
         let ev = RefEvidence {
             assigned: self.store.tickets.get(slot).or_else(|| self.found_tickets.get(slot)).map(String::as_str),
             branches: &branches,
             dirs: &dirs,
             statusline_pr: lv.and_then(|l| l.get("pr")).and_then(|p| p.get("number")).and_then(serde_json::Value::as_u64),
             title: lv.and_then(|l| text(l.get("session_name"))),
-            chat: if TICKET_AUTODETECT_ON_CARD { self.detected_refs.get(session_id) } else { None },
+            chat: if TICKET_AUTODETECT_ON_CARD { chat } else { None },
+            worktree_branch: wt_branch.map(String::as_str),
             prefix: self.jira_prefix,
         };
         (pick_ticket(&ev, self.lang), pick_pr(&ev, self.lang))

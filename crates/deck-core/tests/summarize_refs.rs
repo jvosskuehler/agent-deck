@@ -187,7 +187,7 @@ fn issue_line_and_color_hashes_are_no_prs() {
 #[test]
 fn ticket_and_pr_can_both_apply() {
     let got = find_refs(&user("Bugs aus PR #62 zum Ticket PROJ-2651 fixen"), Some("PROJ"));
-    assert_eq!(got, Refs { ticket: "PROJ-2651".into(), pr: "62".into() });
+    assert_eq!(got, Refs { ticket: "PROJ-2651".into(), pr: "62".into(), ..Refs::default() });
     assert_eq!(find_refs(&user("nur reden"), Some("PROJ")), Refs::default());
 }
 
@@ -219,7 +219,7 @@ fn refs_are_cached_by_size_and_found_values_survive_an_empty_rescan() {
     let cache = tempfile::tempdir().unwrap();
     let p = write_transcript(projects.path(), "C:/r", "s1", &[("user", "mach PROJ-7 und PR #5"), ("user", "PR #5 bitte")]);
     let r = ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("PROJ"));
-    assert_eq!(r, Refs { ticket: "PROJ-7".into(), pr: "5".into() });
+    assert_eq!(r, Refs { ticket: "PROJ-7".into(), pr: "5".into(), ..Refs::default() });
     assert_eq!(cached_refs(cache.path(), "s1", Some("PROJ")), r);
     std::fs::write(&p, json!({"type": "user", "message": {"content": "nichts mehr"}}).to_string()).unwrap();
     assert_eq!(ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("PROJ")), r);

@@ -50,6 +50,7 @@ const ORIGIN: Record<RefSource, [string, string]> = {
   assigned: ["zugewiesen", "assigned"],
   branch: ["Branch", "branch"],
   folder: ["Ordner", "folder"],
+  worktree: ["Worktree", "Worktree"],
   statusline: ["Claude Code", "Claude Code"],
   title: ["Titel", "title"],
   chat: ["Chat", "Chat"],
@@ -75,7 +76,7 @@ const HOME: TileSeed[] = [
 
 const REPO: TileSeed[] = [
   { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Rechtstexte als PDF", ticket: ref("ORPH-4107", "assigned") },
-  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: "Plan für /sessions" },
+  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: "Plan für /sessions", ticket: ref("ORPH-4062", "worktree") },
   { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Gruppen-Claim für AD FS", ticket: ref("ORPH-4105", "assigned") },
 ];
 

@@ -6,11 +6,14 @@
 //!
 //! Ticket: 1. von Hand zugewiesen (Kontextmenü) bzw. danach vom Agenten gemeldet
 //! (`.ticket`), 2. git-Branch im Ordner des Agenten (`feature/ORPH-4116`, `4116-ui`),
-//! 3. worktree-Ordner (`Repos/wt/4116-ui`), 4. Sessiontitel, 5. Chat.
+//! 3. worktree-Ordner des cwd (`Repos/wt/4116-ui`), 4. der worktree, in dem der Agent
+//! laut seinen Werkzeugaufrufen arbeitet (`claude::worktree_use`; Ordnername, sonst
+//! dessen Branch), 5. Sessiontitel, 6. Chat.
 //! PR: 1. was Claude Code selbst meldet (`pr` in `live.json`, maßgeblich), 2. Titel,
 //! 3. Chat.
 //!
-//! Titel und Chat sind geraten: die Kachel zeigt sie gedimmt (`RefView::detected`).
+//! Titel und Chat sind geraten: die Kachel zeigt sie gedimmt (`RefView::detected`),
+//! ebenso ein worktree, der nur gelesen und nie beschrieben wurde.
 //! Branch und Ordner lesen sich aus Dateien; das tut die App (`git_head.rs` mit
 //! Cache), hier kommt nur das Ergebnis an.
 
@@ -40,8 +43,10 @@ pub struct RefEvidence<'a> {
     pub statusline_pr: Option<u64>,
     /// Sessiontitel (`live.json` `session_name`).
     pub title: Option<&'a str>,
-    /// Im Chat Erratenes.
+    /// Im Chat Erratenes, samt worktree aus den Werkzeugaufrufen (`Refs::worktree`).
     pub chat: Option<&'a Refs>,
+    /// Branch des worktree aus den Werkzeugaufrufen (für Namen ohne Nummer).
+    pub worktree_branch: Option<&'a str>,
     /// Jira-Projekt (`deck_settings.json` `jira_prefix`): macht aus `4116` `ORPH-4116`.
     pub prefix: &'a str,
 }
@@ -137,15 +142,22 @@ pub fn origin_word(source: RefSource, lang: Lang) -> &'static str {
         RefSource::Assigned => lang.l("zugewiesen", "assigned"),
         RefSource::Branch => "Branch",
         RefSource::Folder => lang.l("Ordner", "folder"),
+        RefSource::Worktree => "Worktree",
         RefSource::Statusline => "Claude Code",
         RefSource::Title => lang.l("Titel", "title"),
         RefSource::Chat => "Chat",
     }
 }
 
-fn ref_view(text: String, source: RefSource, lang: Lang) -> RefView {
+fn ref_view(text: String, source: RefSource, detected: bool, lang: Lang) -> RefView {
     let text = if text.chars().count() > TICKET_MAX_CHARS { format!("{}…", take_chars(&text, TICKET_MAX_CHARS - 1)) } else { text };
-    RefView { text, source, detected: matches!(source, RefSource::Title | RefSource::Chat), origin: origin_word(source, lang).into() }
+    RefView { text, source, detected, origin: origin_word(source, lang).into() }
+}
+
+/// Ticket aus dem worktree der Werkzeugaufrufe: erst sein Name, sonst sein Branch.
+fn ticket_from_worktree(ev: &RefEvidence, prefix: &str) -> Option<String> {
+    let dir = ev.chat.map(|r| r.worktree.trim()).filter(|d| !d.is_empty())?;
+    ticket_from_folder(dir, prefix).or_else(|| ev.worktree_branch.and_then(|b| ticket_from_branch(b, prefix)))
 }
 
 /// Das Ticket der Kachel, aus der stärksten Quelle, die eins hat.
@@ -156,9 +168,19 @@ pub fn pick_ticket(ev: &RefEvidence, lang: Lang) -> Option<RefView> {
         .map(|a| (jira_key(&a, Some(prefix)), RefSource::Assigned))
         .or_else(|| ev.branches.iter().find_map(|b| ticket_from_branch(b, prefix)).map(|t| (t, RefSource::Branch)))
         .or_else(|| ev.dirs.iter().find_map(|d| ticket_from_folder(d, prefix)).map(|t| (t, RefSource::Folder)))
+        .or_else(|| ticket_from_worktree(ev, prefix).map(|t| (t, RefSource::Worktree)))
         .or_else(|| ev.title.and_then(|t| ticket_from_title(t, prefix)).map(|t| (t, RefSource::Title)))
         .or_else(|| nonempty(ev.chat.map(|r| r.ticket.as_str())).map(|t| (t, RefSource::Chat)));
-    found.map(|(text, source)| ref_view(text, source, lang))
+    // Ein worktree, der nur gelesen wurde, ist ein Hinweis, kein Beleg.
+    let reads_only = !ev.chat.is_some_and(|r| r.worktree_writes);
+    found.map(|(text, source)| {
+        let detected = match source {
+            RefSource::Title | RefSource::Chat => true,
+            RefSource::Worktree => reads_only,
+            _ => false,
+        };
+        ref_view(text, source, detected, lang)
+    })
 }
 
 /// Der PR der Kachel als „#347“.
@@ -169,5 +191,5 @@ pub fn pick_pr(ev: &RefEvidence, lang: Lang) -> Option<RefView> {
         .map(|n| (n.to_string(), RefSource::Statusline))
         .or_else(|| ev.title.and_then(pr_from_title).map(|p| (p, RefSource::Title)))
         .or_else(|| chat.map(|p| (p.to_string(), RefSource::Chat)));
-    found.map(|(n, source)| ref_view(format!("#{n}"), source, lang))
+    found.map(|(n, source)| ref_view(format!("#{n}"), source, matches!(source, RefSource::Title | RefSource::Chat), lang))
 }

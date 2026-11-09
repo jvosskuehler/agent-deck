@@ -3,4 +3,4 @@
 /**
  * Woher ein Ticket- oder PR-Bezug stammt, vom stärksten zum schwächsten.
  */
-export type RefSource = "assigned" | "branch" | "folder" | "statusline" | "title" | "chat";
+export type RefSource = "assigned" | "branch" | "folder" | "worktree" | "statusline" | "title" | "chat";

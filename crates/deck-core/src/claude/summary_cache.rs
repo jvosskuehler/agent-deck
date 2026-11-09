@@ -14,7 +14,10 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::claude::refs::{Refs, find_refs};
-use crate::claude::summarize::{build_digest, clean_summary, enc_cwd, extract_turns, instruction, transcript_lines};
+use crate::claude::summarize::{
+    build_digest, clean_summary, enc_cwd, extract_turns, extract_turns_from_values, instruction, transcript_lines,
+};
+use crate::claude::worktree_use::active_worktree;
 use crate::paths::{home_dir, load_json, save_json};
 use crate::field::number;
 
@@ -98,7 +101,17 @@ pub fn cached_refs(dir: &Path, session_id: &str, project: Option<&str>) -> Refs 
     if c.get("refs_key").and_then(Value::as_str) != Some(refs_key(project).as_str()) {
         return Refs::default();
     }
-    Refs { ticket: text_field(&c, "ticket"), pr: text_field(&c, "pr") }
+    refs_of(&c)
+}
+
+/// Die Bezüge aus einer Cache-Datei.
+fn refs_of(c: &Map<String, Value>) -> Refs {
+    Refs {
+        ticket: text_field(c, "ticket"),
+        pr: text_field(c, "pr"),
+        worktree: text_field(c, "wt_dir"),
+        worktree_writes: c.get("wt_writes").and_then(Value::as_bool).unwrap_or(false),
+    }
 }
 
 /// Cache frisch lesen und nur die übergebenen Felder ersetzen.
@@ -125,16 +138,31 @@ pub fn ensure_refs(projects: &Path, dir: &Path, session_id: &str, cwd: Option<&s
     let cache = read_cache(dir, session_id).unwrap_or_default();
     let key = refs_key(project);
     let same = cache.get("refs_key").and_then(Value::as_str) == Some(key.as_str());
-    let old = if same { Refs { ticket: text_field(&cache, "ticket"), pr: text_field(&cache, "pr") } } else { Refs::default() };
+    let old = if same { refs_of(&cache) } else { Refs::default() };
     let Some(path) = transcript_path(projects, session_id, cwd) else { return old };
     let size = size_of(&path);
     if same && cache.get("refs_size").and_then(Value::as_u64) == Some(size) {
         return old;
     }
-    let found = find_refs(&extract_turns(&read_lines_lossy(&path)), project);
+    // Einmal lesen und parsen, für den Chat-Scan und für den worktree aus den
+    // Werkzeugaufrufen.
+    let records: Vec<Value> = read_lines_lossy(&path)
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect();
+    let found = find_refs(&extract_turns_from_values(&records), project);
+    let wt = active_worktree(&records);
+    let (worktree, worktree_writes) = match wt {
+        Some(w) => (w.dir, w.writes > 0),
+        None => (old.worktree, old.worktree_writes),
+    };
     let refs = Refs {
         ticket: if found.ticket.is_empty() { old.ticket } else { found.ticket },
         pr: if found.pr.is_empty() { old.pr } else { found.pr },
+        worktree,
+        worktree_writes,
     };
     let _ = merge_cache(
         dir,
@@ -144,14 +172,17 @@ pub fn ensure_refs(projects: &Path, dir: &Path, session_id: &str, cwd: Option<&s
             ("refs_key", key.into()),
             ("ticket", refs.ticket.clone().into()),
             ("pr", refs.pr.clone().into()),
+            ("wt_dir", refs.worktree.clone().into()),
+            ("wt_writes", refs.worktree_writes.into()),
         ],
     );
     refs
 }
 
-/// Stand der Chat-Erkennung. Hochzählen, wenn sich die Rechnung in `refs.rs` ändert:
-/// dann wird jedes Transcript einmal neu gelesen.
-pub const REFS_VERSION: u32 = 2;
+/// Stand der Chat-Erkennung. Hochzählen, wenn sich die Rechnung in `refs.rs` oder
+/// `worktree_use.rs` ändert: dann wird jedes Transcript einmal neu gelesen.
+/// 3: worktree aus den Werkzeugaufrufen (`wt_dir`, `wt_writes`).
+pub const REFS_VERSION: u32 = 3;
 
 /// Wofür die gecachten Bezüge gelten: Version der Rechnung und Jira-Projekt.
 fn refs_key(project: Option<&str>) -> String {

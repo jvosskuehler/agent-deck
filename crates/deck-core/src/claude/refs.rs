@@ -267,8 +267,14 @@ pub fn find_pr(turns: &[Turn], min_score: i64) -> String {
 pub struct Refs {
     pub ticket: String,
     pub pr: String,
+    /// Der worktree, in dem der Agent laut seinen Werkzeugaufrufen arbeitet
+    /// (`worktree_use.rs`); leer = keiner. Kein Raten aus dem Text, darum stärker als
+    /// `ticket` (`ref_sources.rs`).
+    pub worktree: String,
+    /// Dort wurde geschrieben (Edit, Write, Commit), nicht nur gelesen.
+    pub worktree_writes: bool,
 }
 
 pub fn find_refs(turns: &[Turn], project: Option<&str>) -> Refs {
-    Refs { ticket: find_ticket(turns, project, 2), pr: find_pr(turns, 3) }
+    Refs { ticket: find_ticket(turns, project, 2), pr: find_pr(turns, 3), ..Refs::default() }
 }

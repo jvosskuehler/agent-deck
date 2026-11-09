@@ -139,5 +139,9 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
   Cache-Restzeit auf der Kachel (Fußzeile „A“, `prompt_cache::tile_cache`).
 - **Ticket und PR einer Kachel** kommen aus Quellen mit fester Reihenfolge
   (`deck-core::ref_sources`): zugewiesen, Branch (`.git/HEAD`, ohne `git`, gecacht in
-  `git_head.rs`), worktree-Ordner, PR aus der Statuszeile, Sessiontitel, zuletzt der Chat.
+  `git_head.rs`), worktree-Ordner des cwd, der worktree aus den Werkzeugaufrufen im
+  Transcript (`claude::worktree_use`: Edit/Write-Pfade, `git -C wt/…`, `cd`; Schreiben
+  zählt achtfach, Altes klingt ab), PR aus der Statuszeile, Sessiontitel, zuletzt der Chat.
+  Probelauf gegen die echten Transcripts (nur lesend):
+  `cargo test -p deck-core --test worktree_use_real -- --ignored --nocapture`.
   Im Betrieb prüfen, ob `live.json` `cwd` bei Agenten im `wt/`-Ordner den worktree trägt.

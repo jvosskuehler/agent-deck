@@ -60,9 +60,10 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
   Textfarbe, höchstens zwei Zeilen, sonst Auslassung); unten die Fußzeile „A“ (Vorlage
   „A: 01 mit Ticket und PR“, 09.11.2026), drei Plätze mit `space-between`, 10,5 px, ohne
   Umbruch: links Ticket (fett) und PR als `#<n>` (mittel), beide in der Ticketfarbe, nur
-  geraten (Titel, Chat) gedimmt; in der Mitte die Restzeit des Prompt-Caches (warm
-  gedämpft `#6e6a86`/`#8e8a84` normal, knapp Textfarbe fett, kalt „kalt“ gedämpft mit
-  Deckkraft 0,55; solange der Agent arbeitet leer); rechts Modus (mittel). Breitester
+  geraten (Titel, Chat, ein nur gelesener worktree) gedimmt; in der Mitte die Restzeit
+  des Prompt-Caches (warm gedämpft `#6e6a86`/`#8e8a84` normal, knapp Textfarbe fett,
+  kalt „kalt“ gedämpft mit Deckkraft 0,55; solange der Agent arbeitet leer); rechts
+  Modus (mittel). Breitester
   Fall „ORPH-4116 #1234“ · „42 min“ · „bypass“ passt in 173 px gerade.
 - Fläche: Pigment mit Hex-Alpha `38` (dunkel `30`) über dem Kartengrund; idle und none
   liegen stattdessen auf dem Overlay. Zustandswechsel blenden in 400 ms über.
