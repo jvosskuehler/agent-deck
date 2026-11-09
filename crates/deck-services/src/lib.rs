@@ -19,10 +19,12 @@
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
 //! | [`vscode_cleanup`] | (neu) die frühere VS-Code-Extension entfernen | nichts |
 //! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`git_fs`] | (neu) Branch aus `.git/HEAD` lesen | nichts |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
 
+pub mod git_fs;
 pub mod guard;
 pub mod heartbeat;
 pub mod install;

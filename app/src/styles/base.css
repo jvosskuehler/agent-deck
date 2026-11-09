@@ -27,6 +27,9 @@
   --muted: #9893a5;
   --meta: #575279;
   --ref: #6a5590;
+  /* Cache-Restzeit auf der Kachel: reichlich bzw. abgelaufen (blass) / knapp. */
+  --cache-warm: #6e6a86;
+  --cache-low: #575279;
 
   /* Blockkopf, ＋-Karte, Leiste */
   --rail: #dfdad9;
@@ -83,6 +86,8 @@
     --muted: #6f6b66;
     --meta: #cfc9bf;
     --ref: #bda2e0;
+    --cache-warm: #8e8a84;
+    --cache-low: #e6e0d6;
 
     --rail: #3a3734;
     --rail-hot: #6f6b66;

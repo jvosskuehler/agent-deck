@@ -8,7 +8,7 @@ use deck_core::claude::refs::Refs;
 use deck_core::deck_view::*;
 use deck_core::i18n::Lang;
 use deck_core::slot_state::SlotState;
-use deck_core::view::Status;
+use deck_core::view::{CacheStage, RefSource, Status};
 use serde_json::{Value, json};
 
 const NOW: f64 = 10_000.0;
@@ -29,6 +29,7 @@ struct Fixture {
     found: HashMap<String, String>,
     worktrees: HashMap<String, String>,
     refs: HashMap<String, Refs>,
+    branches: HashMap<String, String>,
     slot_mode: HashMap<String, usize>,
     cycle: Vec<String>,
     home: Option<String>,
@@ -48,6 +49,7 @@ impl Fixture {
             found: HashMap::new(),
             worktrees: HashMap::new(),
             refs: HashMap::new(),
+            branches: HashMap::new(),
             slot_mode: HashMap::new(),
             cycle: ["manual", "accept", "plan", "auto"].map(String::from).to_vec(),
             home: Some("B".into()),
@@ -56,6 +58,14 @@ impl Fixture {
     }
 
     fn view(&self, mem: &mut StatusMemory) -> deck_core::view::DeckView {
+        self.with_input(|input| build_deck_view(input, mem))
+    }
+
+    fn dirs(&self, slot: &str) -> Vec<String> {
+        self.with_input(|input| input.dirs_of(slot))
+    }
+
+    fn with_input<R>(&self, f: impl FnOnce(&DeckInput) -> R) -> R {
         let input = DeckInput {
             windows: &self.windows,
             store: &self.store,
@@ -65,6 +75,8 @@ impl Fixture {
             found_tickets: &self.found,
             worktrees: &self.worktrees,
             detected_refs: &self.refs,
+            branches: &self.branches,
+            jira_prefix: "ORPH",
             slot_mode: &self.slot_mode,
             mode_cycle: &self.cycle,
             active_slot: self.active.as_deref(),
@@ -72,7 +84,7 @@ impl Fixture {
             lang: Lang::German,
             usage: None,
         };
-        build_deck_view(&input, mem)
+        f(&input)
     }
 
     fn tile(&self, slot: &str) -> deck_core::view::TileView {
@@ -165,21 +177,67 @@ fn card_fields_come_from_live_values_state_and_remembered_effort() {
     assert_eq!(f.tile("A2").model, "", "unbekanntes Modell bleibt leer");
 }
 
+type Seen = Option<(String, RefSource, bool)>;
+
+fn refs_of(t: &deck_core::view::TileView) -> (Seen, Seen) {
+    let f = |r: &Option<deck_core::view::RefView>| r.as_ref().map(|r| (r.text.clone(), r.source, r.detected));
+    (f(&t.ticket), f(&t.pr))
+}
+
+fn rv(text: &str, source: RefSource, detected: bool) -> Seen {
+    Some((text.into(), source, detected))
+}
+
 #[test]
-fn an_assigned_ticket_shows_only_with_worktree_otherwise_the_detected_one_dimmed() {
+fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "idle", "ts": NOW, "session_id": "s1"}}));
-    f.store.tickets.insert("A1".into(), "ORPH-4116".into());
     f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into() });
+    assert_eq!(refs_of(&f.tile("A1")), (rv("ORPH-1", RefSource::Chat, true), rv("#62", RefSource::Chat, true)));
+    f.store.tickets.insert("A1".into(), "4116".into());
     let t = f.tile("A1");
-    assert_eq!((t.reference.as_deref(), t.reference_detected), (Some("ORPH-1 #62"), true));
-    f.worktrees.insert("A1".into(), "C:/wt".into());
-    let t = f.tile("A1");
-    assert_eq!((t.reference.as_deref(), t.reference_detected), (Some("ORPH-4116"), false));
+    assert_eq!(refs_of(&t), (rv("ORPH-4116", RefSource::Assigned, false), rv("#62", RefSource::Chat, true)), "ohne worktree-Marker");
+    assert_eq!(t.ticket.unwrap().origin, "zugewiesen");
     f.store.tickets.clear();
     f.found.insert("A1".into(), "SEHR-LANGES-TICKET-1".into());
-    assert_eq!(f.tile("A1").reference.as_deref(), Some("SEHR-LANGES-T…"));
-    assert_eq!(f.tile("A2").reference, None);
+    assert_eq!(f.tile("A1").ticket.unwrap().text, "SEHR-LANGES-T…");
+    assert_eq!(refs_of(&f.tile("A2")), (None, None));
+}
+
+#[test]
+fn branch_folder_statusline_and_title_are_read_from_the_agents_folders_and_live_file() {
+    let mut f = Fixture::new();
+    f.states = map(json!({"B1": {"status": "idle", "ts": NOW, "session_id": "s1", "cwd": "C:/Repos"}}));
+    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into() });
+    f.live = map(json!({"B1": {"session_name": "ORPH-3773 Rechtekonzept", "cwd": "C:/Repos/wt/4116-ui/src"}}));
+    assert_eq!(refs_of(&f.tile("B1")).0, rv("ORPH-4116", RefSource::Folder, false), "Ordner vor Titel");
+    f.branches.insert("C:/Repos/wt/4116-ui/src".into(), "feature/ORPH-4062-gratis".into());
+    assert_eq!(refs_of(&f.tile("B1")).0, rv("ORPH-4062", RefSource::Branch, false), "Branch vor Ordner");
+    f.live = map(json!({"B1": {"session_name": "ORPH-3773 PR 180 Review", "pr": {"number": 347, "review_state": "approved"}}}));
+    f.branches.clear();
+    assert_eq!(refs_of(&f.tile("B1")), (rv("ORPH-3773", RefSource::Title, true), rv("#347", RefSource::Statusline, false)));
+    f.live = map(json!({"B1": {"session_name": "PR 180 Review"}}));
+    assert_eq!(refs_of(&f.tile("B1")).1, rv("#180", RefSource::Title, true));
+    assert_eq!(f.dirs("B1"), ["C:/Repos"]);
+}
+
+#[test]
+fn the_cache_time_shows_while_the_agent_waits_and_not_while_it_works() {
+    let mut f = Fixture::new();
+    f.states = map(json!({"A1": {"status": "done", "ts": NOW}}));
+    f.live = map(json!({"A1": {"cache_until": NOW + 42.0 * 60.0 + 5.0, "cache_ttl": 3600}}));
+    let c = f.tile("A1").cache.unwrap();
+    assert_eq!((c.text.as_str(), c.stage), ("42 min", CacheStage::Warm));
+    f.live = map(json!({"A1": {"cache_until": NOW + 120.0, "cache_ttl": 3600}}));
+    assert_eq!(f.tile("A1").cache.unwrap().stage, CacheStage::Low);
+    f.live = map(json!({"A1": {"cache_until": NOW - 1.0, "cache_ttl": 3600}}));
+    let c = f.tile("A1").cache.unwrap();
+    assert_eq!((c.text.as_str(), c.stage), ("kalt", CacheStage::Cold));
+    f.states = map(json!({"A1": {"status": "thinking", "ts": NOW}}));
+    assert_eq!(f.tile("A1").cache, None, "arbeitet: keine Zeit");
+    f.states = map(json!({"A1": {"status": "idle", "ts": NOW}}));
+    f.live = map(json!({"A1": {"cache_until": 0.0, "cache_ttl": 3600}}));
+    assert_eq!(f.tile("A1").cache, None, "ohne Ablaufzeit nichts");
 }
 
 #[test]

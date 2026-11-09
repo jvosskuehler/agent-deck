@@ -101,7 +101,8 @@ pub struct SummaryConfig {
     pub model: String,
     pub timeout: Duration,
     pub gates: SummaryGates,
-    /// Jira-Projekt für die Ticket-Erkennung (`config::JIRA_PROJECT_KEY`).
+    /// Jira-Projekt für die Ticket-Erkennung zum Start (`config::JIRA_PROJECT_KEY`); die
+    /// App setzt danach das aus den Einstellungen (`SummaryService::set_project_key`).
     pub project_key: Option<String>,
     /// Ticket und PR erkennen (`config::TICKET_AUTODETECT`).
     pub detect_refs: bool,
@@ -161,16 +162,32 @@ pub struct SummaryService {
     runner: Arc<dyn ClaudeRunner>,
     gate: Arc<Gate>,
     jobs: Arc<Mutex<HashSet<String>>>,
+    /// Das wirksame Jira-Projekt. Bis Nov. 2026 galt hier fest `PROJ`, auch wenn in den
+    /// Einstellungen `ORPH` stand: echte Keys bekamen keinen Vorzug, und aus
+    /// „Ticket 4116“ wurde `PROJ-4116`.
+    project_key: Mutex<Option<String>>,
 }
 
 impl SummaryService {
     pub fn new(cfg: SummaryConfig, runner: Arc<dyn ClaudeRunner>) -> SummaryService {
+        let project_key = Mutex::new(cfg.project_key.clone());
         SummaryService {
             cfg,
             runner,
             gate: Arc::new(Gate { free: Mutex::new(MAX_CONCURRENT), cv: Condvar::new() }),
             jobs: Arc::new(Mutex::new(HashSet::new())),
+            project_key,
         }
+    }
+
+    /// Jira-Projekt aus den Einstellungen (`jira_prefix`); gilt ab dem nächsten Auftrag.
+    pub fn set_project_key(&self, key: Option<&str>) {
+        let key = key.map(str::trim).filter(|k| !k.is_empty()).map(String::from);
+        *self.project_key.lock().unwrap_or_else(|e| e.into_inner()) = key;
+    }
+
+    fn project_key(&self) -> Option<String> {
+        self.project_key.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     /// Die echte Fassung mit dem `claude` vom PATH.
@@ -185,7 +202,7 @@ impl SummaryService {
 
     /// Nur die schon erkannten Bezüge.
     pub fn cached_refs(&self, session_id: &str) -> Refs {
-        cached_refs(&self.cfg.cache_dir, session_id)
+        cached_refs(&self.cfg.cache_dir, session_id, self.project_key().as_deref())
     }
 
     /// Alte Cache-Dateien längst geschlossener Sessions entfernen (einmal beim Start).
@@ -203,7 +220,7 @@ impl SummaryService {
             return false;
         }
         let job = Job {
-            cfg: self.cfg.clone(),
+            cfg: SummaryConfig { project_key: self.project_key(), ..self.cfg.clone() },
             runner: self.runner.clone(),
             gate: self.gate.clone(),
             jobs: self.jobs.clone(),

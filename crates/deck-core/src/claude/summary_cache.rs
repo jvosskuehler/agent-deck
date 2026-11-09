@@ -91,9 +91,13 @@ pub fn cached_summary(dir: &Path, session_id: &str) -> Option<String> {
     Some(text_field(&c, "summary")).filter(|s| !s.is_empty())
 }
 
-/// Nur die schon erkannten Bezüge, ohne das Transcript zu lesen.
-pub fn cached_refs(dir: &Path, session_id: &str) -> Refs {
+/// Nur die schon erkannten Bezüge, ohne das Transcript zu lesen; nur, wenn sie mit der
+/// heutigen Rechnung und diesem Jira-Projekt erkannt wurden.
+pub fn cached_refs(dir: &Path, session_id: &str, project: Option<&str>) -> Refs {
     let c = read_cache(dir, session_id).unwrap_or_default();
+    if c.get("refs_key").and_then(Value::as_str) != Some(refs_key(project).as_str()) {
+        return Refs::default();
+    }
     Refs { ticket: text_field(&c, "ticket"), pr: text_field(&c, "pr") }
 }
 
@@ -110,16 +114,21 @@ pub fn merge_cache(dir: &Path, session_id: &str, fields: Vec<(&str, Value)>) -> 
 /// Ticket-ID und PR-Nummer der Session bestimmen und cachen. Rein lokal (Regex), aber
 /// das Transcript kann ein paar MB haben: nicht im UI-Thread aufrufen. Neu gescannt wird
 /// nur, wenn sich die Größe geändert hat; schon gefundene Werte bleiben stehen, wenn ein
-/// neuer Scan nichts findet (ein gekürztes Transcript soll sie nicht löschen).
+/// neuer Scan nichts findet (ein gekürztes Transcript soll sie nicht löschen). Das gilt
+/// nur für Werte derselben Rechnung: steht im Cache eine andere [`REFS_VERSION`] oder ein
+/// anderes Jira-Projekt, zählt er nicht (sonst hielte sich ein früher falsch geratenes
+/// Ticket für immer).
 pub fn ensure_refs(projects: &Path, dir: &Path, session_id: &str, cwd: Option<&str>, project: Option<&str>) -> Refs {
     if session_id.is_empty() {
         return Refs::default();
     }
     let cache = read_cache(dir, session_id).unwrap_or_default();
-    let old = Refs { ticket: text_field(&cache, "ticket"), pr: text_field(&cache, "pr") };
+    let key = refs_key(project);
+    let same = cache.get("refs_key").and_then(Value::as_str) == Some(key.as_str());
+    let old = if same { Refs { ticket: text_field(&cache, "ticket"), pr: text_field(&cache, "pr") } } else { Refs::default() };
     let Some(path) = transcript_path(projects, session_id, cwd) else { return old };
     let size = size_of(&path);
-    if cache.get("refs_size").and_then(Value::as_u64) == Some(size) {
+    if same && cache.get("refs_size").and_then(Value::as_u64) == Some(size) {
         return old;
     }
     let found = find_refs(&extract_turns(&read_lines_lossy(&path)), project);
@@ -130,9 +139,23 @@ pub fn ensure_refs(projects: &Path, dir: &Path, session_id: &str, cwd: Option<&s
     let _ = merge_cache(
         dir,
         session_id,
-        vec![("refs_size", size.into()), ("ticket", refs.ticket.clone().into()), ("pr", refs.pr.clone().into())],
+        vec![
+            ("refs_size", size.into()),
+            ("refs_key", key.into()),
+            ("ticket", refs.ticket.clone().into()),
+            ("pr", refs.pr.clone().into()),
+        ],
     );
     refs
+}
+
+/// Stand der Chat-Erkennung. Hochzählen, wenn sich die Rechnung in `refs.rs` ändert:
+/// dann wird jedes Transcript einmal neu gelesen.
+pub const REFS_VERSION: u32 = 2;
+
+/// Wofür die gecachten Bezüge gelten: Version der Rechnung und Jira-Projekt.
+fn refs_key(project: Option<&str>) -> String {
+    format!("v{REFS_VERSION}|{}", project.unwrap_or("").trim().to_uppercase())
 }
 
 /// Stellschrauben der Neu-Erzeugung (Python-Vorgaben in `Default`).

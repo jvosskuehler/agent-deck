@@ -1,6 +1,6 @@
 //! Die Hintergrunddienste aus `crates/deck-services`, so verdrahtet, wie das Deck sie
-//! braucht: Usage, KI-Zusammenfassung samt Ticket/PR-Erkennung, worktrees (Aufräumen
-//! beim Schließen, Sweep im Takt).
+//! braucht: Usage, KI-Zusammenfassung samt Ticket/PR-Erkennung, git-Branches der
+//! Agenten-Ordner (gecacht), worktrees (Aufräumen beim Schließen, Sweep im Takt).
 //!
 //! Jeder Dienst ist optional: Tests bauen [`Services::inert`] ohne einen davon (nichts
 //! läuft an, nichts geht nach außen), die App [`Services::system`] mit allen.
@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use deck_core::claude::refs::Refs;
 use deck_core::config::{HOVER_SUMMARY, HOVER_SUMMARY_PREFETCH, TICKET_AUTODETECT};
+use deck_core::git_head::{BranchCache, GitFs, NoGit};
 use deck_core::i18n::Lang;
 use deck_core::view::UsageView;
 use deck_services::summary::{ChatInfo, InfoCallback, SummaryService};
@@ -35,6 +36,10 @@ pub struct Services {
     /// Zusammenfassungen vorab erzeugen (kostet `claude`-Läufe).
     prefetch_summaries: bool,
     last_prefetch: f64,
+    /// Liest `.git/HEAD` (Tests: nie).
+    git: Box<dyn GitFs>,
+    /// Gelesene Branches je Ordner, höchstens alle paar Sekunden neu.
+    branch_cache: BranchCache,
 }
 
 impl Services {
@@ -48,6 +53,8 @@ impl Services {
             wake: Arc::new(|| {}),
             prefetch_summaries: false,
             last_prefetch: f64::NEG_INFINITY,
+            git: Box::new(NoGit),
+            branch_cache: BranchCache::default(),
         }
     }
 
@@ -66,7 +73,32 @@ impl Services {
             wake,
             prefetch_summaries: HOVER_SUMMARY && HOVER_SUMMARY_PREFETCH,
             last_prefetch: f64::NEG_INFINITY,
+            git: Box::new(deck_services::git_fs::StdGitFs),
+            branch_cache: BranchCache::default(),
         }
+    }
+
+    /// Ab sofort mit diesem Jira-Projekt im Chat suchen (`jira_prefix`).
+    pub fn set_jira_prefix(&self, prefix: &str) {
+        if let Some(s) = &self.summary {
+            s.set_project_key(Some(prefix));
+        }
+    }
+
+    // ── Branches ─────────────────────────────────────────────────────────────────
+
+    /// git-Branch je Ordner der angezeigten Agenten. Läuft im 400-ms-Takt; gelesen wird
+    /// ein Ordner aber höchstens alle `git_head::BRANCH_TTL_S` Sekunden, sonst kommt der
+    /// Wert aus dem Cache. Ordner, nach denen keiner mehr fragt, fallen heraus.
+    pub fn branches(&mut self, dirs: &[String], now: f64) -> HashMap<String, String> {
+        self.branch_cache.retain(dirs);
+        let mut out = HashMap::new();
+        for d in dirs {
+            if let Some(b) = self.branch_cache.get(d, now, self.git.as_ref()) {
+                out.insert(d.clone(), b);
+            }
+        }
+        out
     }
 
     pub fn set_lang(&mut self, lang: Lang) {
@@ -164,5 +196,7 @@ mod tests {
         assert_eq!(s.summary("abc"), None);
         s.prefetch(100.0, &[("abc".into(), String::new())], Lang::German);
         assert!(s.detected_refs(&[]).is_empty());
+        assert!(s.branches(&["C:/Repos/agent-deck".into()], 100.0).is_empty(), "ohne Dateisystem kein Branch");
+        s.set_jira_prefix("ORPH");
     }
 }

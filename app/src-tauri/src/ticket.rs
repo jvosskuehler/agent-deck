@@ -5,7 +5,6 @@
 use std::fs;
 use std::path::Path;
 
-use deck_core::config::JIRA_PROJECT_KEY;
 use deck_core::paths::{found_ticket_path, worktree_marker_path};
 use deck_core::prompts::ticket_prompt;
 
@@ -33,7 +32,7 @@ impl Deck {
         self.store.save_tickets();
         self.clear_found_ticket(slot);
         self.clear_worktree_marker(slot);
-        let prefix = self.setting_str("jira_prefix").unwrap_or_else(|| JIRA_PROJECT_KEY.to_string());
+        let prefix = self.jira_prefix();
         let hub = self.hub_root(slot);
         let text = ticket_prompt(&self.paths.state_dir, slot, ticket, "", &prefix, hub.as_deref());
         self.wt.send_text(slot, &text, true);

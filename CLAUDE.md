@@ -134,6 +134,10 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
 - **Rest des letzten Python-Commits:** der Rust-Port beruht auf `1c41595`, nicht auf
   `2856494`. Nachgezogen sind automatisches `/compact` (`deck-core::prompt_cache`,
   `auto_compact`), Konto je Token samt Konto im gemeinsamen Cache (`usage/account.rs`),
-  `limits` und `pr` in der Statuszeile (`deck-hooks::status_extras`) und der Hub-Prompt
-  mit `wt/<Nummer>-<Kürzel>`; offen ist die Cache-Restzeit auf der Kachel (braucht eine
-  Design-Entscheidung).
+  `pr` in der Statuszeile (`deck-hooks::status_extras`; Kontingent und Kosten sind dort
+  seit 09.11.2026 wieder draußen), der Hub-Prompt mit `wt/<Nummer>-<Kürzel>` und die
+  Cache-Restzeit auf der Kachel (Fußzeile „A“, `prompt_cache::tile_cache`).
+- **Ticket und PR einer Kachel** kommen aus Quellen mit fester Reihenfolge
+  (`deck-core::ref_sources`): zugewiesen, Branch (`.git/HEAD`, ohne `git`, gecacht in
+  `git_head.rs`), worktree-Ordner, PR aus der Statuszeile, Sessiontitel, zuletzt der Chat.
+  Im Betrieb prüfen, ob `live.json` `cwd` bei Agenten im `wt/`-Ordner den worktree trägt.

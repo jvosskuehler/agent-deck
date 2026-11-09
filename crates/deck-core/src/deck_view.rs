@@ -2,25 +2,25 @@
 //!
 //! Die Rechnung der Python-Poll-Schleife (`ui/refresh.py`, `ui/tiles.py`) ohne Zeichnen:
 //! Status normalisieren und Frische prüfen, „getrennt“ errechnen, Effort-Kollision
-//! auflösen, Ticket/PR-Zeile wählen, Blöcke und Kacheln ordnen, Heimat-Block oben. Was
-//! nur die App wissen kann (Verbindung, lebende Agenten je Block, Fensterlage), kommt als
-//! `WindowInfo` herein.
+//! auflösen, Ticket und PR wählen (`ref_sources.rs`), Cache-Restzeit, Blöcke und Kacheln
+//! ordnen, Heimat-Block oben. Was nur die App wissen kann (Verbindung, lebende Agenten je
+//! Block, Fensterlage), kommt als `WindowInfo` herein.
 
 use std::collections::HashMap;
 
 use crate::bind_store::BindStore;
-use crate::claude::refs::{Refs, refs_card_label};
+use crate::claude::refs::Refs;
 use crate::config::{STALE_S, TICKET_AUTODETECT_ON_CARD, WINDOWS};
 use crate::i18n::{Lang, status_label};
 use crate::ordering::{apply_order, pin_first};
 use crate::field::text;
-use crate::text::take_chars;
+use crate::prompt_cache::tile_cache;
+use crate::ref_sources::{RefEvidence, pick_pr, pick_ticket, ref_dirs};
 use crate::slot_state::SlotState;
 use crate::status_model::{VALID_STATUSES, dominant_status, initial_status, is_fresh, is_lost, normalize_status, resolve_effort};
-use crate::view::{BlockView, DeckView, Status, TileView, UsageView};
+use crate::view::{BlockView, DeckView, RefView, Status, TileView, UsageView};
 
-/// So viele Zeichen passen in die Bezugszeile der Karte („PROJ-2691 #62“ = 13).
-pub const TICKET_MAX_CHARS: usize = 14;
+pub use crate::ref_sources::TICKET_MAX_CHARS;
 
 /// Was die App über ein Fenster weiß.
 #[derive(Debug, Clone, PartialEq)]
@@ -49,10 +49,14 @@ pub struct DeckInput<'a> {
     pub live: &'a HashMap<String, SlotState>,
     /// Vom Agenten gemeldete Ticket-IDs (`<slot>.ticket`).
     pub found_tickets: &'a HashMap<String, String>,
-    /// Gemeldete worktrees (`<slot>.worktree`): erst damit gilt ein Ticket als gebunden.
+    /// Gemeldete worktrees (`<slot>.worktree`).
     pub worktrees: &'a HashMap<String, String>,
     /// Im Chat erkannte Bezüge je Session-ID.
     pub detected_refs: &'a HashMap<String, Refs>,
+    /// git-Branch je Ordner (`dirs_of`), von der App gelesen; fehlt = keiner.
+    pub branches: &'a HashMap<String, String>,
+    /// Jira-Projekt (`jira_prefix`), z. B. `ORPH`.
+    pub jira_prefix: &'a str,
     /// Gemerkter Modus-Index je Slot (Index in `mode_cycle`).
     pub slot_mode: &'a HashMap<String, usize>,
     pub mode_cycle: &'a [String],
@@ -92,6 +96,19 @@ pub fn to_status(key: &str) -> Status {
         "none" => Status::None,
         _ => Status::Idle,
     }
+}
+
+/// Die Ordner eines Slots (`ref_sources::ref_dirs`): gemeldeter worktree, aktueller
+/// Ordner aus `live.json`, cwd der Hooks.
+pub fn slot_dirs(
+    slot: &str,
+    states: &HashMap<String, SlotState>,
+    live: &HashMap<String, SlotState>,
+    worktrees: &HashMap<String, String>,
+) -> Vec<String> {
+    let cwd = |m: &HashMap<String, SlotState>| m.get(slot).and_then(|s| text(s.get("cwd"))).map(String::from);
+    let (lv, st) = (cwd(live), cwd(states));
+    ref_dirs(worktrees.get(slot).map(String::as_str), lv.as_deref(), st.as_deref())
 }
 
 /// Modellname fürs Kartenlabel kürzen: „Opus 5 (1M context)“ → „Opus 5 (1M)“.
@@ -156,22 +173,28 @@ impl DeckInput<'_> {
         (out, rows)
     }
 
-    /// Bezugszeile der Karte: zugewiesenes Ticket nur mit worktree-Marker (erst dann ist
-    /// es an den Agenten gebunden), sonst das im Chat Erkannte (gedimmt).
-    fn reference(&self, slot: &str, session_id: &str) -> (Option<String>, bool) {
-        let mut tid = String::new();
-        if self.worktrees.contains_key(slot) {
-            tid = self.store.tickets.get(slot).or_else(|| self.found_tickets.get(slot)).cloned().unwrap_or_default();
-        }
-        let mut detected = false;
-        if tid.is_empty() && TICKET_AUTODETECT_ON_CARD {
-            tid = self.detected_refs.get(session_id).map(|r| refs_card_label(r, TICKET_MAX_CHARS)).unwrap_or_default();
-            detected = true;
-        }
-        if tid.chars().count() > TICKET_MAX_CHARS {
-            tid = format!("{}…", take_chars(&tid, TICKET_MAX_CHARS - 1));
-        }
-        if tid.is_empty() { (None, false) } else { (Some(tid), detected) }
+    /// Die Ordner, in denen der Agent eines Slots arbeitet (`ref_sources::ref_dirs`).
+    /// Die App liest für genau diese den Branch.
+    pub fn dirs_of(&self, slot: &str) -> Vec<String> {
+        slot_dirs(slot, self.states, self.live, self.worktrees)
+    }
+
+    /// Ticket und PR der Kachel, jeweils aus der stärksten Quelle (`ref_sources.rs`).
+    /// Ein zugewiesenes Ticket gilt sofort, nicht erst, wenn der worktree gemeldet ist.
+    pub fn refs(&self, slot: &str, session_id: &str) -> (Option<RefView>, Option<RefView>) {
+        let lv = self.live.get(slot);
+        let dirs = self.dirs_of(slot);
+        let branches: Vec<String> = dirs.iter().filter_map(|d| self.branches.get(d).cloned()).collect();
+        let ev = RefEvidence {
+            assigned: self.store.tickets.get(slot).or_else(|| self.found_tickets.get(slot)).map(String::as_str),
+            branches: &branches,
+            dirs: &dirs,
+            statusline_pr: lv.and_then(|l| l.get("pr")).and_then(|p| p.get("number")).and_then(serde_json::Value::as_u64),
+            title: lv.and_then(|l| text(l.get("session_name"))),
+            chat: if TICKET_AUTODETECT_ON_CARD { self.detected_refs.get(session_id) } else { None },
+            prefix: self.jira_prefix,
+        };
+        (pick_ticket(&ev, self.lang), pick_pr(&ev, self.lang))
     }
 
     /// Eine Kachel samt Status-Schlüssel (`lost` oder der normalisierte Status).
@@ -193,7 +216,7 @@ impl DeckInput<'_> {
             None => str_field(st, "mode"),
         };
         let session_id = str_field(st, "session_id");
-        let (reference, reference_detected) = self.reference(slot, &session_id);
+        let (ticket, pr) = self.refs(slot, &session_id);
         let title = lv.and_then(|l| l.get("session_name")).and_then(|v| v.as_str()).map(String::from);
         let tile = TileView {
             slot: slot.to_string(),
@@ -203,8 +226,9 @@ impl DeckInput<'_> {
             effort,
             mode,
             title,
-            reference,
-            reference_detected,
+            ticket,
+            pr,
+            cache: tile_cache(st, lv, self.now, self.lang),
             selected: self.active_slot == Some(slot),
             status_changed_at: memory.observe(slot, shown, self.now),
         };

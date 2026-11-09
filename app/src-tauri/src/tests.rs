@@ -203,7 +203,7 @@ fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
 }
 
 #[test]
-fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_once_the_worktree_exists() {
+fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_at_once() {
     let mut r = rig();
     r.wt_block("A", "repo");
     r.wt_agent("A1", 81);
@@ -214,10 +214,13 @@ fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_once_the_worktree_ex
     assert!(!text.contains('\n'));
     assert_eq!(steps.last(), Some(&Step::Text("\r".into())), "abgeschickt per eigenem Enter");
     let view = r.deck.tick(100.0);
-    assert_eq!(view.blocks[0].tiles[0].reference, None, "ohne worktree noch nicht gebunden");
+    let ticket = |v: &deck_core::view::DeckView| v.blocks[0].tiles[0].ticket.as_ref().map(|t| (t.text.clone(), t.detected));
+    assert_eq!(ticket(&view), Some(("PROJ-2701".into(), false)), "zugewiesen gilt sofort, nicht erst mit worktree");
     fs::write(r.deck.paths.state_dir.join("A1.worktree"), "C:/repo.wt/2701").unwrap();
     let view = r.deck.tick(100.4);
-    assert_eq!(view.blocks[0].tiles[0].reference.as_deref(), Some("2701"));
+    assert_eq!(ticket(&view), Some(("PROJ-2701".into(), false)));
+    let tip = crate::tooltip::content(&r.deck, "A1").ticket.unwrap();
+    assert_eq!((tip.text.as_str(), tip.origin.as_str()), ("PROJ-2701", "zugewiesen"), "Tooltip wie Kachel");
 }
 
 #[test]

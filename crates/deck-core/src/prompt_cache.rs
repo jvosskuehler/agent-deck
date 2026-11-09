@@ -9,7 +9,9 @@
 use serde_json::Value;
 
 use crate::config::STALE_S;
+use crate::i18n::Lang;
 use crate::slot_state::SlotState;
+use crate::view::{CacheStage, CacheView};
 
 /// Laufzeit des 5-Minuten-Caches in Sekunden.
 pub const TTL_5M: u32 = 300;
@@ -115,4 +117,24 @@ pub fn working(st: Option<&SlotState>, now: f64) -> bool {
 /// Das Deck versucht es im nächsten Takt wieder, solange Restzeit bleibt.
 pub fn user_busy(front: bool, input_idle_s: f64) -> bool {
     front && input_idle_s < TYPING_GRACE_S
+}
+
+/// Restzeit für die Kachel: aus `cache_until`/`cache_ttl` der Statuszeile, gezählt bis
+/// jetzt (die Kachel wird jeden Takt neu gerechnet, die Statuszeile nur alle paar
+/// Sekunden). Arbeitet der Agent, keine Zeit (`working`); ohne Ablaufzeit (auch 0 =
+/// laut Claude Code schon kalt, ohne Zeitpunkt) ebenso nicht.
+pub fn tile_cache(st: Option<&SlotState>, lv: Option<&SlotState>, now: f64, lang: Lang) -> Option<CacheView> {
+    if working(st, now) {
+        return None;
+    }
+    let lv = lv?;
+    let nonzero = |k: &str| number(lv.get(k)).filter(|v| *v != 0.0);
+    let (until, ttl) = (nonzero("cache_until")?, nonzero("cache_ttl")?);
+    let (text, level) = view(until - now, ttl, lang.l("kalt", "cold"));
+    let stage = match level {
+        CacheLevel::Warm => CacheStage::Warm,
+        CacheLevel::Low => CacheStage::Low,
+        CacheLevel::Cold => CacheStage::Cold,
+    };
+    Some(CacheView { text, stage })
 }
