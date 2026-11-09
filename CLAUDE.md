@@ -5,10 +5,10 @@ Eine Kachel je Agent, Farbe = Zustand; dockt am Bildschirmrand an und klappt weg
 Windows-only. Rust (Tauri 2) hinten, React + TypeScript vorn.
 
 Diese Fassung ersetzt das Python/tkinter-Deck **ohne Funktionsänderung**: was das alte
-Deck kann, kann dieses auch, nur schöner. Die Python-Fassung ist die **Referenz**:
-`C:\Users\JorritVoßkühler\Repos\agent-deck` (Haupt-Checkout, Branch `main`, inklusive
-nicht committeter Arbeit dort). Im Zweifel gilt, was die Python-Fassung tut. Dort nichts
-ändern, nur lesen.
+Deck kann, kann dieses auch, nur schöner. Die Python-Fassung ist die **Referenz**: sie liegt seit dem Merge
+nach `main` (09.11.2026) nur noch in der Historie, letzter Stand `2856494`
+(`git show 2856494:<pfad>`). Im Zweifel gilt, was sie tut. Was ihr gegenüber noch fehlt,
+steht in `docs/STAND.md` unter „Was offen ist“.
 
 ## Lehre aus dem verworfenen .NET-Port (Juli 2026)
 

@@ -1,4 +1,4 @@
-# Stand der Umstellung (Übergabe vom 07.11.2026)
+# Stand der Umstellung (Übergabe vom 07.11.2026, nachgeführt 09.11.2026)
 
 Diese Datei ist die Übergabe an die nächste Session. Die Session, die den Umbau gemacht
 hat, lässt sich nicht fortsetzen; alles Nötige steht hier, in `CLAUDE.md`,
@@ -29,29 +29,33 @@ hat, lässt sich nicht fortsetzen; alles Nötige steht hier, in `CLAUDE.md`,
   Kopie der settings.json erprobt; der Rückweg ist chirurgisch (nur Deck-Einträge, fremde
   Hooks wie Jorrits PermissionRequest-Hook bleiben).
 
-## Was als Nächstes kommt
+## Stand 09.11.2026: umgestellt, in `main`
 
-1. **Umstellen** (Jorrit startet die Befehle selbst; der Auto-Modus sperrt Claude das Beenden
-   des laufenden Python-Panels und das Ändern der Hooks in `~/.claude/settings.json`):
-   ```
-   pwsh -NoProfile -File "C:/Users/JorritVoßkühler/Repos/wt-deck-tauri/tools/umstellen.ps1" -SkipBuild   # Panel tauschen
-   pwsh -NoProfile -File "C:/Users/JorritVoßkühler/Repos/wt-deck-tauri/tools/umstellen.ps1" -Hooks       # neue Hooks dazu
-   pwsh -NoProfile -File "C:/Users/JorritVoßkühler/Repos/wt-deck-tauri/tools/umstellen.ps1" -Finish      # Python-Hooks heraus
-   pwsh -NoProfile -File "C:/Users/JorritVoßkühler/Repos/wt-deck-tauri/tools/zurueck.ps1"                # Rückweg
-   ```
-   In einer Claude-Session mit `! ` davor eingeben.
-2. **Nach dem Tausch prüfen**, was im Probebetrieb abgeschaltet war und nur gegen Attrappen
-   getestet ist: VS-Code-Fenster verbinden sich mit dem Broker (Port 8765), Kacheln der
-   Windows-Terminal-Fenster, Strg+< springt zum Wartenden, Fokus-Rahmen um das vorderste
-   Agentenfenster, Klick auf eine Karte holt das richtige Terminal, ＋ legt einen Agenten
-   an, Worktree-Aufräumen. Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
-3. **Fokus-Rahmen nachziehen**, falls die andere Session ihn in der Python-Referenz nach
-   dem 06.11., 23:19 Uhr noch geändert hat (`focus-frame/Frame.hlsl`, `Designs.cs` im
-   Haupt-Checkout → `crates/deck-win/src/frame.hlsl`, `frame_fx.rs`; Test
-   `gpu_and_cpu_agree` muss grün bleiben).
-4. Wenn alles läuft: Jorrit fragen, ob committet und nach `main` gebracht werden soll
-   (im Haupt-Checkout `Repos\agent-deck` liegen fremde, nicht committete Änderungen am
-   Python-Fokus-Rahmen).
+- Auf Jorrits Rechner läuft nur noch das Rust-Deck (`%LOCALAPPDATA%\claude-agent-deck\bin`).
+  Alle drei Schritte von `tools\umstellen.ps1` sind durch: Panel getauscht, Hooks und
+  statusLine zeigen auf `deck-report.exe` / `deck-statusline.exe`, keine Python-Einträge mehr.
+  Rückweg bleibt `tools\zurueck.ps1` (braucht die Python-Fassung aus `git show 2856494`).
+- `tauri` ist in `main` gemergt, der Worktree `wt-deck-tauri` ist weg. Die Python-Fassung
+  liegt nur noch in der Historie (letzter Stand `2856494`); ihre Reste aus dem Arbeitsordner
+  (Build-Ausgaben, alte Laufzeitdateien) liegen in `%LOCALAPPDATA%\claude-agent-deck\python-reste`.
+- VS Code lädt den Ring (`vscode_custom_css.imports`) jetzt aus dem App-Ordner, nicht mehr aus
+  dem Repo.
+
+## Was offen ist
+
+1. **Automatisches `/compact` vor Ablauf des Prompt-Caches fehlt** in der Rust-Fassung. In
+   Python: Regel in `deck/domain/prompt_cache.py` (`compact_due`, `user_busy`), Senden in
+   `deck/ui/auto_compact.py`, Schalter `auto_compact`, Ende des Timers nach einem Compact in
+   `deck/claude/hooks/statusline.py` (`compact_boundary`). Lesen mit `git show 2856494:<pfad>`.
+2. **Im Betrieb prüfen**, was nur gegen Attrappen getestet ist: VS-Code-Fenster am Broker
+   (Port 8765), Strg+< springt zum Wartenden, Klick auf eine Karte holt das richtige
+   Terminal, ＋ legt einen Agenten an, Worktree-Aufräumen. Protokoll:
+   `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
+3. **Fokus-Rahmen abgleichen** mit dem letzten Python-Stand (`git show
+   2856494:focus-frame/Frame.hlsl`, `Designs.cs` nach `crates/deck-win/src/frame.hlsl`,
+   `frame_fx.rs`; Test `gpu_and_cpu_agree` muss grün bleiben).
+4. Taskleiste: Abzeichen mit dem dringlichsten Status auf dem Agenten-Knopf
+   (`ITaskbarList3::SetOverlayIcon`, wirkt auch auf fremde Fenster, gemessen 09.11.).
 5. Danach das nächste Vorhaben: die **6-Tasten-Makro-Tastatur** mit Drehregler und ARGB je
    Taste (Taste = Agent, Licht = Status, Druck = zum Agenten springen, Halten = Aufnahme mit
    Claude `/voice`, später ORPHEUS, je Agent einstellbar; bei ORPHEUS nach dem Loslassen
