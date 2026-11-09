@@ -86,7 +86,7 @@ fn the_strongest_source_wins_for_ticket_and_pr() {
     let ev = RefEvidence { dirs: &[], ..ev };
     assert_eq!(pick(&ev).0, s("ORPH-3192", RefSource::Title, true));
     let ev = RefEvidence { title: None, ..ev };
-    assert_eq!(pick(&ev), (s("ORPH-1212", RefSource::Chat, true), s("#20068", RefSource::Chat, true)));
+    assert_eq!(pick(&ev), (s("ORPH-1212", RefSource::Chat, true), None), "aus dem Chat nie ein PR");
     assert_eq!(pick(&RefEvidence { prefix: "ORPH", ..RefEvidence::default() }), (None, None));
 }
 

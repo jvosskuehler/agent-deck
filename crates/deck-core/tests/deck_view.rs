@@ -193,10 +193,10 @@ fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "idle", "ts": NOW, "session_id": "s1"}}));
     f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into(), ..Refs::default() });
-    assert_eq!(refs_of(&f.tile("A1")), (rv("ORPH-1", RefSource::Chat, true), rv("#62", RefSource::Chat, true)));
+    assert_eq!(refs_of(&f.tile("A1")), (rv("ORPH-1", RefSource::Chat, true), None), "ein PR wird nie aus dem Chat geraten");
     f.store.tickets.insert("A1".into(), "4116".into());
     let t = f.tile("A1");
-    assert_eq!(refs_of(&t), (rv("ORPH-4116", RefSource::Assigned, false), rv("#62", RefSource::Chat, true)), "ohne worktree-Marker");
+    assert_eq!(refs_of(&t), (rv("ORPH-4116", RefSource::Assigned, false), None), "ohne worktree-Marker");
     assert_eq!(t.ticket.unwrap().origin, "zugewiesen");
     f.store.tickets.clear();
     f.found.insert("A1".into(), "SEHR-LANGES-TICKET-1".into());

@@ -9,8 +9,9 @@
 //! 3. worktree-Ordner des cwd (`Repos/wt/4116-ui`), 4. der worktree, in dem der Agent
 //! laut seinen Werkzeugaufrufen arbeitet (`claude::worktree_use`; Ordnername, sonst
 //! dessen Branch), 5. Sessiontitel, 6. Chat.
-//! PR: 1. was Claude Code selbst meldet (`pr` in `live.json`, maßgeblich), 2. Titel,
-//! 3. Chat.
+//! PR: 1. was Claude Code selbst meldet (`pr` in `live.json`, maßgeblich), 2. Titel.
+//! Aus dem Chat wird KEIN PR geraten: seit Claude Code den PR meldet, war das nur
+//! Rauschen (Beispielnummern aus Entwürfen, fremde PRs aus Übersichten).
 //!
 //! Titel und Chat sind geraten: die Kachel zeigt sie gedimmt (`RefView::detected`),
 //! ebenso ein worktree, der nur gelesen und nie beschrieben wurde.
@@ -185,11 +186,9 @@ pub fn pick_ticket(ev: &RefEvidence, lang: Lang) -> Option<RefView> {
 
 /// Der PR der Kachel als „#347“.
 pub fn pick_pr(ev: &RefEvidence, lang: Lang) -> Option<RefView> {
-    let chat = ev.chat.map(|r| r.pr.trim()).filter(|p| !p.is_empty());
     let found = ev
         .statusline_pr
         .map(|n| (n.to_string(), RefSource::Statusline))
-        .or_else(|| ev.title.and_then(pr_from_title).map(|p| (p, RefSource::Title)))
-        .or_else(|| chat.map(|p| (p.to_string(), RefSource::Chat)));
-    found.map(|(n, source)| ref_view(format!("#{n}"), source, matches!(source, RefSource::Title | RefSource::Chat), lang))
+        .or_else(|| ev.title.and_then(pr_from_title).map(|p| (p, RefSource::Title)));
+    found.map(|(n, source)| ref_view(format!("#{n}"), source, matches!(source, RefSource::Title), lang))
 }
