@@ -7,7 +7,6 @@
 //! Zusammenfassung nach, schickt der Takt den neuen Inhalt; gilt der Tooltip dann schon
 //! einer anderen Karte, wird sie verworfen.
 
-use deck_core::claude::refs::refs_label;
 use deck_core::tooltip::{ScreenRect, place};
 use deck_core::view::TooltipView;
 use tauri::{AppHandle, Emitter};
@@ -26,22 +25,18 @@ pub struct TipState {
     sent: Option<TooltipView>,
 }
 
-/// Inhalt des Tooltips: Ticket/PR (zugewiesen oder erkannt), Zusammenfassung, sonst die
-/// letzte Frage.
+/// Inhalt des Tooltips: Ticket und PR wie auf der Kachel (samt Herkunft),
+/// Zusammenfassung, sonst die letzte Frage.
 pub fn content(deck: &Deck, slot: &str) -> TooltipView {
     let st = deck.state_of(slot);
     let field = |k: &str| st.and_then(|s| s.get(k)).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let sid = field("session_id");
-    let mut refs = deck.detected_refs.get(&sid).map(refs_label).unwrap_or_default();
-    if deck.worktrees.contains_key(slot)
-        && let Some(t) = deck.store.tickets.get(slot).or_else(|| deck.found.get(slot))
-    {
-        refs = if refs.is_empty() { format!("Ticket: {t}") } else { refs };
-    }
+    let (ticket, pr) = deck.tile_refs.get(slot).cloned().unwrap_or_default();
     let prompt = field("prompt");
     TooltipView {
         slot: slot.to_string(),
-        references: Some(refs).filter(|r| !r.is_empty()),
+        ticket,
+        pr,
         summary: deck.services.summary(&sid),
         last_prompt: Some(prompt).filter(|p| !p.is_empty()),
         origin: origin_lines(deck, slot),

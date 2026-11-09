@@ -62,15 +62,75 @@ pub struct TileView {
     pub mode: String,
     /// Sessiontitel (`session_name` der statusLine). Nur Terminal-Kacheln zeigen ihn.
     pub title: Option<String>,
-    /// Ticket- und/oder PR-Bezug für die Karte, schon gekürzt.
-    pub reference: Option<String>,
-    /// `true`: Bezug nur aus dem Chat erkannt, nicht zugewiesen (gedimmt zeichnen).
-    pub reference_detected: bool,
+    /// Jira-Ticket des Agenten („ORPH-4116“), schon gekürzt. Woher es kommt, steht in
+    /// `RefView::source` (`ref_sources.rs`).
+    pub ticket: Option<RefView>,
+    /// Pull Request als „#347“.
+    pub pr: Option<RefView>,
+    /// Restzeit des Prompt-Caches; `None`, solange der Agent arbeitet oder nichts
+    /// bekannt ist.
+    pub cache: Option<CacheView>,
     /// Die Kachel ist ausgewählt (zuletzt angeklickt bzw. fokussiert): weißer Ring.
     pub selected: bool,
     /// Zeitpunkt (Unix-Sekunden) des letzten Statuswechsels; die Oberfläche lässt die
     /// Kachel kurz aufblühen, wenn er sich ändert.
     pub status_changed_at: f64,
+}
+
+/// Woher ein Ticket- oder PR-Bezug stammt, vom stärksten zum schwächsten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum RefSource {
+    /// Von Hand im Deck zugewiesen (Kontextmenü) bzw. vom Agenten danach gemeldet.
+    Assigned,
+    /// Aus dem git-Branch im Ordner des Agenten.
+    Branch,
+    /// Aus dem worktree-Ordner (`wt/4116-ui`).
+    Folder,
+    /// Von Claude Code selbst gemeldet (`pr` in der Statuszeile): maßgeblich.
+    Statusline,
+    /// Aus dem Sessiontitel.
+    Title,
+    /// Im Chat erraten.
+    Chat,
+}
+
+/// Ein Ticket- oder PR-Bezug.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RefView {
+    /// Angezeigter Text: „ORPH-4116“ bzw. „#347“, schon gekürzt.
+    pub text: String,
+    pub source: RefSource,
+    /// `true`: nur geraten (Titel, Chat), gedimmt zeichnen.
+    pub detected: bool,
+    /// Herkunft als Wort in der Oberflächensprache, für den Tooltip („Branch“).
+    pub origin: String,
+}
+
+/// Stufe der Cache-Restzeit auf der Kachel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum CacheStage {
+    /// Noch reichlich Zeit: gedämpft.
+    Warm,
+    /// Knapp: gleich weiterschreiben, sonst wird es teuer (fett).
+    Low,
+    /// Abgelaufen: „kalt“, blass.
+    Cold,
+}
+
+/// Restzeit des Prompt-Caches auf der Kachel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct CacheView {
+    /// „42 min“, „<1 min“ oder „kalt“/„cold“.
+    pub text: String,
+    pub stage: CacheStage,
 }
 
 /// Ein Repo-Block: Kopfzeile plus Kachelreihe(n).
@@ -161,8 +221,10 @@ pub struct DeckView {
 #[ts(export)]
 pub struct TooltipView {
     pub slot: String,
-    /// Ticket/PR-Zeile über der Zusammenfassung (erkannt oder zugewiesen).
-    pub references: Option<String>,
+    /// Ticket über der Zusammenfassung, wie auf der Kachel, samt Herkunft.
+    pub ticket: Option<RefView>,
+    /// PR über der Zusammenfassung.
+    pub pr: Option<RefView>,
     /// KI-Kurzzusammenfassung; `None`, solange sie noch berechnet wird.
     pub summary: Option<String>,
     /// Rückfall, solange keine Zusammenfassung da ist: die letzte Frage.

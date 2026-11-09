@@ -29,10 +29,24 @@
 }
 
 .tip-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
   margin-bottom: 5px;
   font-size: 11px;
   font-weight: 700;
   color: var(--ref);
+}
+
+/* Geraten (Titel, Chat): gedimmt wie auf der Kachel. */
+.tip-ref--detected {
+  opacity: 0.6;
+}
+
+/* Woher der Bezug kommt, klein dahinter. */
+.tip-ref-origin {
+  font-weight: 400;
+  color: var(--dim);
 }
 
 /* Die Zusammenfassung ist Prosa: Plex Sans wie der Sessiontitel. */

@@ -17,12 +17,12 @@ use deck_core::bind_store::BindStore;
 use deck_core::claude::refs::Refs;
 use deck_core::claude::settings::{BYPASS_MODE, DefaultModeCache};
 use deck_core::config::{MODE_CYCLE, WINDOWS};
-use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view};
+use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view, slot_dirs};
 use deck_core::front::BackToggle;
 use deck_core::i18n::Lang;
 use deck_core::slot_state::{SlotState, read_all, read_found_tickets, read_found_worktrees, read_live};
 use deck_core::status_model::{adopt_hook_mode, mode_cycle};
-use deck_core::view::{DeckView, Host};
+use deck_core::view::{DeckView, Host, RefView};
 use deck_services::worktree_sweep::SweepView;
 use deck_win::effects::Desktop;
 
@@ -68,6 +68,8 @@ pub struct Deck {
     pub worktrees: HashMap<String, String>,
     /// Session-ID → im Chat erkannte Ticket-/PR-Bezüge (vom Hintergrund gefüllt).
     pub detected_refs: HashMap<String, Refs>,
+    /// Slot → Ticket und PR, wie die zuletzt gebaute Ansicht sie zeigt (für den Tooltip).
+    pub tile_refs: HashMap<String, (Option<RefView>, Option<RefView>)>,
     /// Die Slots der zuletzt gebauten Ansicht, in Anzeigereihenfolge.
     pub shown_slots: Vec<String>,
     /// Taste „alle nach vorn“: das Fenster, aus dem man kam.
@@ -104,6 +106,7 @@ impl Deck {
             found: HashMap::new(),
             worktrees: HashMap::new(),
             detected_refs: HashMap::new(),
+            tile_refs: HashMap::new(),
             shown_slots: Vec::new(),
             front_toggle: BackToggle::default(),
             compact_memo: CompactMemo::default(),
@@ -134,6 +137,7 @@ impl Deck {
         self.adopt_hook_modes(&cycle);
         self.apply_pending_auto(now, &cycle);
         let sessions = self.sessions();
+        self.services.set_jira_prefix(&self.jira_prefix());
         self.detected_refs = self.services.detected_refs(&sessions);
         let view = self.view(now);
         // Kurz bevor der Prompt-Cache eines wartenden Agenten abläuft: /compact.
@@ -234,6 +238,15 @@ impl Deck {
     pub fn view(&mut self, now: f64) -> DeckView {
         let windows = self.window_infos();
         let usage = self.services.usage_view(self.lang);
+        // Branches nur für die Ordner der Agenten, die gleich gezeigt werden.
+        let dirs: Vec<String> = windows
+            .iter()
+            .filter(|w| w.connected)
+            .flat_map(|w| w.terminals.iter())
+            .flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees))
+            .collect();
+        let branches = self.services.branches(&dirs, now);
+        let prefix = self.jira_prefix();
         let input = DeckInput {
             windows: &windows,
             store: &self.store,
@@ -243,6 +256,8 @@ impl Deck {
             found_tickets: &self.found,
             worktrees: &self.worktrees,
             detected_refs: &self.detected_refs,
+            branches: &branches,
+            jira_prefix: &prefix,
             slot_mode: &self.slot_mode,
             mode_cycle: self.last_cycle.as_deref().unwrap_or(&[]),
             active_slot: self.active_slot.as_deref(),
@@ -255,12 +270,18 @@ impl Deck {
             b.binding = self.binding(&b.letter);
         }
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
+        self.tile_refs = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), (t.ticket.clone(), t.pr.clone()))).collect();
         // Die Auswahl gilt einer Kachel, die es gibt; sonst bliebe ein Ring an einem
         // später gleichnamigen Agenten hängen.
         if self.active_slot.as_ref().is_some_and(|a| !self.shown_slots.contains(a)) {
             self.active_slot = None;
         }
         view
+    }
+
+    /// Jira-Projekt aus `deck_settings.json` (`jira_prefix`), sonst der Standard.
+    pub fn jira_prefix(&self) -> String {
+        self.setting_str("jira_prefix").unwrap_or_else(|| deck_core::config::JIRA_PROJECT_KEY.to_string())
     }
 
     /// Zustand eines Slots aus dem letzten Takt.

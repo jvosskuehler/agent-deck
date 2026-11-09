@@ -1,6 +1,7 @@
 //! `deck-statusline`: liefert Claude Code die Statuszeile UND schreibt die Live-Werte
 //! (Modell, Effort, Kontext-% und -Tokens, Nachricht-Tokens, Kosten, Sessiontitel, Ablauf
-//! des Prompt-Caches, Kontingent, PR) für das Deck nach `state\<slot>.live.json`.
+//! des Prompt-Caches, PR, aktueller Ordner) für das Deck nach `state\<slot>.live.json`.
+//! Kosten stehen nur in der Datei, nicht mehr in der Zeile.
 //!
 //! Claude Code ruft sie bei jeder Antwort und zusätzlich alle
 //! `hook_setup::STATUSLINE_REFRESH_S` Sekunden auf: so läuft der Cache-Countdown auch im
@@ -22,8 +23,7 @@ use serde_json::{Map, Value};
 
 use crate::cache_scan::cache_until;
 use crate::env::HookEnv;
-pub use crate::status_extras::limits_part;
-use crate::status_extras::{limits, pr_of, pr_part};
+use crate::status_extras::{pr_of, pr_part};
 
 pub const SEP: &str = "  ·  ";
 pub const TITLE_MAX: usize = 70;
@@ -94,8 +94,11 @@ pub fn extract(data: &Map<String, Value>, now: f64) -> Map<String, Value> {
     rec.insert("session_name".into(), or_null(data.get("session_name").and_then(Value::as_str)));
     rec.insert("cache_until".into(), or_null(cache.map(|c| c.0)));
     rec.insert("cache_ttl".into(), or_null(cache.map(|c| c.1)));
-    rec.insert("limits".into(), Value::Object(limits(data.get("rate_limits"))));
     rec.insert("pr".into(), or_null(pr_of(data.get("pr"))));
+    // Der Ordner, in dem der Agent JETZT arbeitet (folgt `cd` und worktrees, anders als
+    // das cwd des Hook-Prozesses): daran liest das Deck Branch und worktree-Ordner ab.
+    let cwd = data.get("workspace").and_then(|w| text(w.get("current_dir"))).or_else(|| text(data.get("cwd")));
+    rec.insert("cwd".into(), or_null(cwd));
     rec.insert("ts".into(), now.into());
     rec
 }
@@ -141,8 +144,8 @@ pub fn cache_part(until: f64, ttl: f64, now: f64, lang: Lang) -> String {
     }
 }
 
-/// Die Statuszeile: erst die Kopfzeile (Slot, Ticket, PR, Überschrift), darunter die
-/// Zahlen; ohne Slot, PR und Überschrift nur die Zahlenzeile.
+/// Die Statuszeile: erst die Kopfzeile (Slot, Ticket, PR, Überschrift), darunter Modell,
+/// Effort, Kontext und Cache-Restzeit; ohne Slot, PR und Überschrift nur diese Zeile.
 pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
     let head = header(label, rec.get("session_name").and_then(Value::as_str), rec.get("pr"), lang);
     let mut parts = Vec::new();
@@ -160,13 +163,6 @@ pub fn line(rec: &Map<String, Value>, label: &str, lang: Lang) -> String {
     let now = nonzero("ts").unwrap_or_else(crate::env::unix_now);
     if let (Some(until), Some(ttl)) = (nonzero("cache_until"), nonzero("cache_ttl")) {
         parts.push(cache_part(until, ttl, now, lang));
-    }
-    let quota = limits_part(rec.get("limits"), now);
-    if !quota.is_empty() {
-        parts.push(quota);
-    }
-    if let Some(c) = number(rec.get("cost_usd")) {
-        parts.push(format!("${c:.2}"));
     }
     let body = parts.join(SEP);
     if head.is_empty() { body } else { format!("{head}\n{body}") }

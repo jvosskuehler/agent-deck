@@ -1,9 +1,18 @@
 //! Ticket- und PR-Nummer aus einem Chat lesen: reine Regex, kein Modell.
 //!
-//! Das Problem sind nicht die Treffer, sondern die Falsch-Positiven: eine Zahl mit
-//! Raute ist noch kein Pull Request, ein Wort mit Bindestrich noch kein Jira-Key. Jeder
-//! Fund sammelt Punkte (Kontextwörter, URL-Form, Wiederholung) und muss eine Schwelle
-//! reißen.
+//! Das ist die SCHWÄCHSTE Quelle für den Bezug einer Kachel; zugewiesenes Ticket,
+//! Branch, worktree-Ordner, der PR aus der Statuszeile und der Sessiontitel gehen vor
+//! (`ref_sources.rs`). Hier wird nur geraten, und das Raten lag früher oft daneben
+//! (Nov. 2026): Antworten des Agenten mit Ticket-Listen (Sprint-Übersicht,
+//! Aufräum-Bericht) schlugen die eine Nennung im Auftrag. Darum jetzt:
+//!
+//! * der ERSTE getippte Auftrag wiegt am meisten, weitere Nachrichten des Nutzers
+//!   weniger, Antworten des Agenten am wenigsten und je Antwort höchstens einmal;
+//! * eine Antwort, die viele verschiedene Keys nennt, ist eine Übersicht und zählt nicht;
+//! * was NUR der Agent sagt, braucht mehrere Antworten.
+//!
+//! Das zweite Problem sind Falsch-Positive: eine Zahl mit Raute ist noch kein Pull
+//! Request, ein Wort mit Bindestrich noch kein Jira-Key (`KEY_STOP`).
 //!
 //! Die Python-Muster benutzen Lookbehind und Lookahead, die die `regex`-Crate nicht
 //! kennt. `find_with` prüft sie darum von Hand an den Rändern jedes Treffers und sucht
@@ -17,14 +26,15 @@ use regex::{Captures, Regex};
 
 use crate::text::chars_before;
 
-/// Ein Gesprächszug: (Rolle, Text). Rolle `user` zählt doppelt.
+/// Ein Gesprächszug: (Rolle, Text). Nur getippte Nachrichten (`user`) und Antworttext
+/// (`assistant`), siehe `summarize::extract_turns`.
 pub type Turn = (String, String);
 
-static KEY_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([A-Z][A-Z0-9]{1,9})-(\d{1,6})").expect("KEY_RE"));
+pub(crate) static KEY_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([A-Z][A-Z0-9]{1,9})-(\d{1,6})").expect("KEY_RE"));
 
 /// Technik-Kürzel, die wie ein Jira-Key aussehen (UTF-8, SHA-256, CVE-2021 …). Ein
 /// Treffer auf das konfigurierte Projekt wird nie gefiltert.
-const KEY_STOP: &[&str] = &[
+pub(crate) const KEY_STOP: &[&str] = &[
     "UTF", "UTF8", "ISO", "RFC", "CVE", "CWE", "SHA", "MD5", "AES", "RSA", "TLS", "SSL", "HTTP", "HTTPS", "IP", "IPV",
     "EN", "DIN", "IEC", "IEEE", "ANSI", "ASCII", "CP", "WIN", "MACOS", "OSX", "GPT", "LLAMA", "NODE", "PY", "ES", "PEP",
     "PHP", "NET", "UUID", "URL", "URI", "SQL", "XML", "HTML", "CSS", "JSON", "YAML", "TOML", "CSV", "PDF", "PNG", "JPG",
@@ -42,10 +52,10 @@ static NUM_CTX_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?i)(?:{})s?\b[\s:#/-]*#?(\d{{2,6}})", CTX_WORDS.join("|"))).expect("NUM_CTX_RE")
 });
 
-static PR_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static PR_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(?:github\.com/[^\s/]+/[^\s/]+/pull/|/-/merge_requests/)(\d{1,6})").expect("PR_URL_RE")
 });
-static PR_CTX_RE: LazyLock<Regex> = LazyLock::new(|| {
+pub(crate) static PR_CTX_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)\b(?:pull[\s_-]?requests?|merge[\s_-]?requests?|prs?|mrs?)\b[\s:#/_-]*#?(\d{1,6})")
         .expect("PR_CTX_RE")
 });
@@ -55,13 +65,13 @@ static HASH_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#(\d{1,6})").exp
 const HASH_NOT_PR: [&str; 11] =
     ["issue", "ticket", "jira", "zeile", "line", "seite", "page", "kommentar", "comment", "spalte", "column"];
 
-fn key_boundary(c: char) -> bool {
+pub(crate) fn key_boundary(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '-'
 }
 
 /// Alle Treffer von `re` in `text`, bei denen `before(zeichen davor)` und
 /// `after(zeichen danach)` halten (`None` = Textrand). Ersetzt `(?<!…)` und `(?!…)`.
-fn find_with<'t>(
+pub(crate) fn find_with<'t>(
     re: &Regex,
     text: &'t str,
     before: impl Fn(Option<char>) -> bool,
@@ -92,7 +102,7 @@ fn is_decimal(c: char) -> bool {
 }
 
 /// `(?!\d)`.
-fn no_digit(c: Option<char>) -> bool {
+pub(crate) fn no_digit(c: Option<char>) -> bool {
     !c.is_some_and(is_decimal)
 }
 
@@ -100,13 +110,13 @@ fn lower_before(text: &str, pos: usize) -> String {
     chars_before(text, pos, 24).to_lowercase()
 }
 
-/// Steht kurz VOR der Fundstelle ein Wort wie „Ticket“? → Bonuspunkte.
-fn ctx_bonus(text: &str, pos: usize) -> i64 {
+/// Steht kurz VOR der Fundstelle ein Wort wie „Ticket“?
+fn has_ctx(text: &str, pos: usize) -> bool {
     let before = lower_before(text, pos);
-    if CTX_WORDS.iter().any(|w| before.contains(w)) { 2 } else { 0 }
+    CTX_WORDS.iter().any(|w| before.contains(w))
 }
 
-/// Punkte je Kandidat in Einfüge-Reihenfolge: [punkte, letzter Zug-Index].
+/// Punkte je Kandidat in Einfüge-Reihenfolge: (Key, Punkte, letzter Zug-Index).
 #[derive(Default)]
 struct Hits(Vec<(String, i64, usize)>);
 
@@ -134,7 +144,7 @@ impl Hits {
     }
 }
 
-/// Züge mit Text; `user` wiegt 2, alles andere 1.
+/// Züge mit Text; `user` wiegt 2, alles andere 1 (für den PR).
 fn iter_turns(turns: &[Turn]) -> impl Iterator<Item = (&str, i64, usize)> {
     turns
         .iter()
@@ -143,36 +153,87 @@ fn iter_turns(turns: &[Turn]) -> impl Iterator<Item = (&str, i64, usize)> {
         .map(|(i, (role, text))| (text.as_str(), if role == "user" { 2 } else { 1 }, i))
 }
 
-/// Die Ticket-ID, um die es im Gespräch geht (leer = keine). Gewertet nach Häufigkeit:
-/// was DU sagst zählt doppelt, ein Treffer auf das konfigurierte Projekt dreifach, ein
-/// „Ticket …“ davor gibt Bonus, bei Gleichstand gewinnt die zuletzt erwähnte.
-/// `min_score` hält einmalige Nebenbei-Nennungen des Agenten draußen.
+/// Gewicht eines Keys im ersten getippten Auftrag.
+const FIRST_USER_W: i64 = 10;
+/// … in jeder weiteren Nachricht des Nutzers.
+const USER_W: i64 = 3;
+/// Nennt eine Antwort so viele verschiedene Keys, ist sie eine Übersicht.
+const LIST_KEYS: usize = 3;
+/// Nennt nur der Agent einen Key, muss er es in so vielen Antworten tun.
+const ASSISTANT_ONLY_MIN: i64 = 4;
+
+/// Die Keys eines Zuges, je Key einmal: (Key, gehört zum konfigurierten Projekt).
+fn turn_keys(text: &str, proj: &str, user: bool) -> Vec<(String, bool)> {
+    let mut out: Vec<(String, bool)> = Vec::new();
+    let mut add = |k: String, own: bool| {
+        if !out.iter().any(|(x, _)| *x == k) {
+            out.push((k, own));
+        }
+    };
+    for c in find_with(&KEY_RE, text, |p| !p.is_some_and(key_boundary), no_digit) {
+        let (pre, num) = (&c[1], &c[2]);
+        if KEY_STOP.contains(&pre) && pre != proj {
+            continue;
+        }
+        if num.chars().count() < 2 && !has_ctx(text, c.get(0).expect("Treffer").start()) {
+            continue; // einstellig nur mit „Ticket …“ davor (sonst UTF-8 & Co.)
+        }
+        add(format!("{pre}-{num}"), pre == proj);
+    }
+    if proj.is_empty() {
+        return out;
+    }
+    let esc = regex::escape(proj);
+    let proj_re = Regex::new(&format!(r"(?i){esc}-(\d{{1,6}})")).expect("proj_re");
+    for c in find_with(&proj_re, text, |p| !p.is_some_and(key_boundary), no_digit) {
+        add(format!("{proj}-{}", &c[1]), true);
+    }
+    if user {
+        // „Ticket 2701“ und diktiert „ORPHEUS 4112“ (die Spracheingabe macht aus dem
+        // Key das ganze Wort): nur in getippten Nachrichten, in Antworten stehen Links
+        // wie `issues/24384`.
+        for c in find_with(&NUM_CTX_RE, text, |_| true, no_digit) {
+            add(format!("{proj}-{}", &c[1]), true);
+        }
+        let spoken = Regex::new(&format!(r"(?i){esc}[a-z]*[ \t:]+#?(\d{{2,6}})")).expect("spoken");
+        for c in find_with(&spoken, text, |p| !p.is_some_and(char::is_alphanumeric), no_digit) {
+            add(format!("{proj}-{}", &c[1]), true);
+        }
+    }
+    out
+}
+
+/// Die Ticket-ID, um die es im Gespräch geht (leer = keine). Der erste getippte
+/// Auftrag wiegt [`FIRST_USER_W`], jede weitere Nachricht des Nutzers [`USER_W`] (ein
+/// Key des konfigurierten Projekts darin doppelt), jede Antwort des Agenten 1 je Key.
+/// Antworten mit [`LIST_KEYS`] oder mehr Keys zählen nicht, ein Key, den nur der Agent
+/// nennt, braucht [`ASSISTANT_ONLY_MIN`] Antworten. Bei Gleichstand gewinnt der zuletzt
+/// erwähnte; unter `min_score` bleibt es leer.
 pub fn find_ticket(turns: &[Turn], project: Option<&str>, min_score: i64) -> String {
     let proj = project.unwrap_or("").trim().to_uppercase();
-    let proj_re = (!proj.is_empty())
-        .then(|| Regex::new(&format!(r"(?i){}-(\d{{1,6}})", regex::escape(&proj))).expect("proj_re"));
     let mut hits = Hits::default();
-    for (text, w, idx) in iter_turns(turns) {
-        for c in find_with(&KEY_RE, text, |p| !p.is_some_and(key_boundary), no_digit) {
-            let (pre, num) = (&c[1], &c[2]);
-            if pre == proj || KEY_STOP.contains(&pre) {
-                continue;
-            }
-            let ctx = ctx_bonus(text, c.get(0).expect("Treffer").start());
-            if num.chars().count() < 2 && ctx == 0 {
-                continue; // einstellig nur mit „Ticket …“ davor (sonst UTF-8 & Co.)
-            }
-            hits.bump(format!("{pre}-{num}"), w + ctx, idx);
+    let mut by_user: Vec<String> = Vec::new();
+    let mut first_user = true;
+    for (idx, (role, text)) in turns.iter().enumerate() {
+        if text.is_empty() {
+            continue;
         }
-        if let Some(re) = &proj_re {
-            for c in find_with(re, text, |p| !p.is_some_and(key_boundary), no_digit) {
-                hits.bump(format!("{proj}-{}", &c[1]), w * 3, idx);
+        let user = role == "user";
+        let keys = turn_keys(text, &proj, user);
+        if user {
+            let w = if first_user { FIRST_USER_W } else { USER_W };
+            first_user = false;
+            for (k, own) in keys {
+                hits.bump(k.clone(), if own { w * 2 } else { w }, idx);
+                by_user.push(k);
             }
-            for c in find_with(&NUM_CTX_RE, text, |_| true, no_digit) {
-                hits.bump(format!("{proj}-{}", &c[1]), w, idx);
+        } else if keys.len() < LIST_KEYS {
+            for (k, _) in keys {
+                hits.bump(k, 1, idx);
             }
         }
     }
+    hits.0.retain(|(k, score, _)| by_user.contains(k) || *score >= ASSISTANT_ONLY_MIN);
     hits.best(min_score)
 }
 
@@ -210,30 +271,4 @@ pub struct Refs {
 
 pub fn find_refs(turns: &[Turn], project: Option<&str>) -> Refs {
     Refs { ticket: find_ticket(turns, project, 2), pr: find_pr(turns, 3) }
-}
-
-/// Bezugszeile für den Tooltip („Ticket: ABC-1 · PR #62“); ohne beides leer.
-pub fn refs_label(refs: &Refs) -> String {
-    let mut parts = Vec::new();
-    if !refs.ticket.is_empty() {
-        parts.push(format!("Ticket: {}", refs.ticket));
-    }
-    if !refs.pr.is_empty() {
-        parts.push(format!("PR #{}", refs.pr));
-    }
-    parts.join(" · ")
-}
-
-/// Kompakte Fassung für die KARTE („PROJ-2691 #62“), nur solange beides in `max_chars`
-/// passt; sonst gewinnt das Ticket, weil es das Dauerhaftere ist.
-pub fn refs_card_label(refs: &Refs, max_chars: usize) -> String {
-    let pr = if refs.pr.is_empty() { String::new() } else { format!("#{}", refs.pr) };
-    let both = [refs.ticket.as_str(), pr.as_str()].iter().filter(|p| !p.is_empty()).copied().collect::<Vec<_>>().join(" ");
-    if both.chars().count() <= max_chars {
-        return both;
-    }
-    if !refs.ticket.is_empty() {
-        return refs.ticket.clone();
-    }
-    format!("{}…", crate::text::take_chars(&both, max_chars.saturating_sub(1)))
 }

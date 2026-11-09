@@ -114,7 +114,7 @@ export function createMockBackend(): Backend {
       b.tiles.push({
         slot, status: "thinking", statusLabel: statusText("thinking", lang), model: "Opus 5.5", effort: "xhigh",
         mode: "auto", title: b.host === "terminal" ? (lang === "en" ? "New session" : "Neue Sitzung") : null,
-        reference: null, referenceDetected: false, selected: false, statusChangedAt: now(),
+        ticket: null, pr: null, cache: null, selected: false, statusChangedAt: now(),
       });
       pushView();
     },
@@ -140,12 +140,13 @@ export function createMockBackend(): Backend {
       const t = findTile(slot);
       const s = SUMMARIES[slot];
       const origin = originOf(slot);
-      emit("deck://tooltip", { slot, references: t?.reference ?? null, summary: null, lastPrompt: s?.lastPrompt ?? null, origin });
+      const refs = { ticket: t?.ticket ?? null, pr: t?.pr ?? null };
+      emit("deck://tooltip", { slot, ...refs, summary: null, lastPrompt: s?.lastPrompt ?? null, origin });
       // Die Zusammenfassung rechnet erst noch, dann kommt sie nach; aber nur, wenn der
       // Tooltip dann noch derselben Karte gilt.
       summaryTimer = window.setTimeout(() => {
         if (tipSlot !== slot) return;
-        emit("deck://tooltip", { slot, references: t?.reference ?? null, summary: s?.summary ?? null, lastPrompt: s?.lastPrompt ?? null, origin });
+        emit("deck://tooltip", { slot, ...refs, summary: s?.summary ?? null, lastPrompt: s?.lastPrompt ?? null, origin });
       }, 900);
     },
     open_usage_page: () => console.info("[mock] claude.ai/settings/usage"),
@@ -178,8 +179,8 @@ export function createMockBackend(): Backend {
     const b = blocks.find((x) => x.tiles.some((t) => t.slot === slot));
     const win = slot.slice(0, 1);
     const head = [b?.name ?? "", `${lang === "en" ? "Window" : "Fenster"} ${win}`, slot].filter(Boolean).join(" · ");
-    const wt = findTile(slot)?.reference;
-    return wt && !findTile(slot)?.referenceDetected ? [head, `↳ wt/${wt.split(" ")[0].toLowerCase()}`] : [head];
+    const wt = findTile(slot)?.ticket;
+    return wt && !wt.detected ? [head, `↳ wt/${wt.text.toLowerCase()}`] : [head];
   }
 
   const control: MockControl = {

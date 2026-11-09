@@ -4,6 +4,7 @@
 use deck_core::claude::refs::*;
 use deck_core::claude::summarize::*;
 use deck_core::claude::summary_cache::*;
+use deck_core::paths::save_json;
 use serde_json::json;
 
 fn t(role: &str, text: &str) -> Turn {
@@ -107,20 +108,45 @@ fn a_single_digit_key_needs_ticket_context() {
 }
 
 #[test]
-fn frequency_beats_order_and_ties_go_to_the_latest() {
-    let turns = [t("user", "nebenbei ABC-12"), t("assistant", "ok"), t("user", "eigentlich geht es um XYZ-77"), t("assistant", "XYZ-77, verstanden")];
-    assert_eq!(find_ticket(&turns, None, 2), "XYZ-77");
-    assert_eq!(find_ticket(&[t("user", "erst ABC-11"), t("user", "jetzt ABC-22")], None, 2), "ABC-22");
+fn the_first_typed_task_outweighs_later_mentions_and_ties_go_to_the_latest() {
+    let turns = [t("user", "ORPH-3728 bitte umsetzen"), t("assistant", "ok"), t("user", "nebenbei ORPH-4062"), t("assistant", "ORPH-4062, verstanden")];
+    assert_eq!(find_ticket(&turns, Some("ORPH"), 2), "ORPH-3728");
+    assert_eq!(find_ticket(&[t("user", "erst ABC-11"), t("user", "jetzt ABC-22")], None, 2), "ABC-11");
+    let later = [t("user", "los geht es"), t("user", "erst ABC-11"), t("user", "jetzt ABC-22")];
+    assert_eq!(find_ticket(&later, None, 2), "ABC-22", "gleiches Gewicht: der zuletzt genannte");
     assert_eq!(find_ticket(&user("PROJ-2691 vs FOO-2692"), Some("PROJ"), 2), "PROJ-2691");
 }
 
 #[test]
-fn a_single_side_remark_of_the_agent_is_not_enough() {
-    let side = vec![t("assistant", "das behebt uebrigens ABC-99")];
-    assert_eq!(find_ticket(&side, None, 2), "");
-    let twice = [side.clone(), vec![t("assistant", "ABC-99 ist damit durch")]].concat();
-    assert_eq!(find_ticket(&twice, None, 2), "ABC-99");
+fn what_only_the_agent_says_needs_several_answers() {
+    let side = |n: usize| (0..n).map(|i| t("assistant", &format!("Antwort {i}: ABC-99 erledigt"))).collect::<Vec<_>>();
+    assert_eq!(find_ticket(&side(1), None, 2), "");
+    assert_eq!(find_ticket(&side(3), None, 2), "", "drei Antworten reichen nicht");
+    assert_eq!(find_ticket(&side(4), None, 2), "ABC-99");
+    let same_turn = vec![t("assistant", "ABC-99, ABC-99, ABC-99 und nochmal ABC-99")];
+    assert_eq!(find_ticket(&same_turn, None, 2), "", "je Antwort zählt ein Key einmal");
     assert_eq!(find_ticket(&user("mach ABC-99"), None, 2), "ABC-99");
+}
+
+#[test]
+fn an_answer_listing_many_tickets_is_an_overview_and_does_not_count() {
+    // Gesehen am 09.11.2026: Auftrag ORPH-3728, die Antworten zählten Ticket-Bereiche
+    // auf („257 Tickets (ORPH-1212 bis ORPH-3715)“), die Kachel zeigte ORPH-1212.
+    let list = "257 Tickets (ORPH-1212 bis ORPH-3715), 100 Tickets (ORPH-716 bis ORPH-1211)";
+    let mut turns = vec![t("user", "ORPH-3728 kannst du das umsetzen?")];
+    turns.extend((0..6).map(|_| t("assistant", list)));
+    assert_eq!(find_ticket(&turns, Some("ORPH"), 2), "ORPH-3728");
+    let only_lists: Vec<Turn> = (0..6).map(|_| t("assistant", list)).collect();
+    assert_eq!(find_ticket(&only_lists, Some("ORPH"), 2), "");
+}
+
+#[test]
+fn a_bare_number_counts_only_when_typed_and_a_spoken_project_name_counts_too() {
+    assert_eq!(find_ticket(&user("Kannst du mal ORPHEUS 4112 für mich machen?"), Some("ORPH"), 2), "ORPH-4112");
+    assert_eq!(find_ticket(&user("orph 4116 bitte"), Some("ORPH"), 2), "ORPH-4116");
+    assert_eq!(find_ticket(&user("ORPHEUS 4.1.0 ist raus"), Some("ORPH"), 2), "", "eine Version ist kein Ticket");
+    let links: Vec<Turn> = (0..5).map(|_| t("assistant", "siehe Issue #24384 im Tracker")).collect();
+    assert_eq!(find_ticket(&links, Some("ORPH"), 2), "", "Issue-Nummern in Antworten sind keine Tickets");
 }
 
 #[test]
@@ -163,10 +189,6 @@ fn ticket_and_pr_can_both_apply() {
     let got = find_refs(&user("Bugs aus PR #62 zum Ticket PROJ-2651 fixen"), Some("PROJ"));
     assert_eq!(got, Refs { ticket: "PROJ-2651".into(), pr: "62".into() });
     assert_eq!(find_refs(&user("nur reden"), Some("PROJ")), Refs::default());
-    assert_eq!(refs_label(&got), "Ticket: PROJ-2651 · PR #62");
-    assert_eq!(refs_card_label(&got, 14), "PROJ-2651 #62");
-    assert_eq!(refs_card_label(&Refs { ticket: "PROJECT-12345".into(), pr: "62".into() }, 14), "PROJECT-12345");
-    assert_eq!(refs_card_label(&Refs { ticket: String::new(), pr: "62".into() }, 14), "#62");
 }
 
 fn write_transcript(projects: &std::path::Path, cwd: &str, sid: &str, turns: &[(&str, &str)]) -> std::path::PathBuf {
@@ -198,9 +220,37 @@ fn refs_are_cached_by_size_and_found_values_survive_an_empty_rescan() {
     let p = write_transcript(projects.path(), "C:/r", "s1", &[("user", "mach PROJ-7 und PR #5"), ("user", "PR #5 bitte")]);
     let r = ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("PROJ"));
     assert_eq!(r, Refs { ticket: "PROJ-7".into(), pr: "5".into() });
-    assert_eq!(cached_refs(cache.path(), "s1"), r);
+    assert_eq!(cached_refs(cache.path(), "s1", Some("PROJ")), r);
     std::fs::write(&p, json!({"type": "user", "message": {"content": "nichts mehr"}}).to_string()).unwrap();
     assert_eq!(ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("PROJ")), r);
+}
+
+#[test]
+fn cached_refs_of_an_older_calculation_or_another_project_do_not_count() {
+    // Sonst hielte sich ein früher falsch geratenes Ticket für immer.
+    let projects = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    write_transcript(projects.path(), "C:/r", "s1", &[("user", "nur reden")]);
+    save_json(&cache.path().join("s1.json"), &json!({"refs_size": 1, "ticket": "ORPH-1212", "pr": "20068"})).unwrap();
+    assert_eq!(cached_refs(cache.path(), "s1", Some("ORPH")), Refs::default());
+    assert_eq!(ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("ORPH")), Refs::default());
+    write_transcript(projects.path(), "C:/r", "s2", &[("user", "Ticket 4116 bitte")]);
+    assert_eq!(ensure_refs(projects.path(), cache.path(), "s2", Some("C:/r"), Some("PROJ")).ticket, "PROJ-4116");
+    assert_eq!(cached_refs(cache.path(), "s2", Some("ORPH")), Refs::default(), "anderes Projekt");
+    assert_eq!(ensure_refs(projects.path(), cache.path(), "s2", Some("C:/r"), Some("ORPH")).ticket, "ORPH-4116");
+}
+
+#[test]
+fn injected_user_lines_are_no_typed_turns_but_pasted_text_blocks_are() {
+    let lines = vec![
+        json!({"type": "user", "isMeta": true, "message": {"content": "Base directory for this skill: ORPH-1"}}).to_string(),
+        json!({"type": "user", "isCompactSummary": true, "message": {"content": "Summary: ORPH-2, ORPH-3"}}).to_string(),
+        json!({"type": "user", "isSidechain": true, "message": {"content": "Subagent: ORPH-4"}}).to_string(),
+        json!({"type": "user", "toolUseResult": {"stdout": "x"}, "message": {"content": "ORPH-5"}}).to_string(),
+        json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ORPH-6"}, {"type": "text", "text": "ORPH-7"}]}}).to_string(),
+        json!({"type": "user", "message": {"content": [{"type": "text", "text": "ORPH-4116 bitte"}, {"type": "image", "source": {}}]}}).to_string(),
+    ];
+    assert_eq!(extract_turns(&lines), [t("user", "ORPH-4116 bitte")]);
 }
 
 #[test]

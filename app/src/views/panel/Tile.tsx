@@ -2,7 +2,8 @@
 // Papier-Look „02 Farbfeld“ (docs/DESIGN.md).
 //
 // Terminal-Karte (hoch): Status | Modell · Effort, darunter der Sessiontitel, unten
-// Ticket/PR | Modus. VS-Code-Karte (flach): dieselben zwei Zeilen ohne Titel.
+// Ticket PR | Cache-Restzeit | Modus. VS-Code-Karte (flach): dieselben zwei Zeilen ohne
+// Titel.
 
 import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import type { Host } from "../../bindings/Host";
@@ -128,16 +129,20 @@ function TileCard({ tile, host, lang, offset, lifted, landing, settling, handler
 
       {tall && <span className="tile-title">{tile.title ?? ""}</span>}
 
+      {/* Fußzeile „A“: Ticket und PR | Cache-Restzeit | Modus. Alle drei Plätze stehen
+          immer da (auch leer), damit die Zeit nicht springt, wenn links etwas fehlt. */}
       <span className="tile-row tile-row--foot">
-        {tile.reference && (
-          <span className={`tile-ref${tile.referenceDetected ? " tile-ref--detected" : ""}`}>{tile.reference}</span>
-        )}
-        <span className="tile-spacer" />
-        {tile.mode && (
-          <span className="tile-mode" style={{ color: modeColor(tile.mode, scheme) }}>
-            {tile.mode}
-          </span>
-        )}
+        <span className="tile-ref">
+          {tile.ticket && (
+            <span className={`tile-ticket${tile.ticket.detected ? " tile-ref--detected" : ""}`}>{tile.ticket.text}</span>
+          )}
+          {tile.ticket && tile.pr && " "}
+          {tile.pr && <span className={`tile-pr${tile.pr.detected ? " tile-ref--detected" : ""}`}>{tile.pr.text}</span>}
+        </span>
+        <span className={tile.cache ? `tile-cache tile-cache--${tile.cache.stage}` : "tile-cache"}>{tile.cache?.text}</span>
+        <span className="tile-mode" style={tile.mode ? { color: modeColor(tile.mode, scheme) } : undefined}>
+          {tile.mode}
+        </span>
       </span>
 
       <button

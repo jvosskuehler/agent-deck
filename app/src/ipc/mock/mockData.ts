@@ -5,6 +5,10 @@
 // denen der Vorlagen in docs/design-refs, damit Screenshots vergleichbar sind.
 
 import type { BlockView } from "../../bindings/BlockView";
+import type { CacheStage } from "../../bindings/CacheStage";
+import type { CacheView } from "../../bindings/CacheView";
+import type { RefSource } from "../../bindings/RefSource";
+import type { RefView } from "../../bindings/RefView";
 import type { SettingsView } from "../../bindings/SettingsView";
 import type { Status } from "../../bindings/Status";
 import type { TileView } from "../../bindings/TileView";
@@ -40,31 +44,61 @@ export function urgentOf(blocks: readonly BlockView[]): Status | null {
   return best;
 }
 
-type TileSeed = Omit<TileView, "statusLabel" | "statusChangedAt" | "selected">;
+type TileSeed = Omit<TileView, "statusLabel" | "statusChangedAt" | "selected" | "ticket" | "pr" | "cache"> &
+  Partial<Pick<TileView, "ticket" | "pr" | "cache">>;
+
+const ORIGIN: Record<RefSource, [string, string]> = {
+  assigned: ["zugewiesen", "assigned"],
+  branch: ["Branch", "branch"],
+  folder: ["Ordner", "folder"],
+  statusline: ["Claude Code", "Claude Code"],
+  title: ["Titel", "title"],
+  chat: ["Chat", "Chat"],
+};
+
+/** Bezug wie aus `ref_sources.rs`: Titel und Chat sind geraten (gedimmt). */
+function ref(text: string, source: RefSource): RefView {
+  return { text, source, detected: source === "title" || source === "chat", origin: ORIGIN[source][0] };
+}
+
+function cache(text: string, stage: CacheStage): CacheView {
+  return { text, stage };
+}
 
 const HOME: TileSeed[] = [
-  { slot: "B1", status: "waiting", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen", reference: "ORPH-4062", referenceDetected: false },
-  { slot: "B2", status: "thinking", model: "Opus 5.5", effort: "ultracode", mode: "bypass", title: "ORPH-3773 Rechtekonzept Integrationstests", reference: "ORPH-3773", referenceDetected: false },
-  { slot: "B3", status: "done", model: "Fable 5.1", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", reference: "#180", referenceDetected: false },
-  { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-3192 Mehrfach-RDS auf der Test-VM", reference: "ORPH-3192", referenceDetected: false },
-  { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", reference: "ORPH-4116", referenceDetected: true },
-  { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", reference: null, referenceDetected: false },
+  { slot: "B1", status: "waiting", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen", ticket: ref("ORPH-4062", "assigned"), pr: ref("#355", "statusline"), cache: cache("6 min", "low") },
+  { slot: "B2", status: "thinking", model: "Opus 5.5", effort: "ultracode", mode: "bypass", title: "ORPH-3773 Rechtekonzept Integrationstests", ticket: ref("ORPH-3773", "branch") },
+  { slot: "B3", status: "done", model: "Fable 5.1", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", ticket: ref("ORPH-4116", "folder"), pr: ref("#1234", "statusline"), cache: cache("42 min", "warm") },
+  { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-3192 Mehrfach-RDS auf der Test-VM", ticket: ref("ORPH-3192", "assigned"), cache: cache("kalt", "cold") },
+  { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", ticket: ref("ORPH-4116", "chat"), pr: ref("#347", "chat"), cache: cache("kalt", "cold") },
+  { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", cache: cache("18 min", "warm") },
 ];
 
 const VSCODE: TileSeed[] = [
-  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, reference: "ORPH-4107", referenceDetected: false },
-  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: null, reference: null, referenceDetected: false },
-  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, reference: "ORPH-4105", referenceDetected: false },
+  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, ticket: ref("ORPH-4107", "assigned") },
+  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: null },
+  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: null, ticket: ref("ORPH-4105", "assigned") },
 ];
 
 function tile(seed: TileSeed, lang: Lang, selected: string, now: number): TileView {
-  return { ...seed, statusLabel: statusText(seed.status, lang), selected: seed.slot === selected, statusChangedAt: now };
+  const en = lang === "en";
+  const local = (r: RefView | null | undefined) => (r ? { ...r, origin: ORIGIN[r.source][en ? 1 : 0] } : null);
+  const c = seed.cache?.stage === "cold" ? { ...seed.cache, text: en ? "cold" : "kalt" } : (seed.cache ?? null);
+  return {
+    ...seed,
+    ticket: local(seed.ticket),
+    pr: local(seed.pr),
+    cache: c,
+    statusLabel: statusText(seed.status, lang),
+    selected: seed.slot === selected,
+    statusChangedAt: now,
+  };
 }
 
 /** Zusatzblock für ?blocks=3: ein Remote-Fenster, damit sich Blöcke ziehen lassen. */
 const REMOTE: TileSeed[] = [
-  { slot: "C1", status: "unknown", model: "Opus 5.5", effort: "high", mode: "auto", title: null, reference: null, referenceDetected: false },
-  { slot: "C2", status: "unknown", model: "Fable 5.1", effort: "medium", mode: "plan", title: null, reference: "#347", referenceDetected: false },
+  { slot: "C1", status: "unknown", model: "Opus 5.5", effort: "high", mode: "auto", title: null },
+  { slot: "C2", status: "unknown", model: "Fable 5.1", effort: "medium", mode: "plan", title: null, pr: ref("#347", "statusline") },
 ];
 
 export function initialBlocks(lang: Lang, now: number, extra = false): BlockView[] {

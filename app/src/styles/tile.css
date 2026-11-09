@@ -134,9 +134,15 @@
   -webkit-box-orient: vertical;
 }
 
+/* Fußzeile „A“ (Vorlage „A: 01 mit Ticket und PR“, 09.11.2026): Ticket und PR links,
+ * Cache-Restzeit in der Mitte, Modus rechts. Platz: 173 px; der breiteste Fall
+ * „ORPH-4116 #1234“, „42 min“, „bypass“ geht gerade auf. Wird es doch zu eng, kürzt
+ * links der Bezug, Zeit und Modus bleiben ganz. */
 .tile-row--foot {
+  justify-content: space-between;
   margin-top: auto;
   font-size: 10.5px;
+  white-space: nowrap;
 }
 
 .tile--flat .tile-row--foot {
@@ -146,15 +152,39 @@
 .tile-ref {
   min-width: 0;
   overflow: hidden;
-  font-weight: 700;
   color: var(--ref);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* Nur aus dem Chat erkannt, nicht zugewiesen: gedimmt. */
+.tile-ticket {
+  font-weight: 700;
+}
+
+.tile-pr {
+  font-weight: 500;
+}
+
+/* Nur geraten (Titel, Chat), nicht zugewiesen oder gemeldet: gedimmt. */
 .tile-ref--detected {
   opacity: 0.6;
+}
+
+/* Cache-Restzeit: warm gedämpft, knapp fett in Textfarbe, kalt blass. Solange der
+ * Agent arbeitet, bleibt der Platz leer (das rechnet deck-core). */
+.tile-cache {
+  flex: none;
+  font-weight: 400;
+  color: var(--cache-warm);
+}
+
+.tile-cache--low {
+  font-weight: 700;
+  color: var(--cache-low);
+}
+
+.tile-cache--cold {
+  opacity: 0.55;
 }
 
 .tile-mode {

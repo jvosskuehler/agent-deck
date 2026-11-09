@@ -24,19 +24,47 @@ pub fn instruction(lang: &str) -> &'static str {
 
 const QUOTES: &str = "\"'“”„»«‚‘’";
 
+/// Von Claude Code selbst eingeschobene „User“-Zeilen: Skill-Texte und Hook-Ausgaben
+/// (`isMeta`), die Zusammenfassung nach `/compact` (`isCompactSummary`, sie wiederholt
+/// jedes Ticket des bisherigen Gesprächs), Nebenläufe von Subagenten (`isSidechain`) und
+/// Tool-Ergebnisse (`toolUseResult`). Getippt hat davon nichts der Nutzer.
+fn injected(rec: &Value) -> bool {
+    ["isMeta", "isCompactSummary", "isSidechain"].iter().any(|k| rec.get(*k).and_then(Value::as_bool) == Some(true))
+        || rec.get("toolUseResult").is_some()
+}
+
+/// Getippter Text einer User-Zeile: ein String, oder eine Liste aus Text- (und Bild-)
+/// Blöcken, wenn etwas eingefügt wurde. Steckt ein `tool_result` darin, ist es ein
+/// Tool-Ergebnis und kein getippter Text.
+fn typed_text(content: &Value) -> Option<String> {
+    let keep = |t: &str| !(t.is_empty() || t.starts_with('<') || t.starts_with("Caveat:"));
+    if let Some(s) = content.as_str() {
+        let t = s.trim();
+        return keep(t).then(|| t.to_string());
+    }
+    let blocks = content.as_array()?;
+    if blocks.iter().any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")) {
+        return None;
+    }
+    let parts: Vec<&str> = blocks
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|b| b.get("text").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|t| keep(t))
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n"))
+}
+
 /// Ein Zug aus einem schon geparsten Transcript-Datensatz.
 fn turn_of(rec: &Value) -> Option<Turn> {
     let msg = rec.get("message")?.as_object()?;
     let content = msg.get("content");
+    if injected(rec) {
+        return None;
+    }
     match rec.get("type")?.as_str()? {
-        "user" => {
-            // Eine Liste ist ein Tool-Ergebnis, kein getippter Text.
-            let text = content?.as_str()?.trim();
-            if text.is_empty() || text.starts_with('<') || text.starts_with("Caveat:") {
-                return None;
-            }
-            Some(("user".into(), text.into()))
-        }
+        "user" => Some(("user".into(), typed_text(content?)?)),
         "assistant" => {
             let parts: Vec<&str> = content?
                 .as_array()?

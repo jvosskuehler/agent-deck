@@ -58,8 +58,13 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
 - **Windows-Terminal-Karte** 197 × 118, Innenabstand 10 12 9:
   oben links Statustext (11 px, fett, Ink), oben rechts „Modell · Effort“ (10,5 px,
   normal); darunter der **Sessiontitel** (IBM Plex Sans 14 px, halbfett, Zeilenhöhe 1,3,
-  Textfarbe, höchstens zwei Zeilen, sonst Auslassung); unten links Ticket/PR (10,5 px,
-  fett), unten rechts Modus (10,5 px, mittel).
+  Textfarbe, höchstens zwei Zeilen, sonst Auslassung); unten die Fußzeile „A“ (Vorlage
+  „A: 01 mit Ticket und PR“, 09.11.2026), drei Plätze mit `space-between`, 10,5 px, ohne
+  Umbruch: links Ticket (fett) und PR als `#<n>` (mittel), beide in der Ticketfarbe, nur
+  geraten (Titel, Chat) gedimmt; in der Mitte die Restzeit des Prompt-Caches (warm
+  gedämpft `#6e6a86`/`#8e8a84` normal, knapp Textfarbe fett, kalt „kalt“ gedämpft mit
+  Deckkraft 0,55; solange der Agent arbeitet leer); rechts Modus (mittel). Breitester
+  Fall „ORPH-4116 #1234“ · „42 min“ · „bypass“ passt in 173 px gerade.
 - **VS-Code-Karte** 197 × 58 (flach, kein Titel), Innenabstand 7 12: Zeile 1 wie oben,
   Zeile 2 Ticket/PR links, Modus rechts.
 - Fläche: Pigment mit Hex-Alpha `38` (dunkel `30`) über dem Kartengrund; idle, none und
@@ -118,7 +123,8 @@ Hosts „Klicke jetzt ein VS-Code-Fenster an“ in Bernstein (Ink) mit atmendem 
 
 Nach ≈ 500 ms Hover über einer Karte: Fläche im Kartengrund, Rand hl-med, Radius 10,
 max. 360 px. Ganz oben klein (11 px, gedämpft) die Herkunft „Repo · Fenster A · A2“, bei
-einem worktree darunter „↳ wt/<Ordner>“; dann Ticket/PR (Ticketfarbe), darunter die
+einem worktree darunter „↳ wt/<Ordner>“; dann Ticket und PR (Ticketfarbe, je mit der
+Herkunft klein dahinter: zugewiesen, Branch, Ordner, Claude Code, Titel, Chat), darunter die
 KI-Zusammenfassung (IBM Plex Sans 13 px), solange sie rechnet die letzte Frage gedämpft.
 Bleibt auf dem Monitor der Karte.
 
