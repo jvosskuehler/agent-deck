@@ -13,12 +13,17 @@
 //!    ersten Blick, der ihn vermisste) gestartet ist. So werden Kinder erkannt, die kurz
 //!    vor dem Schließen gestartet und noch nie gesehen wurden.
 //!
+//! 3. die Eltern-Kette reißt (ein Zwischenglied endete, bevor ein Blick es sah), aber
+//!    seine Umgebung die Marke der Shell trägt (`super::marker`). Gelesen wird sie nur für
+//!    Prozesse, die nach der ältesten bekannten Shell gestartet sind, je Prozess einmal.
+//!
 //! Ist die Shell weg, ist jeder lebende gemerkte Prozess eine Waise. Tote Einträge
 //! bleiben noch [`KEEP_GONE_S`] stehen: genau für Regel 2, wenn ein Kind erst beim
 //! nächsten Blick auftaucht.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use super::marker::marks_shell;
 use super::model::{Key, ProcDetails, ProcRow, Saved, ShellId, ShellRecord, Tracked, filetime_to_unix};
 use crate::wt::same_start;
 
@@ -35,15 +40,23 @@ const MAX_DEPTH: usize = 64;
 
 type Alive<'a> = HashMap<u32, (&'a ProcRow, u64)>;
 
+/// Liest die Herkunftsmarke eines Prozesses (PID, Startzeit) aus seiner Umgebung; `None` =
+/// keine Marke oder nicht lesbar.
+pub type MarkerFn<'a> = dyn FnMut(u32, u64) -> Option<(u32, i64)> + 'a;
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Tracker {
     shells: Vec<ShellRecord>,
     procs: BTreeMap<Key, Tracked>,
+    /// Schon gelesene Marken lebender, nicht gemerkter Prozesse (nur im Speicher): jede
+    /// Umgebung wird einmal gelesen, eine Marke ohne passende Shell bei jedem Blick neu
+    /// verglichen (die `.wtpid` kann später kommen).
+    markers: HashMap<Key, Option<(u32, i64)>>,
 }
 
 impl Tracker {
     pub fn from_saved(saved: Saved) -> Tracker {
-        Tracker { shells: saved.shells, procs: saved.procs.into_iter().map(|t| (t.key(), t)).collect() }
+        Tracker { shells: saved.shells, procs: saved.procs.into_iter().map(|t| (t.key(), t)).collect(), markers: HashMap::new() }
     }
 
     pub fn to_saved(&self, now: f64) -> Saved {
@@ -85,13 +98,15 @@ impl Tracker {
     }
 
     /// Einen Schnappschuss einarbeiten. `shells` sind die Agenten laut `.wtpid`-Dateien;
-    /// `details` liest Kommandozeile und Sitzung nach (nur für neu gemerkte Prozesse,
-    /// `None` = nicht mehr derselbe Prozess). Rückgabe: hat sich der Merker geändert?
+    /// `marker` liest die Herkunftsmarke (Regel 3); `details` liest Kommandozeile und
+    /// Sitzung nach (nur für neu gemerkte Prozesse, `None` = nicht mehr derselbe Prozess).
+    /// Rückgabe: hat sich der Merker geändert?
     pub fn observe(
         &mut self,
         now: f64,
         shells: &[ShellId],
         procs: &[ProcRow],
+        marker: &mut MarkerFn,
         details: &mut dyn FnMut(u32, u64) -> Option<ProcDetails>,
     ) -> bool {
         let alive: Alive = procs.iter().filter_map(|p| p.start.map(|s| (p.pid, (p, s)))).collect();
@@ -116,6 +131,8 @@ impl Tracker {
                 found.push((p, start, shell));
             }
         }
+        found.extend(self.by_marker(procs, &found, marker));
+        self.markers.retain(|k, _| is_alive(*k));
         for (p, start, shell) in found {
             let Some(d) = details(p.pid, start) else { continue };
             let t = Tracked {
@@ -167,6 +184,27 @@ impl Tracker {
             }
         }
         changed
+    }
+
+    /// Regel 3: noch nicht zugeordnete Prozesse über ihre Herkunftsmarke. Wer vor der
+    /// ältesten bekannten Shell gestartet ist, kann kein Nachkomme sein und wird gar nicht
+    /// erst gelesen; die Shell muss vor dem Prozess gestartet sein.
+    fn by_marker<'a>(&mut self, procs: &'a [ProcRow], found: &[(&ProcRow, u64, Key)], marker: &mut MarkerFn) -> Vec<(&'a ProcRow, u64, Key)> {
+        let Some(earliest) = self.shells.iter().map(|r| r.start).min() else { return Vec::new() };
+        let done: HashSet<Key> = found.iter().map(|(p, s, _)| (p.pid, *s)).collect();
+        let mut out = Vec::new();
+        for p in procs {
+            let Some(start) = p.start else { continue };
+            let key = (p.pid, start);
+            if start < earliest || done.contains(&key) || self.procs.contains_key(&key) || self.is_shell(key) {
+                continue;
+            }
+            let Some(m) = *self.markers.entry(key).or_insert_with(|| marker(p.pid, start)) else { continue };
+            if let Some(r) = self.shells.iter().find(|r| r.start <= start && marks_shell(m, r.pid, r.start)) {
+                out.push((p, start, r.key()));
+            }
+        }
+        out
     }
 
     /// Zu welcher Agenten-Shell gehört dieser (noch nicht gemerkte) Prozess?

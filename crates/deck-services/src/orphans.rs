@@ -2,7 +2,9 @@
 //! fortschreiben und auf der Platte halten, Waisen gezielt beenden und nachprüfen.
 //!
 //! Die Regeln (wer gehört zu welchem Agenten, was ist geschützt, was trifft „Beenden“)
-//! stehen in `deck_core::orphans` und sind dort getestet. Hier ist nur die Verdrahtung;
+//! stehen in `deck_core::orphans` und sind dort getestet. Die Herkunftsmarke
+//! (`AGENT_DECK_SHELL`, `deck_core::orphans::marker`) liest [`ProcSource::marker`] aus der
+//! Umgebung eines Prozesses. Hier ist nur die Verdrahtung;
 //! alles, was das System liest oder verändert, geht über [`ProcSource`]. Die App ruft
 //! [`OrphanWatch::scan`] in einem eigenen Thread (alle 2 s und sofort, wenn eine
 //! Agenten-Shell endet, siehe [`OrphanWatch::wait`]), nie im 400-ms-Takt der Oberfläche.
@@ -15,7 +17,8 @@ use std::time::{Duration, Instant};
 
 use deck_core::i18n::Lang;
 use deck_core::orphans::{
-    KillState, Key, ORPHANS_FILE, ProcDetails, ProcRow, Saved, ShellId, Tracker, kill_order, orphan_rows, parse_row_id, roots,
+    KillState, Key, ORPHANS_FILE, ProcDetails, ProcRow, Saved, ShellId, Tracker, kill_order, marker_in_env, orphan_rows, parse_row_id,
+    roots,
 };
 use deck_core::paths::{atomic_write, load_json};
 use deck_core::view::OrphanView;
@@ -44,6 +47,9 @@ pub trait ProcSource: Send + Sync {
     fn running(&self, pid: u32, start: u64) -> bool;
     /// Warten, bis einer dieser Prozesse endet (`true`) oder die Zeit um ist (`false`).
     fn wait_any_exit(&self, procs: &[Key], timeout: Duration) -> bool;
+    /// Die Herkunftsmarke aus der Umgebung dieses Prozesses (PID und `created` der Shell);
+    /// `None` = keine Marke, kein Zugriff oder nicht mehr derselbe Prozess.
+    fn marker(&self, pid: u32, start: u64) -> Option<(u32, i64)>;
 }
 
 /// Die echte Fassung über `deck_win`.
@@ -74,6 +80,9 @@ impl ProcSource for Win32Source {
     }
     fn wait_any_exit(&self, procs: &[Key], timeout: Duration) -> bool {
         deck_win::proc_scan::wait_any_exit(procs, timeout.as_millis().min(u128::from(u32::MAX)) as u32)
+    }
+    fn marker(&self, pid: u32, start: u64) -> Option<(u32, i64)> {
+        marker_in_env(&deck_win::proc_env::environment(pid, start)?)
     }
 }
 
@@ -131,7 +140,8 @@ impl OrphanWatch {
         let mut g = self.lock();
         let before = (g.tracker.orphans().len(), g.ports.clone());
         let src = self.src.clone();
-        let changed = g.tracker.observe(now, &shells, &procs, &mut |pid, start| src.details(pid, start));
+        let marks = self.src.clone();
+        let changed = g.tracker.observe(now, &shells, &procs, &mut |pid, start| marks.marker(pid, start), &mut |pid, start| src.details(pid, start));
         g.ports = if g.tracker.orphans().is_empty() { HashMap::new() } else { self.ports() };
         // Fehler einer Zeile, die es nicht mehr gibt, vergessen.
         let live: Vec<Key> = roots(&g.tracker);

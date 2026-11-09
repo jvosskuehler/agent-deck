@@ -24,7 +24,7 @@ fn details() -> impl FnMut(u32, u64) -> Option<ProcDetails> {
 }
 
 fn observe(tr: &mut Tracker, now: f64, shells: &[ShellId], procs: &[ProcRow]) -> bool {
-    tr.observe(now, shells, procs, &mut details())
+    tr.observe(now, shells, procs, &mut |_, _| None, &mut details())
 }
 
 fn orphan_pids(tr: &Tracker) -> Vec<u32> {
@@ -145,7 +145,7 @@ fn the_pidfile_start_time_counts_within_one_second_like_powershell_writes_it() {
 #[test]
 fn without_details_a_process_is_not_remembered_yet_and_comes_again_next_time() {
     let mut tr = Tracker::default();
-    tr.observe(T0 + 10.0, &[shell("A2", 100, T0)], &agent_tree(), &mut |_, _| None);
+    tr.observe(T0 + 10.0, &[shell("A2", 100, T0)], &agent_tree(), &mut |_, _| None, &mut |_, _| None);
     assert_eq!(tr.tracked().count(), 0);
     observe(&mut tr, T0 + 12.0, &[shell("A2", 100, T0)], &agent_tree());
     assert_eq!(tr.tracked().count(), 3);

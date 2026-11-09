@@ -24,8 +24,9 @@ crates/deck-core/       Fachkern: Zustände, Pfade, Konfiguration, Reihenfolge, 
                         claude, Windows-Terminal-Rechnung, Ticket/PR-Erkennung, Usage-Auswertung,
                         settings.json, Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll
                         getestet.
-crates/deck-win/        Win32: Fenster finden/fokussieren/anordnen, Monitore, DPI, Prozesse,
-                        Tasten in fremde Konsolen, Fokus-Rahmen (GPU), globale Tastenkürzel.
+crates/deck-win/        Win32: Fenster finden/fokussieren/anordnen, Monitore, DPI, Prozesse
+                        (auch deren Umgebung lesen), Tasten in fremde Konsolen, Fokus-Rahmen
+                        (GPU), globale Tastenkürzel.
 crates/deck-hooks/      Die Claude-Code-Hooks als kleine Programme: deck-report, deck-statusline.
 crates/deck-services/   Hintergrunddienste: Usage-Abruf (gemeinsamer Poller), KI-Zusammenfassung,
                         Worktree-Aufräumen und Sweep, Hook-Installation und Entfernen der
@@ -49,7 +50,7 @@ wird dort getestet; Zeichnen gehört nach `app/src` und wird angeschaut.**
 ```powershell
 cargo test --workspace                               # alle Rust-Tests
 cargo test -p deck-core export_bindings              # TS-Typen nach app/src/bindings erzeugen
-cargo test -p deck-services --test orphans_real -- --ignored --nocapture   # „ohne Fenster“ echt (startet node/pwsh versteckt)
+cargo test -p deck-services --test orphans_real -- --ignored --nocapture   # „ohne Fenster“ echt (startet node/pwsh/cmd versteckt)
 cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
@@ -96,6 +97,18 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
 5. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`**, gesetzt von `wt_agent.ps1` im
    Fenster des Agenten. Ohne ihn meldet kein Hook etwas: eine selbst gestartete Session
    gehört nicht zum Deck.
+6. **`<slot>.wtpid` und die Herkunftsmarke.** `wt_agent.ps1` schreibt vor claude atomar
+   `{"pid", "created", "slot"}` (die Shell im Pane; `created` als FILETIME, über DateTime nur
+   auf etwa eine Sekunde genau) und setzt neben `AGENT_SLOT` die Umgebungsvariable
+   `AGENT_DECK_SHELL=<pid>.<created>` mit denselben Werten. Jeder Nachkomme erbt sie, auch
+   wenn das Zwischenglied sofort endet (Claudes Werkzeug-Shell mit `Start-Process npm run
+   dev`). „Läuft noch ohne Fenster“ ordnet über die Eltern-Kette zu und, wo die gerissen ist,
+   über die Marke in der Umgebung des Prozesses (`deck_core::orphans::marker`, gelesen von
+   `deck_win::proc_env`, je Prozess einmal, nur für Prozesse jünger als die älteste bekannte
+   Shell). Das Deck nimmt die Marke beim Start aus seiner eigenen Umgebung, damit nichts,
+   was es selbst startet, einem Agenten zugerechnet wird. Ein Job-Objekt je Fenster taugt
+   dafür nicht: auf dem Zielrechner steckt jeder Prozess schon in einem Job, und Kinder
+   erben einen darunter angelegten Job nicht (gemessen 09.11.2026).
 
 ## Fallen, die schon einmal wehgetan haben
 

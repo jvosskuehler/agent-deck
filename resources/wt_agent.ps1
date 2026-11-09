@@ -10,7 +10,8 @@ $s = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Spec)) | Conve
 # 1) Die PID-Datei ZUERST: an ihr erkennt das Deck, dass der Slot lebt. Startzeit dazu,
 #    damit eine spaeter neu vergebene PID nicht als dieser Slot durchgeht.
 $me = Get-Process -Id $PID
-$rec = @{ pid = $PID; created = $me.StartTime.ToFileTimeUtc(); slot = $s.slot } | ConvertTo-Json -Compress
+$created = $me.StartTime.ToFileTimeUtc()
+$rec = @{ pid = $PID; created = $created; slot = $s.slot } | ConvertTo-Json -Compress
 $path = Join-Path $s.state ($s.slot + '.wtpid')
 [IO.Directory]::CreateDirectory($s.state) | Out-Null
 [IO.File]::WriteAllText($path + '.tmp', $rec)
@@ -19,6 +20,10 @@ Move-Item -LiteralPath ($path + '.tmp') -Destination $path -Force
 # 2) Den Slot fuer die Hooks (deck-report/deck-statusline lesen AGENT_SLOT). wt.exe kann einem
 #    neuen Pane keine Umgebungsvariable mitgeben, darum steht das hier.
 $env:AGENT_SLOT = $s.slot
+# Herkunftsmarke (deck-core orphans::marker): jeder Prozess, den claude oder seine Werkzeuge
+# starten, erbt sie, auch wenn die startende Shell sofort wieder endet. Daran erkennt das
+# Deck nach dem Schliessen des Fensters Dev-Server, deren Eltern-Kette gerissen ist.
+$env:AGENT_DECK_SHELL = "$PID.$created"
 
 # 3) Saubere Umgebung. Das Deck laeuft oft selbst unter einer Claude-Session und vererbt
 #    deren Variablen an jedes Pane: CLAUDE_CODE_CHILD_SESSION schaltet im neuen Agenten

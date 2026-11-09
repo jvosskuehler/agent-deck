@@ -67,6 +67,11 @@ pub fn now() -> f64 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Wurde das Deck aus einem Agentenfenster gestartet, trägt es dessen Herkunftsmarke;
+    // alles, was es selbst startet (auch Windows Terminal), gälte sonst als Prozess dieses
+    // Agenten („Läuft noch ohne Fenster“, `deck_core::orphans::marker`).
+    // SAFETY: ganz am Anfang, bevor irgendein anderer Thread läuft.
+    unsafe { std::env::remove_var(deck_core::orphans::MARKER_VAR) };
     let paths = Paths::from_env();
     let log = applog::install(&paths.app_dir);
     // Ein Absturz steht im Herzschlag, damit der Wächter ihn von einem Beenden

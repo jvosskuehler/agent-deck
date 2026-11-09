@@ -43,7 +43,7 @@ fn orphaned(shells: &[(&str, u32, f64)], procs: &[Proc]) -> Tracker {
     let mut details = |pid: u32, _| {
         procs.iter().find(|p| p.pid == pid).map(|p| ProcDetails { cmdline: Some(p.cmd.into()), image: None, session: Some(p.session) })
     };
-    tr.observe(T0 + 10.0, &ids, &rows(true), &mut details);
+    tr.observe(T0 + 10.0, &ids, &rows(true), &mut |_, _| None, &mut details);
     // Jede Shell geht zu ihrer Zeit zu; eine Sekunde vorher sieht der Merker noch alle,
     // die dann offen sind (wie im Betrieb, wo er alle 2 s schaut).
     let mut closes: Vec<f64> = shells.iter().map(|(.., c)| *c).filter(|c| c.is_finite()).collect();
@@ -54,7 +54,7 @@ fn orphaned(shells: &[(&str, u32, f64)], procs: &[Proc]) -> Tracker {
             let still: Vec<ShellId> = open.iter().map(|i| ids[*i].clone()).collect();
             let mut r = rows(false);
             r.extend(open.iter().map(|i| ProcRow { pid: shells[*i].1, ppid: 1, exe: "pwsh.exe".into(), start: Some(ft(T0)) }));
-            tr.observe(at, &still, &r, &mut details);
+            tr.observe(at, &still, &r, &mut |_, _| None, &mut details);
         }
     }
     tr
@@ -119,7 +119,7 @@ fn a_process_tree_is_one_row_with_the_ports_of_all_its_members() {
     let mut tr = orphaned(&[("A2", 100, T0 + 20.0)], &procs);
     // claude stirbt mit dem Fenster.
     let alive: Vec<ProcRow> = procs[1..].iter().map(|p| ProcRow { pid: p.pid, ppid: p.ppid, exe: p.exe.into(), start: Some(ft(p.started)) }).collect();
-    tr.observe(T0 + 21.0, &[], &alive, &mut |_, _| None);
+    tr.observe(T0 + 21.0, &[], &alive, &mut |_, _| None, &mut |_, _| None);
 
     let ports = HashMap::from([(104, vec![5173, 3000]), (103, vec![3000])]);
     let rows = orphan_rows(&tr, &ports, &KillState::default(), T0 + 21.0 + 14.0 * 60.0, Lang::German);

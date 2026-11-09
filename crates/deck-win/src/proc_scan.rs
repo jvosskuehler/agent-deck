@@ -58,7 +58,7 @@ const STILL_ACTIVE: u32 = 259;
 const TERMINATE_WAIT_MS: u32 = 5_000;
 
 /// Ein Prozess-Handle, das sich selbst schließt.
-struct Handle(HANDLE);
+pub(crate) struct Handle(pub(crate) HANDLE);
 
 impl Drop for Handle {
     fn drop(&mut self) {
@@ -69,19 +69,19 @@ impl Drop for Handle {
     }
 }
 
-fn open(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> std::result::Result<Handle, windows::core::Error> {
+pub(crate) fn open(pid: u32, access: PROCESS_ACCESS_RIGHTS) -> std::result::Result<Handle, windows::core::Error> {
     // SAFETY: reiner Aufruf, das Ergebnis wird in Handle verpackt und geschlossen.
     unsafe { OpenProcess(access, false, pid).map(Handle) }
 }
 
-fn created(h: &Handle) -> Option<u64> {
+pub(crate) fn created(h: &Handle) -> Option<u64> {
     let (mut c, mut e, mut k, mut u) = (FILETIME::default(), FILETIME::default(), FILETIME::default(), FILETIME::default());
     // SAFETY: Zeiger auf lokale Variablen, gültiges Handle.
     unsafe { GetProcessTimes(h.0, &mut c, &mut e, &mut k, &mut u).ok()? };
     Some((u64::from(c.dwHighDateTime) << 32) | u64::from(c.dwLowDateTime))
 }
 
-fn running(h: &Handle) -> bool {
+pub(crate) fn running(h: &Handle) -> bool {
     let mut code = 0u32;
     // SAFETY: Zeiger auf lokale Variable, gültiges Handle.
     unsafe { GetExitCodeProcess(h.0, &mut code).is_ok() && code == STILL_ACTIVE }

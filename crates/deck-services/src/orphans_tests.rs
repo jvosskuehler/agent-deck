@@ -1,6 +1,6 @@
 //! Der Dienst gegen ein simuliertes System: Datei, Zeilen, Beenden samt Nachweis.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -19,6 +19,9 @@ struct FakeSys {
     killed: Mutex<Vec<Key>>,
     immortal: HashSet<u32>,
     denied: HashSet<u32>,
+    /// Herkunftsmarke je PID (aus der Umgebung) und welche PIDs danach gefragt wurden.
+    markers: Mutex<HashMap<u32, (u32, i64)>>,
+    marker_reads: Mutex<Vec<u32>>,
 }
 
 impl FakeSys {
@@ -59,6 +62,10 @@ impl ProcSource for FakeSys {
     }
     fn wait_any_exit(&self, _: &[Key], _: Duration) -> bool {
         false
+    }
+    fn marker(&self, pid: u32, start: u64) -> Option<(u32, i64)> {
+        self.marker_reads.lock().unwrap().push(pid);
+        self.running(pid, start).then(|| self.markers.lock().unwrap().get(&pid).copied()).flatten()
     }
 }
 
@@ -157,4 +164,34 @@ fn kill_all_stops_every_row() {
     w.kill_all(T0 + 14.0, Lang::German).unwrap();
     assert!(w.rows(T0 + 15.0, Lang::German).is_empty());
     assert_eq!(sys.killed.lock().unwrap().len(), 3);
+}
+
+#[test]
+fn a_server_whose_launching_tool_shell_vanished_unseen_is_found_by_its_marker_and_killed() {
+    let tmp = tempfile::tempdir().unwrap();
+    let state = tmp.path().join("state");
+    std::fs::create_dir_all(&state).unwrap();
+    let created = unix_to_filetime(T0) as i64;
+    std::fs::write(state.join("B3.wtpid"), format!(r#"{{"pid":200,"created":{created},"slot":"B3"}}"#)).unwrap();
+    let sys = Arc::new(FakeSys::default());
+    sys.add(150, 1, "explorer.exe", T0 - 500.0);
+    sys.add(200, 1, "pwsh.exe", T0);
+    sys.add(201, 200, "claude.exe", T0 + 1.0);
+    // Die Werkzeug-Shell 202 hat node 203 abgesetzt und war weg, bevor jemand hinsah.
+    sys.add(203, 202, "node.exe", T0 + 5.0);
+    sys.ports.lock().unwrap().push((203, 5173));
+    sys.markers.lock().unwrap().extend([(201, (200, created)), (203, (200, created))]);
+    let w = OrphanWatch::new(sys.clone(), tmp.path(), &state);
+    w.scan(T0 + 6.0);
+    w.scan(T0 + 7.0);
+    let reads = sys.marker_reads.lock().unwrap().clone();
+    assert_eq!(reads, vec![203], "nur der nicht zugeordnete, junge Prozess, und nur einmal");
+    sys.remove(200);
+    sys.remove(201);
+    w.scan(T0 + 8.0);
+    let rows = w.rows(T0 + 9.0, Lang::German);
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].pid, rows[0].port_text.as_str(), rows[0].origin.as_str()), (203, ":5173", "B3 · gerade zu"));
+    w.kill(&rows[0].id, T0 + 10.0, Lang::German).unwrap();
+    assert_eq!(*sys.killed.lock().unwrap(), vec![key(203, T0 + 5.0)]);
 }
