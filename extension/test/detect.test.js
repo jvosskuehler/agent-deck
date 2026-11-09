@@ -62,6 +62,11 @@ test("claude counts as a command with path, extension and in a pipeline", () => 
   }
 });
 
+test("claude installed globally with npm counts as the command", () => {
+  const cmd = 'node "C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js" --resume';
+  assert.ok(d.isClaudeCommand(cmd), cmd);
+});
+
 test("words that only contain claude are not the command", () => {
   for (const cmd of ["claudette", "claude-foo", "node C:\\dev\\claude-experiments\\s.js",
     "C:\\Users\\x\\AppData\\Local\\claude-agent-deck\\bin\\deck-report.exe", "", null]) {

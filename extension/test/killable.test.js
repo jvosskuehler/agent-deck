@@ -100,7 +100,9 @@ test("Claude running as a node process is recognised by its path", () => {
     'node "C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js" --resume',
     "node /home/x/.claude/local/cli.js",
   ]) {
-    assert.equal(k.keepReason(proc(800, SHELL, "node.exe", cmd), {}), "Claude-Session (per Pfad erkannt)", cmd);
+    // Die npm-Installation erkennt schon detect.isClaudeCommand, die anderen erst der
+    // Pfad-Blick; gesperrt sind alle, nur die Begründung unterscheidet sich.
+    assert.match(k.keepReason(proc(800, SHELL, "node.exe", cmd), {}), /^Claude-Session/, cmd);
   }
 });
 

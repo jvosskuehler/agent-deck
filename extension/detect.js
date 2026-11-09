@@ -6,8 +6,11 @@
 // zaehlen NICHT (Wortgrenze), ein Pfad wie ...\claude-agent-deck\deck-report.exe auch nicht.
 function isClaudeCommand(cmd) {
   if (!cmd) return false;
-  return /(^|[\s|;&(])(?:[^\s|;&"']*[\\/])?claude(?:\.cmd|\.exe|\.ps1)?(?=$|\s|["'])/i
-    .test(String(cmd));
+  const s = String(cmd);
+  // Global per npm installiert laeuft Claude als `node ...\@anthropic-ai\claude-code\cli.js`;
+  // dort steht kein nacktes "claude" in der Zeile (gleiches Muster wie killable.js).
+  if (/[\\/]@anthropic-ai[\\/]claude-code[\\/]/i.test(s)) return true;
+  return /(^|[\s|;&(])(?:[^\s|;&"']*[\\/])?claude(?:\.cmd|\.exe|\.ps1)?(?=$|\s|["'])/i.test(s);
 }
 
 // Terminal-Name deutet auf Claude hin: Deck-Kacheln (A1, A2, ...) oder "claude".
