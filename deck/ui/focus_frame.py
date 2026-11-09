@@ -1,31 +1,32 @@
-"""Der orange Rahmen um das Windows-Terminal-Fenster des Agenten, in das gerade getippt
-wird. Er liegt genau auf der Aussenkante des Fensters, die Tab-Leiste eingeschlossen.
+"""Der leuchtende Rahmen um das Windows-Terminal-Fenster des Agenten, in das gerade
+getippt wird. Er liegt auf der Aussenkante des Fensters, die Tab-Leiste eingeschlossen,
+und sein Hof reicht nach aussen ueber die Kante.
 
-Ein eigenes, durchklickbares Fenster des Decks (platform/overlay) statt eines Shaders im
-Terminal: der Shader malte nur in die Textflaeche, und die liegt hinter Innenabstand und
-Scrollleiste (Begruendung in render/focus_ring.py).
+Bei jedem Fokuswechsel kommt ein zufaelliges Design dran, nie zweimal dasselbe
+hintereinander (domain/focus_frame). Gezeichnet wird er vom Hilfsprogramm
+focus-frame/ auf der Grafikkarte (warum: ops/frame_helper.py); dieses Modul entscheidet
+nur, ob und um welches Fenster, und sagt es ihm. Das Hilfsprogramm folgt dem Fenster
+danach selbst, auch beim Ziehen.
 
-Gezeigt wird der Rahmen nur, solange ein Agentenfenster das VORDERSTE Fenster ist. Dann
-liegt es ohnehin ueber allen normalen Fenstern, und der Rahmen, der als TOPMOST darueber
-liegt, verdeckt nichts Fremdes. Ein Blick alle 60 ms reicht, um einen Fokuswechsel zu
-bemerken; steht der Rahmen, schaut er alle 20 ms nach, damit er beim Ziehen mitkommt.
+Ein Shader im Terminal kam nicht in Frage: der malt nur in die Textflaeche, und die liegt
+hinter Innenabstand und Scrollleiste (verworfen 2026-11-06).
 
-Die Agentenfenster bekommen eckige Ecken (overlay.square_corners): ein eckiger Rahmen um
+Die Agentenfenster bekommen eckige Ecken (focus.square_corners): ein eckiger Rahmen um
 eine runde Win11-Ecke liesse dort den Hintergrund durchscheinen. Das geschieht bei jedem
 Fokuswechsel fuer alle Agentenfenster, die es noch nicht haben, damit nebeneinander
 gekachelte Fenster gleich aussehen, auch die noch nie fokussierten.
 """
+import random
+import threading
 from collections.abc import Callable
 from typing import Any
 
-from deck.domain import focus_frame as rules
+from deck.domain import focus_frame as ff
 from deck.domain import wt
 from deck.ops import log
+from deck.ops.frame_helper import FrameHelper
 from deck.platform import arrange as pa
-from deck.platform import dpi
 from deck.platform import focus as wf
-from deck.platform import overlay
-from deck.render import focus_ring
 
 
 class _Win32:
@@ -39,91 +40,58 @@ class _Win32:
         return wf.class_of(hwnd), wf.title_of(hwnd)
 
     def minimized(self, hwnd: int) -> bool:
-        return overlay.minimized(hwnd)
-
-    def visible_rect(self, hwnd: int) -> tuple[int, int, int, int] | None:
-        return overlay.visible_rect(hwnd)
-
-    def factor(self, hwnd: int) -> float:
-        return dpi.factor_for_window(hwnd)
+        return wf.is_minimized(hwnd)
 
     def windows(self) -> list[tuple[int, str, bool]]:
         return pa.class_windows(wt.WINDOW_CLASS)
 
     def square(self, hwnd: int) -> None:
-        overlay.square_corners(hwnd)
-
-    def create(self) -> int:
-        return overlay.create()
-
-    def show(self, ov: int, rect: tuple[int, int, int, int], bits: bytes) -> bool:
-        return overlay.show(ov, rect, bits)
-
-    def move(self, ov: int, x: int, y: int) -> bool:
-        return overlay.move(ov, x, y)
-
-    def hide(self, ov: int) -> None:
-        overlay.hide(ov)
+        wf.square_corners(hwnd)
 
 
 class FocusFrame:
-    FOLLOW_MS = 20      # Rahmen steht: Ziehen und Groessenaenderung nachfahren
-    WATCH_MS = 60       # kein Rahmen: nur auf den naechsten Fokuswechsel warten
+    WATCH_S = 0.06          # so oft schauen, welches Fenster vorn ist
+    RESEND_S = 2.0          # den Stand so oft wiederholen: ein neu gestartetes
+                            # Hilfsprogramm weiss sonst nicht, was es zeigen soll
 
-    def __init__(self, root: Any, is_agent: Callable[[str], bool], win: Any = None) -> None:
-        self.root = root
+    def __init__(self, is_agent: Callable[[str], bool], *, helper: Any = None,
+                 win: Any = None, designs: tuple[str, ...] = ff.DESIGNS,
+                 rnd: random.Random | None = None) -> None:
         self.is_agent = is_agent            # Fenstertitel -> gehoert zu einem WT-Block?
+        self.helper = helper or FrameHelper()
         self.win = win or _Win32()
-        self._ov = 0                        # unser Rahmenfenster, erst bei Bedarf angelegt
-        self._shown: rules.Frame | None = None
-        self._failed: rules.Frame | None = None   # an diesem Ziel ist Zeigen gescheitert
+        self.designs = designs
+        self.rnd = rnd or random.Random()
+        self.design: str | None = None      # das gerade laufende Design
+        self._target = 0                    # das Agentenfenster mit Rahmen
+        self._seed = 0
         self._last_fg = 0
+        self._since_send = 0.0
         self._squared: set[int] = set()
-        self._job: Any = None
+        self._stop = threading.Event()
         self._logged = False
 
     def start(self) -> None:
-        self._tick()
+        threading.Thread(target=self._run, name="focus-frame", daemon=True).start()
 
     def stop(self) -> None:
-        if self._job is not None:
+        self._stop.set()
+        self.helper.stop()
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.WATCH_S):
             try:
-                self.root.after_cancel(self._job)
+                self.step(self.WATCH_S)
             except Exception:
-                pass
-            self._job = None
-        if self._shown is not None:
-            self.win.hide(self._ov)
-            self._shown = None
+                if not self._logged:             # einmal, nicht alle 60 ms
+                    log.exc("focus_frame")
+                    self._logged = True
 
-    def _tick(self) -> None:
-        try:
-            self.step()
-        except Exception:
-            # Einmal ins Log, nicht im 20-ms-Takt. Der Rahmen geht dann aus, das Deck laeuft.
-            if not self._logged:
-                log.exc("focus_frame")
-                self._logged = True
-            if self._shown is not None:
-                try:
-                    self.win.hide(self._ov)
-                except Exception:
-                    pass
-                self._shown = None
-        self._job = self.root.after(self.FOLLOW_MS if self._shown else self.WATCH_MS,
-                                    self._tick)
-
-    def _target(self, fg: int) -> rules.Frame | None:
-        """Wo der Rahmen stehen soll: um <fg>, wenn das ein Agentenfenster ist."""
+    def _agent(self, fg: int) -> bool:
         if not fg:
-            return None
+            return False
         cls, title = self.win.describe(fg)
-        if cls != wt.WINDOW_CLASS or not self.is_agent(title) or self.win.minimized(fg):
-            return None
-        rect = self.win.visible_rect(fg)
-        if rect is None:
-            return None
-        return rect, focus_ring.thickness(self.win.factor(fg))
+        return cls == wt.WINDOW_CLASS and self.is_agent(title) and not self.win.minimized(fg)
 
     def _square_agents(self) -> None:
         for hwnd, title, _ in self.win.windows():
@@ -131,31 +99,29 @@ class FocusFrame:
                 self.win.square(hwnd)
                 self._squared.add(hwnd)
 
-    def step(self) -> None:
+    def _send(self) -> None:
+        if self._target:
+            self.helper.send({"cmd": "show", "hwnd": self._target, "design": self.design,
+                              "seed": self._seed})
+        else:
+            self.helper.send({"cmd": "hide"})
+        self._since_send = 0.0
+
+    def step(self, elapsed: float = 0.0) -> None:
+        """Einmal hinschauen; dem Hilfsprogramm nur Aenderungen sagen (und den Stand
+        alle RESEND_S wiederholen)."""
         fg = self.win.foreground()
         if fg != self._last_fg:
             self._last_fg = fg
             self._square_agents()
-        want = self._target(fg)
-        act = rules.next_action(self._shown, want)
-        if act == rules.KEEP:
+        target = fg if self._agent(fg) else 0
+        if target != self._target:
+            self._target = target
+            if target:                      # neuer Fokus: neues Design
+                self.design = ff.pick(self.designs, self.design, self.rnd)
+                self._seed = self.rnd.randrange(1 << 30)
+            self._send()
             return
-        if act == rules.HIDE:
-            self.win.hide(self._ov)
-            self._shown = None
-            return
-        if want is None or want == self._failed:
-            return
-        if not self._ov:
-            self._ov = self.win.create()
-            if not self._ov:
-                self._failed = want
-                return
-        rect, t = want
-        if act == rules.MOVE:
-            ok = self.win.move(self._ov, rect[0], rect[1])
-        else:
-            bits = focus_ring.ring_bgra(rect[2] - rect[0], rect[3] - rect[1], t)
-            ok = self.win.show(self._ov, rect, bits)
-        self._shown = want if ok else None
-        self._failed = None if ok else want
+        self._since_send += elapsed
+        if self._since_send >= self.RESEND_S:
+            self._send()

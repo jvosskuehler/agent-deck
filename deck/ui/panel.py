@@ -32,6 +32,7 @@ from deck import i18n
 from deck.claude import summarize as cs
 from deck.dock.controller import EdgeDock
 from deck.domain import config as cfg
+from deck.domain import front
 from deck.domain import paths as dp
 from deck.domain.binding import BindStore
 from deck.net.broker import Broker
@@ -49,6 +50,7 @@ from deck.render import kit as ck
 from deck.render.glow import GlowAnimator
 from deck.render.kit import BG
 from deck.ui.actions import ActionsMixin
+from deck.ui.auto_compact import AutoCompactor
 from deck.ui.connect import ConnectMixin
 from deck.ui.focus_frame import FocusFrame
 from deck.ui.hosts import HostRouter
@@ -114,6 +116,8 @@ class AgentDeck(
         self.broker = HostRouter(vscode, self.wt)
         self.broker.start()
         self.cmds = BrokerCommands(self.broker)   # typisierte Fassade fuers Senden
+        # Kurz bevor der Prompt-Cache eines wartenden Agenten ablaeuft: /compact.
+        self.compactor = AutoCompactor(self.settings, self.broker, self.cmds.send_text)
         # VS Code komplett neu starten und die Sessions wieder aufnehmen. Liegt als
         # eigenes Objekt daneben, nicht als Mixin: es braucht vom Panel genau drei
         # Dinge (Senden, Fragen, Plan) und ist so ohne Tk pruefbar - ein Ablauf, den
@@ -218,9 +222,17 @@ class AgentDeck(
         self.hotkey = GlobalHotkey(self.settings.get("jump_hotkey", cfg.JUMP_HOTKEY),
                                    lambda: self._post(self.jump_to_waiting))
         self.hotkey.start()
+        # Alle nach vorn (Strg+Shift+<, F20 = Drehregler am Makropad), domain/front.py.
+        self.front_toggle = front.BackToggle()
+        self.front_keys = [
+            GlobalHotkey(c, lambda: self._post(self.bring_all_front))
+            for c in front.combos(self.settings.get("front_hotkeys", cfg.FRONT_HOTKEYS))]
+        for key in self.front_keys:
+            key.start()
         self.anim.start()        # schneller Timer: Farbton-Crossfade + Glow-Atmen
-        # Oranger Rahmen auf der Aussenkante des WT-Agentenfensters, in das getippt wird.
-        self.focus_frame = FocusFrame(self.root, lambda t: bool(self.wt.slot_of_title(t)))
+        # Leuchtender Rahmen um das WT-Agentenfenster, in das getippt wird. Gezeichnet
+        # vom Hilfsprogramm focus-frame/ auf der Grafikkarte (ops/frame_helper.py).
+        self.focus_frame = FocusFrame(lambda t: bool(self.wt.slot_of_title(t)))
         self.focus_frame.start()
         self._glow_self_heal()   # Ring nach VS-Code-Update ggf. still neu einspielen
         # Am-Rand-andocken (Auto-Hide): gespeicherten Rand anwenden; ist einer gesetzt,
@@ -402,9 +414,10 @@ class AgentDeck(
         Panels abgekoppelt, wie beim Waechter."""
         # RESTART_ENV im Kind setzen -> der Single-Instance-Guard erkennt das als
         # Neustart-Uebergabe (alt+neu leben kurz gleichzeitig) und tritt NICHT als
-        # vermeintlicher Doppelstart zurueck.
+        # vermeintlicher Doppelstart zurueck. Der Wert ist UNSERE PID: sie steht im Lock,
+        # und nur dann gilt die Uebergabe (warum: Kopf von ops/instance.py).
         env = dict(os.environ)
-        env[si.RESTART_ENV] = "1"
+        env[si.RESTART_ENV] = str(os.getpid())
         if not wd.start_panel(env=env, args=sys.argv[1:]):
             return          # Fehlstart -> laufende Instanz heil lassen (Port bleibt belegt)
         # Neuer Prozess laeuft -> Port sofort freigeben und alte Instanz hart beenden.

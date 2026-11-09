@@ -7,6 +7,7 @@ import time
 
 from deck import i18n
 from deck.domain import config as cfg
+from deck.domain import prompt_cache as pc
 from deck.domain import slot_state as dc
 from deck.domain import status_model as sm
 from deck.ops import instance as si
@@ -14,6 +15,7 @@ from deck.render.kit import CARD_BORDER, CARD_FILL, INK_3
 from deck.render.kit import mix as _mix
 from deck.render.kit import short_model as _short_model
 from deck.ui.theme import (
+    CACHE_INK,
     GLOW_STYLE,
     LOST_FILL,
     LOST_GLOW,
@@ -95,6 +97,8 @@ class RefreshMixin:
         self._adopt_hook_modes(states, cycle)
         self._apply_pending_auto(states, now, cycle)
         self._update_tiles(states, live, now, cycle)
+        if not restarting:
+            self.compactor.step(list(self.tiles), states, live, now)   # Cache laeuft gleich ab
         self._prefetch_summaries(now)   # Ticket-ID + Zusammenfassung im Hintergrund vorwaermen
         self.root.after(cfg.POLL_MS, self.refresh)
 
@@ -244,6 +248,18 @@ class RefreshMixin:
             self.anim.apply_glow(slot, self.anim.pulse_factor())
             self.deck.itemconfig(ids["model"], text=model)
             self.deck.itemconfig(ids["effort"], text=(effort if effort else ""))
+            # Prompt-Cache: Ablaufzeit schreibt die Statuszeile in live.json, gezaehlt
+            # wird hier gegen die eigene Uhr. So laeuft der Countdown im Poll-Takt des
+            # Decks weiter, auch wenn die Statuszeile gerade nicht neu gezeichnet wird.
+            # Typpruefung, weil die Datei von einem anderen Prozess kommt: ein Fehler
+            # hier haelte die ganze Poll-Schleife an, nicht nur diese Zeile.
+            until, ttl = lv.get("cache_until"), lv.get("cache_ttl")
+            if (isinstance(until, (int, float)) and isinstance(ttl, (int, float)) and ttl > 0
+                    and not pc.working(st, now)):          # arbeitet er, laeuft kein Timer
+                ctext, clevel = pc.view(until - now, ttl, i18n.L("kalt", "cold"))
+                self.deck.itemconfig(ids["cache"], text=ctext, fill=CACHE_INK[clevel])
+            else:
+                self.deck.itemconfig(ids["cache"], text="")
             # Mit Ticket -> die ID im Violett (zugewiesen) bzw. gedimmt (nur erkannt);
             # ohne Ticket bleibt die Zeile leer (Zuweisung laeuft ueber das Rechtsklick-
             # Menue -> kein Platzhalter).

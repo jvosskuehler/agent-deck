@@ -130,9 +130,27 @@ def test_eigene_statusline_mit_zusatz_wird_nicht_neu_geschrieben():
     umgekehrt: dort ist die exakte Form der Zweck.
     """
     eigen = hs.statusline_command(ROOT) + " || exit 0"
-    vorher = {"statusLine": {"type": "command", "command": eigen}}
+    vorher = {"statusLine": {"type": "command", "command": eigen,
+                             "refreshInterval": hs.REFRESH_S}}
     out, notes = hs.merge(vorher, ROOT)
     assert out["statusLine"]["command"] == eigen
+    assert not any("statusLine" in t for t in _texte(notes))
+
+
+def test_statusline_bekommt_einen_takt_damit_der_cache_countdown_laeuft():
+    """Ohne refreshInterval zeichnet Claude Code die Zeile nur bei Ereignissen neu -
+    im Leerlauf, wenn der Cache abläuft, stuende der Countdown still."""
+    frisch, _ = hs.merge({}, ROOT)
+    assert frisch["statusLine"]["refreshInterval"] == hs.REFRESH_S
+    alt = {"statusLine": {"type": "command", "command": hs.statusline_command(ROOT)}}
+    out, notes = hs.merge(alt, ROOT)
+    assert out["statusLine"]["refreshInterval"] == hs.REFRESH_S
+    assert out["statusLine"]["command"] == hs.statusline_command(ROOT)
+    assert any("statusLine" in t for t in _texte(notes))
+    # Ein selbst gesetzter Takt bleibt stehen.
+    eigen = {"statusLine": {**alt["statusLine"], "refreshInterval": 60}}
+    out, notes = hs.merge(eigen, ROOT)
+    assert out["statusLine"]["refreshInterval"] == 60
     assert not any("statusLine" in t for t in _texte(notes))
 
 

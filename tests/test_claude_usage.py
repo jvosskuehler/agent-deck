@@ -245,15 +245,38 @@ def test_cli_credentials_pfad_folgt_der_umgebungsvariable():
             os.environ["CLAUDE_CONFIG_DIR"] = alt
 
 
+class _Konten:
+    """Attrappe fuer alles, was usage_token ausserhalb des Prozesses fragt: die
+    Dateien der beiden Quellen, ihre Signatur und das Konto je Token (sonst ginge
+    der Test ans Netz). 'with _Konten(...) as k:' stellt danach alles zurueck."""
+    NAMEN = ("_token_cache", "_cred_sig", "_account", "_token_accounts",
+             "_read_tokens_from_cli", "_read_tokens_from_disk",
+             "_credentials_signature", "_fetch_profile_account", "cli_account")
+
+    def __init__(self, konten, cli=("cli",), desk=(), sig=1):
+        self.konten, self.cli, self.desk, self.sig = konten, list(cli), list(desk), sig
+
+    def __enter__(self):
+        self._ruhe = {n: getattr(utok, n) for n in self.NAMEN}
+        utok._token_cache, utok._cred_sig, utok._account = [], "unset", None
+        utok._token_accounts = {}
+        utok._read_tokens_from_cli = lambda: list(self.cli)
+        utok._read_tokens_from_disk = lambda: list(self.desk)
+        utok._credentials_signature = lambda: self.sig
+        utok._fetch_profile_account = lambda t: self.konten.get(t)
+        utok.cli_account = lambda: None
+        return self
+
+    def __exit__(self, *exc):
+        for n, v in self._ruhe.items():
+            setattr(utok, n, v)
+
+
 def test_beide_tokenquellen_werden_zusammengelegt():
     """Der Kern des Fallbacks: faellt EINE Quelle aus, traegt die andere. Erst wenn
-    beide nichts liefern, ist es ein Fehler – und der nennt beide Quellen."""
-    ruhe = utok._token_cache
-    cli, desk = utok._read_tokens_from_cli, utok._read_tokens_from_disk
-    try:
-        utok._token_cache = []
-        utok._read_tokens_from_cli = lambda: ["cli"]
-        utok._read_tokens_from_disk = lambda: ["desk"]
+    beide nichts liefern, ist es ein Fehler – und der nennt beide Quellen. Desktop
+    zaehlt nur fuer dasselbe Konto (siehe test_desktop_token_eines_anderen_kontos…)."""
+    with _Konten({"cli": "a@x.de", "desk": "a@x.de"}, desk=["desk"], sig=None):
         assert utok.read_oauth_token(force=True) == ["cli", "desk"]   # CLI zuerst
 
         def weg():
@@ -268,9 +291,90 @@ def test_beide_tokenquellen_werden_zusammengelegt():
             raise AssertionError("ohne jede Quelle muss NoTokenError fliegen")
         except utok.NoTokenError as e:
             assert "CLI" in str(e) and "Desktop" in str(e), str(e)
+
+
+# ── Zwei Konten (2026-11-08) ─────────────────────────────────────────────────
+# Nach '/login' auf das zweite Konto zeigte die Anzeige stundenlang das erste.
+def test_desktop_token_eines_anderen_kontos_wird_nicht_abgefragt():
+    """Bei 429 auf dem CLI-Token sprang der Abruf aufs Desktop-Token. Gehoert das
+    einem anderen Konto, waeren das still dessen Zahlen."""
+    with _Konten({"cli": "b@x.de", "desk": "a@x.de"}, desk=["desk"]):
+        assert utok.read_oauth_token() == ["cli"]
+        assert utok.current_account() == "b@x.de"
+    konten = {"cli": "a@x.de", "desk": "a@x.de"}
+    assert utok.select_tokens(["cli"], None, ["desk"], konten.get) == (["cli"], None), \
+        "ohne bekanntes CLI-Konto bleibt Desktop draussen"
+    assert utok.select_tokens([], None, ["desk"], konten.get) == (["desk"], "a@x.de"), \
+        "ohne CLI-Login traegt Desktop allein"
+
+
+def test_kontowechsel_liest_die_tokens_sofort_neu():
+    """Das alte Token ist nach dem Wechsel noch Stunden gueltig und liefert 200.
+    Signal ist die geaenderte .credentials.json, nicht erst ein 401."""
+    with _Konten({"tok-a": "a@x.de", "tok-b": "b@x.de"}, cli=["tok-a"]) as k:
+        assert utok.read_oauth_token() == ["tok-a"]
+        k.cli, k.sig = ["tok-b"], 2
+        assert utok.read_oauth_token() == ["tok-b"]
+        assert utok.current_account() == "b@x.de"
+
+
+def test_ohne_aenderung_wird_nicht_neu_gelesen():
+    with _Konten({"cli": "a@x.de"}):
+        utok.read_oauth_token()
+
+        def verboten():
+            raise AssertionError("ohne Aenderung der Datei nicht neu lesen")
+        utok._read_tokens_from_cli = verboten
+        assert utok.read_oauth_token() == ["cli"]
+
+
+def test_halb_geschriebene_credentials_wechseln_nicht_auf_desktop():
+    with _Konten({"cli": "a@x.de", "desk": "z@x.de"}) as k:
+        utok.read_oauth_token()
+        k.desk, k.sig = ["desk"], 2
+
+        def halb():
+            raise ValueError("halb geschrieben")
+        utok._read_tokens_from_cli = halb
+        assert utok.read_oauth_token() == ["cli"]
+
+
+def test_poller_verwirft_die_zahl_des_alten_kontos():
+    """Kommt nach dem Wechsel erst einmal keine Zahl (gemeinsamer Poller belegt,
+    429), darf die alte nicht als 'letzter Wert' stehenbleiben."""
+    jetzt = time.time()
+    laeuft = datetime.fromtimestamp(jetzt + 3600, UTC).isoformat()
+    data = {"limits": [{"kind": "session", "group": "session", "percent": 40,
+                        "severity": "normal", "resets_at": laeuft, "is_active": True}]}
+    antworten = [{"data": data, "data_ts": jetzt, "error": None, "account": "a@x.de"},
+                 {"data": None, "data_ts": None, "error": "Kontowechsel – lade neu…",
+                  "account": "b@x.de"}]
+
+    class _Attrappe:
+        @staticmethod
+        def get_usage():
+            return antworten.pop(0)
+
+    ruhe = usage._shared_mod
+    try:
+        usage._shared_mod = _Attrappe
+        p = usage.UsagePoller()
+        p.poll_once()
+        assert p.snapshot()["session_percent"] == 40
+        p.poll_once()
+        snap = p.snapshot()
     finally:
-        utok._read_tokens_from_cli, utok._read_tokens_from_disk = cli, desk
-        utok._token_cache = ruhe
+        usage._shared_mod = ruhe
+    assert snap["account"] == "b@x.de"
+    assert snap["session_percent"] is None, "40 % gehoeren dem alten Konto"
+    assert snap["limits"] == []
+
+
+def test_tooltip_nennt_das_konto():
+    text = uview.tooltip_text({"limits": [], "error": None, "account": "b@x.de"})
+    assert "Konto: b@x.de" in text, text
+    assert "Konto" not in uview.tooltip_text({"limits": [], "error": None}), \
+        "ohne bekanntes Konto keine leere Zeile"
 
 
 # ── Das Badge muss einen eingefrorenen Wert als solchen zeigen ───────────────

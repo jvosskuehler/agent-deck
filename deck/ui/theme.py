@@ -14,7 +14,7 @@ wirkungslos. Solche Werte liest jetzt jede Stelle direkt als `cfg.POLL_MS`.
 from typing import Any
 
 from deck import i18n
-from deck.render.kit import BG, CARD_BORDER, CARD_FILL, INK_3
+from deck.render.kit import BG, CARD_BORDER, CARD_FILL, INK, INK_3
 from deck.render.kit import mix as _mix
 
 # ── FROSTPANE-Palette (BG/CARD_FILL/INK…) lebt jetzt in canvas_kit ───────
@@ -73,6 +73,10 @@ TICKET_AUTO_INK = _mix(TICKET_INK, CARD_FILL, 0.45)
 # So viele Zeichen passen in die Zeile, bevor sie dem Effort rechts ins Gehege kommt
 # ("PROJ-2691 #62" = 13 – Ticket UND PR gehen sich damit gerade noch aus).
 TICKET_MAX_CHARS = 14
+# Restlaufzeit des Prompt-Caches oben rechts: im Normalfall leise (INK_3), knapp hell
+# wie der Modellname, abgelaufen fast verschwunden. Bewusst KEINE Statusfarbe: Amber
+# heisst auf der Kachel "Rueckfrage", und die Karte soll nicht doppeldeutig werden.
+CACHE_INK = {"warm": INK_3, "low": INK, "cold": _mix(INK_3, CARD_FILL, 0.5)}
 # (Frueher stand hier ein "Ticket"-Platzhalter als Klick-Aufforderung auf der Karte.
 # Ticket zuweisen laeuft jetzt ausschliesslich ueber das Rechtsklick-Menue -> ohne
 # Ticket bleibt die Zeile leer; ein Platzhalter waere eine Button-Attrappe ohne Funktion.)

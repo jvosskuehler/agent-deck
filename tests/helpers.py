@@ -14,7 +14,8 @@ if ROOT not in sys.path:
 
 from deck import i18n
 from deck.platform import arrange as _arrange
-from deck.platform import overlay as _overlay_mod
+from deck.ops import frame_helper as _frame_helper
+from deck.platform import focus as _focus
 
 # ── Schutzgitter ────────────────────────────────────────────────────────────
 # Die Tests laufen meist in einem VS-Code-Terminal. Ein Test, der eine Attrappe
@@ -62,16 +63,17 @@ def _place_window(hwnd, *a, **k):
     raise AssertionError(f"Schutzgitter: ein Test wollte das echte Fenster {hwnd} verschieben")
 
 
-def _overlay(*a, **k):
-    raise AssertionError("Schutzgitter: ein Test wollte ein echtes Rahmenfenster anlegen "
+def _frame(*a, **k):
+    raise AssertionError("Schutzgitter: ein Test wollte das echte Rahmen-Programm starten "
                          "oder fremde Fensterecken aendern")
 
 
 subprocess.run, subprocess.Popen = _run, _Popen
 _arrange.post_close = _post_close
 _arrange.place_window = _place_window      # ops/wt_tiles kachelt sonst echte Fenster
-_overlay_mod.create = _overlay             # ui/focus_frame legt sonst ein echtes Fenster an
-_overlay_mod.square_corners = _overlay
+_arrange.restore_window = _place_window    # ... und holt minimierte zurueck (gather)
+_frame_helper._spawn = _frame              # ui/focus_frame startet sonst focus-frame/ wirklich
+_focus.square_corners = _frame
 
 # Die Usage- und Anzeige-Tests pruefen die deutsche Baseline. Ohne diese Zeile haengen
 # sie am realen ~/.claude/settings.json, das schon auf 'english' stehen kann.

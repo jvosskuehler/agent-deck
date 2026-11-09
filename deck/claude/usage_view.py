@@ -247,6 +247,9 @@ def _keep_in_tooltip(lim: dict[str, Any]) -> bool:
 def tooltip_text(snap: dict[str, Any], now: Any = None) -> str:
     """Mehrzeiliger Hover-Text aus einem Poller-Snapshot (siehe UsagePoller)."""
     head = i18n.L("Claude – Nutzung", "Claude – usage")
+    # Wessen Zahl das ist: seit es zwei Konten gibt (2026-11-08) die erste Frage.
+    if snap.get("account"):
+        head += "\n" + i18n.L("Konto", "Account") + f": {snap['account']}"
     limits = [lim for lim in (snap.get("limits") or []) if _keep_in_tooltip(lim)]
     if not limits:
         return f"{head}\n{snap.get('error') or i18n.L('warte auf Daten…', 'waiting for data…')}"

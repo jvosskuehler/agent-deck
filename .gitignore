@@ -37,6 +37,8 @@ venv/
 # ── .NET ─────────────────────────────────────────────────────────────────
 bin/
 obj/
+# Der gebaute Fokus-Rahmen (install.ps1 baut ihn aus focus-frame/ dorthin).
+focus-frame/out/
 *.user
 *.suo
 .vs/

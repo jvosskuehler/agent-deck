@@ -43,7 +43,7 @@ import urllib.request
 from typing import Any
 
 from deck import i18n
-from deck.claude.usage_token import NoTokenError, read_oauth_token
+from deck.claude.usage_token import NoTokenError, current_account, read_oauth_token
 from deck.claude.usage_view import expire_limits, parse_usage, session_of
 
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
@@ -125,7 +125,8 @@ def fetch_usage(tokens: str | list[str]) -> dict[str, Any]:
 # ── Hintergrund-Poller ───────────────────────────────────
 def _empty_snapshot() -> dict[str, Any]:
     return {"state": "pending", "session_percent": None, "session_severity": "",
-            "session_resets_at": None, "limits": [], "error": None, "ts": None}
+            "session_resets_at": None, "limits": [], "error": None, "ts": None,
+            "account": None}
 
 
 class UsagePoller:
@@ -175,6 +176,7 @@ class UsagePoller:
                 self._fail(f"{type(e).__name__}", hard=False)
                 return
             data, err = snap.get("data"), snap.get("error")
+            self._note_account(snap.get("account"))
             if data is None:
                 el = (err or "").lower()
                 if "ungueltig" in el:
@@ -199,10 +201,14 @@ class UsagePoller:
         # ── Fallback: lokaler Direktabruf (shared-Modul nicht gefunden) ──
         try:
             try:
-                data = fetch_usage(read_oauth_token())
+                tokens = read_oauth_token()
+                self._note_account(current_account())
+                data = fetch_usage(tokens)
             except urllib.error.HTTPError as e:
                 if e.code in (401, 403):                 # gecachtes Token rotiert?
-                    data = fetch_usage(read_oauth_token(force=True))
+                    tokens = read_oauth_token(force=True)
+                    self._note_account(current_account())
+                    data = fetch_usage(tokens)
                 else:
                     raise
             self._apply(data, ts=time.time(), error=None)   # gerade selbst geholt
@@ -238,6 +244,17 @@ class UsagePoller:
                   session_severity=(sess["severity"] if sess else ""),
                   session_resets_at=(sess["resets_at"] if sess else None),
                   limits=limits, error=error, ts=ts)
+
+    def _note_account(self, account: str | None) -> None:
+        """Kontowechsel: die Zahlen des alten Kontos gehoeren nicht mehr hierher.
+        Ohne das bliebe bei einem Fehler direkt nach dem Wechsel (429, gemeinsamer
+        Poller gerade belegt) die alte Zahl als 'letzter Wert' stehen."""
+        with self._lock:
+            if account == self._snap.get("account"):
+                return
+            self._snap.update(account=account, session_percent=None,
+                              session_severity="", session_resets_at=None,
+                              limits=[], ts=None)
 
     def _fail(self, msg: str, hard: bool) -> None:
         with self._lock:

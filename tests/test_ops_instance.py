@@ -26,7 +26,7 @@ def _patch_si(alive, focus_ret, restart_env=False):
     si._pid_alive = lambda pid: alive
     si.wf.focus_pid = lambda pid: (focus_calls.append(pid), focus_ret)[1]
     if restart_env:
-        os.environ[si.RESTART_ENV] = "1"
+        os.environ[si.RESTART_ENV] = "1" if restart_env is True else str(restart_env)
     else:
         os.environ.pop(si.RESTART_ENV, None)
 
@@ -146,14 +146,40 @@ def test_si_live_pid_no_window_reclaims():
 
 
 def test_si_restart_env_claims_without_check():
-    """RESTART_ENV gesetzt -> Lock direkt uebernehmen, Doppelstart-Pruefung ueberspringen
-    (auch bei lebendem Fremd-Lock KEIN focus_pid)."""
-    si, restore, focus_calls = _patch_si(alive=True, focus_ret=True, restart_env=True)
+    """RESTART_ENV = PID des alten Panels im Lock -> Lock direkt uebernehmen,
+    Doppelstart-Pruefung ueberspringen (auch bei lebendem Alt-Panel KEIN focus_pid)."""
+    si, restore, focus_calls = _patch_si(alive=True, focus_ret=True, restart_env=424242)
     try:
         with open(si.LOCK_PATH, "w") as f:
             f.write("424242")
         assert si.acquire_or_focus() is True
         assert si._read_lock_pid() == os.getpid()
         assert focus_calls == []
+    finally:
+        restore()
+
+
+def test_si_geerbter_neustart_hinweis_ist_kein_freibrief():
+    """Am 2026-11-06 erbte Windows Terminal AGENT_DECK_RESTART=1 von einem frisch
+    neugestarteten Panel, und jeder Start aus einem Agenten-Terminal uebersprang danach
+    die Pruefung: zwei Panels. Ein Wert, der nicht zur PID im Lock passt, zaehlt nicht."""
+    for stale in (True, 999):                       # "1" alter Machart, fremde PID
+        si, restore, focus_calls = _patch_si(alive=True, focus_ret=True, restart_env=stale)
+        try:
+            with open(si.LOCK_PATH, "w") as f:
+                f.write("424242")
+            assert si.acquire_or_focus() is False   # lebendes Panel -> zuruecktreten
+            assert focus_calls == [424242]
+        finally:
+            restore()
+
+
+def test_si_neustart_hinweis_wird_nicht_an_kinder_vererbt():
+    si, restore, _ = _patch_si(alive=False, focus_ret=False, restart_env=424242)
+    try:
+        with open(si.LOCK_PATH, "w") as f:
+            f.write("424242")
+        si.acquire_or_focus()
+        assert si.RESTART_ENV not in os.environ
     finally:
         restore()

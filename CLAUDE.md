@@ -25,7 +25,7 @@ Was der WT-Host statt der Extension tut, und warum (erprobt 2026-11-06, WT 1.24)
 | Text/Tasten senden | `WriteConsoleInputW` in die Konsole der Pane-Shell, in einem **Wegwerfprozess** (eine fremde Konsole, die zugeht, nimmt ihren angehängten Prozess mit) | `platform/console_input.py` |
 | Agent schließen | `taskkill /T` auf die Pane-Shell; das versteckte WT-Profil „Agent Deck" (`closeOnExit: always`) schließt dann das Pane | `platform/procs.kill_tree` |
 | „gesehen" | Vordergrundfenster der Klasse `CASCADIA_HOSTING_WINDOW_CLASS` mit einem Slot als Titel | `ops/wt_host.drain_seen` |
-| Fokus-Rahmen | oranger Ring auf der Außenkante des vordersten Agentenfensters, Tab-Leiste eingeschlossen: ein eigenes, durchklickbares Fenster des Decks (nie aktiv, nie im Fokus). Agentenfenster bekommen dazu eckige Ecken. **Kein WT-Pixel-Shader**: der malt nur in die Textfläche, und die liegt hinter Innenabstand und Scrollleiste (verworfen 2026-11-06) | `ui/focus_frame.py`, `platform/overlay.py`, Bild in `render/focus_ring.py` |
+| Fokus-Rahmen | leuchtender, animierter Rahmen auf der Außenkante des vordersten Agentenfensters, Tab-Leiste eingeschlossen; bei jedem Fokuswechsel ein zufälliges Design (`domain/focus_frame.DESIGNS`: Kometen, Glut, Hochspannung, Lauflicht), nie zweimal dasselbe hintereinander. **Gezeichnet von einem eigenen C#-Programm auf der Grafikkarte** (`focus-frame/`: Direct3D 11 + DirectComposition, ein Pixel-Shader rechnet jeden Pixel, im Takt des Monitors); das Deck sagt ihm über stdin nur Fenster und Design, das Programm folgt dem Fenster selbst. Ein durchklickbares Fenster (WS_EX_LAYERED + WS_EX_TRANSPARENT), nie aktiv. Gemessen 0 bis 9 % eines Kerns. **Kein Python-Zeichner**: in Python auf der CPU sah die Animation grob aus (20 bis 30 Bilder/s, Stufen im Hof) und kostete trotzdem bis zu einem Drittel eines Kerns (verworfen 2026-11-06). **Kein WT-Pixel-Shader**: der malt nur in die Textfläche, hinter Innenabstand und Scrollleiste. Agentenfenster bekommen eckige Ecken | `ui/focus_frame.py`, Prozess in `ops/frame_helper.py`, Zeichnung in `focus-frame/Frame.hlsl` und `Designs.cs`, gebaut von `install.ps1` nach `focus-frame/out/` |
 
 Der VS-Code-Neustart (`ops/vscode_restart`) bekommt den **rohen** Broker und fasst
 WT-Blöcke nicht an. Windows Terminal holt sich beim Öffnen selbst nach vorn;
@@ -46,7 +46,8 @@ start_debug.bat                # Panel mit Konsole — für den ersten Start und
 ```
 
 Einzige Pflicht-Abhängigkeit ist **Pillow** (`requirements.txt`); alles andere kommt aus
-der Standardbibliothek.
+der Standardbibliothek. Optional ist das **.NET-9-SDK**: damit baut `install.ps1` den
+Fokus-Rahmen (`focus-frame/`); ohne läuft das Deck, nur ohne Rahmen.
 
 **Die Einrichtung ist Code, keine Anleitung.** Was in `~/.claude/settings.json` landet,
 schreibt `deck/claude/hook_setup.py` — chirurgisch (fremde Hooks bleiben stehen), am
@@ -120,10 +121,13 @@ das man auf Papier nachprüfen könnte, gehört sie nach `domain/`.
 | Usage: Anzeige und Ampelfarben | `claude/usage_view.py`, Balken in `ui/bottombar.py` |
 | Usage: Poll-Takt, 429-Backoff | `claude-usage-shared/usage_poller.py` (**außerhalb** des Repos, geteilt mit dem Tray-Monitor) — Diagnose: `doctor.py` |
 | Agentenfenster in Windows Terminal anordnen | `ops/wt_tiles.py` — Raster in `domain/arrange.tile_grid`, Spaltenzahl `max_cols_for` (`MIN_TILE_W`, `MAX_COLS`) |
+| Taste „alle nach vorn“ (`Strg+Shift+<`, F20 am Makropad) | Tasten in `domain/config.FRONT_HOTKEYS`, Fokus und Rückweg in `domain/front.py`, Raster auf dem Monitor unter der Maus in `ops/wt_tiles.gather`, Ablauf in `ui/actions.bring_all_front`. Nur Windows-Terminal-Agenten, VS Code bleibt außen vor |
 | alle VS-Code-Fenster auf den Hauptmonitor holen | `ops/window_gather.py` — Regeln in `domain/arrange.py`, Win32 in `platform/arrange.py` |
 | VS Code neu starten, Chats wieder aufnehmen | `ops/vscode_restart.py` — Plan (Slot ↔ Session) in `domain/restart_plan.py`, Prozess-Blick in `platform/procs.py`, Knopf in `ui/settings_dialog.py` |
 | Ticket zuweisen | `ui/ticket.py` |
 | worktrees abräumen | `ui/worktree_sweep.py`, Git-Teil in `ops/worktree.py` |
+| wie der Fokus-Rahmen aussieht oder sich bewegt | `focus-frame/Frame.hlsl` (Pixel), `focus-frame/Designs.cs` (was je Bild wechselt); danach `install.ps1` (baut neu) |
+| automatisch `/compact`, kurz bevor der Prompt-Cache abläuft | Regel und Schwellen in `domain/prompt_cache.compact_due`/`user_busy`, Senden in `ui/auto_compact.py`, Schalter `auto_compact` in den Einstellungen. Dass nach einem Compact kein Timer mehr läuft, entscheidet `claude/hooks/statusline._scan` (`compact_boundary`) |
 | irgendetwas mit Win32 | `platform/` — neue Funktion? Signatur in `platform/win32.py` typisieren |
 
 ### Die Einsprungpunkte im Wurzelverzeichnis sind Verträge
@@ -328,8 +332,8 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
   Die Messung war der Wendepunkt. Bis zum 2026-08-17, 18 Uhr liefen **35 Abrufe
   pro Stunde mit 100 % Erfolg**; ab 19 Uhr scheiterte bei **unverändertem** Takt fast
   die Hälfte, auch nachts ohne Last. Das Limit hatte sich verschoben, nicht unsere
-  Last. Daraus folgen vier Regeln, alle in `claude-usage-shared/usage_poller.py` und
-  getestet (`test_usage_poller.py`, 25 Fälle, `python test_usage_poller.py`):
+  Last. Daraus folgen vier Regeln (die fünfte kam später dazu), alle in `claude-usage-shared/usage_poller.py` und
+  getestet (`test_usage_poller.py`, 34 Fälle, `python test_usage_poller.py`):
 
   1. **Der Grundtakt lernt sich selbst** (`next_interval`, AIMD): 429 streckt ihn
      ×1,5, ein Erfolg verkürzt ihn nur ×0,9, Grenzen 120–900 s. Die Asymmetrie ist
@@ -347,6 +351,15 @@ Fünf Dateien liegen bewusst **außerhalb** von `deck/` und enthalten nur einen
      greift. Achtung, das ist die *kleinere* Hilfe: gemessen wurden beide Tokens im
      selben Moment abgewiesen — das Limit hängt am **Konto**, nicht am Token. Es
      rettet nur den Fall, in dem eine Quelle allein klemmt.
+  5. **Jede Zahl gehört einem Konto** (seit 2026-11-08, zwei Claude-Konten). Nach
+     `/login` auf das zweite zeigten Tray und Deck stundenlang das erste: das alte
+     Token blieb im Speicher (es ist nach dem Wechsel noch Stunden gültig), der Cache
+     kannte kein Konto, und Regel 4 sprang bei 429 aufs Desktop-Token eines anderen
+     Kontos. Seither liest `read_oauth_token` neu, sobald sich `.credentials.json`
+     ändert (ein `stat` je Aufruf), `select_tokens` lässt Desktop-Tokens nur fürs
+     selbe Konto zu (Konto je Token über `api/oauth/profile`, einmal je Token), und
+     der Cache trägt `account`: passt es nicht, wird verworfen, und ohne Sperre gibt
+     es lieber keine Zahl als eine fremde. Der Tooltip nennt das Konto.
 
   Und die Anzeige zieht nach: `usage_view.badge_view` zeigt einen alten Wert weiter,
   aber **matt** (`_dim`), ab derselben Schwelle, ab der der Tooltip den Stand nennt

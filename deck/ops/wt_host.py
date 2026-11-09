@@ -261,15 +261,19 @@ class WtHost:
         self._save()
         return True
 
+    def slot_in_front(self) -> str | None:
+        """Der Agent, dessen Fenster gerade vorne ist, sonst None. Der Fenstertitel ist
+        der Pane-Titel und der ist der Slot-Name."""
+        cls, title = self.foreground()
+        return self.slot_of_title(title) if cls == wt.WINDOW_CLASS else None
+
     def drain_seen(self) -> set[str]:
         """Den Slot melden, dessen Pane gerade vorne ist - einmal je Wechsel, wie die
-        Extension (onDidChangeActiveTerminal). Der Fenstertitel ist der Pane-Titel und
-        der ist der Slot-Name."""
+        Extension (onDidChangeActiveTerminal)."""
         try:
-            cls, title = self.foreground()
+            slot = self.slot_in_front()
         except Exception:
             return set()
-        slot = self.slot_of_title(title) if cls == wt.WINDOW_CLASS else None
         if slot == self._last_fg:
             return set()
         self._last_fg = slot
@@ -359,6 +363,26 @@ class WtHost:
             hwnd = self.uia.find(slots[0])
             if hwnd:
                 self.focus_window(hwnd)
+        self._do(job)
+        return True
+
+    def front_all(self, slots: list[str], target: str | None = None) -> bool:
+        """Taste „alle nach vorn“: die Fenster dieser Agenten als ein Raster auf den
+        Monitor unter der Maus legen (WtTiler.gather) und nach vorn holen, <target>
+        zuletzt, damit er obenauf liegt und die Tastatur hat. False = keiner lebt."""
+        alive = self.alive_slots()
+        slots = [s for s in slots if s in alive]
+        if not slots:
+            return False
+
+        def job() -> None:
+            placed = self.tiler.gather(slots)
+            top = next((h for s, h in placed if s == target), None)
+            for _, hwnd in reversed(placed):
+                if hwnd != top:
+                    self.focus_window(hwnd)
+            if top:
+                self.focus_window(top)
         self._do(job)
         return True
 

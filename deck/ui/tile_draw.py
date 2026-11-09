@@ -83,8 +83,8 @@ class TileRenderer:
         # (weicher Halo ringsum). BEWUSST WEGGELASSEN (nach Vorgabe): der Leucht-
         # Streifen an der linken Kante und der Status-Punkt in der Ecke – den Status
         # trägt allein der Glow (+ betonte Kante bei Auswahl/Rückfrage).
-        # Layout: Modell (oben links) · ✕ (oben rechts) · Effort (Zeile 2 rechts)
-        # · Status (unten links) · Modus (unten rechts).
+        # Layout: Modell (oben links) · Cache-Restzeit + ✕ (oben rechts) · Effort
+        # (Zeile 2 rechts) · Status (unten links) · Modus (unten rechts).
         # scale != 1.0 nur im Slim-Modus: x/y/W/H/R kommen bereits skaliert herein, die
         # internen Text-Offsets, Font-Groessen und Halo-Masse werden hier mit demselben
         # Faktor mitskaliert -> die ganze Kachel wird kleiner statt abgeschnitten.
@@ -118,6 +118,10 @@ class TileRenderer:
                               font=fs(10, "bold"))
         effort = c.create_text(x + W - 10 * s, y + 27 * s, anchor="e", text="", fill=INK_2,
                                font=fs(8))
+        # Restlaufzeit des Prompt-Caches ("42 min"), oben rechts vor dem ✕. Text und
+        # Farbe setzt _update_tiles je Poll; ohne Wert (frische Session) bleibt sie leer.
+        cache = c.create_text(x + W - 26 * s, y + 12 * s, anchor="e", text="", fill=INK_3,
+                              font=fs(8))
         # Ticket-ID (Zeile 2 links, dem Effort gegenueber): zugewiesenes Ticket dieses
         # Slots – unter dem Modell, ueber dem Status. Farbe/Text setzt _update_tiles je
         # Poll; ohne Ticket bleibt die Zeile leer (der frueher hier stehende "Ticket"-
@@ -138,7 +142,7 @@ class TileRenderer:
         # Zeile ist bewusst entfernt.
         # Klick-/Hover-Flaeche: im Bildmodus traegt das Bild den Tag (es IST die
         # Kachelflaeche), sonst das Polygon.
-        for it in ((rect or img), model, effort, ticket, act, mode):
+        for it in ((rect or img), model, effort, cache, ticket, act, mode):
             c.addtag_withtag(tag, it)
         # Linksklick auf die Kachel: Klick ODER Ziehen. _tile_press merkt sich nur den
         # Start; ob es ein Klick (fokussieren) oder ein Drag (umsortieren) war, entscheidet
@@ -174,7 +178,7 @@ class TileRenderer:
                    (c.itemconfig(i, fill=INK_3), c.configure(cursor="")))
         # Gruppen-Tag über ALLE Items der Kachel -> als Einheit skalierbar (Press & Pop).
         gtag = "g_" + slot
-        for it in [*rings, rect, img, model, effort, ticket, act, mode, cls]:
+        for it in [*rings, rect, img, model, effort, cache, ticket, act, mode, cls]:
             if it is not None:
                 c.addtag_withtag(gtag, it)
         # Anim-/Glow-State: Ziele setzt refresh(), gefadet wird im _anim_tick.
@@ -189,7 +193,7 @@ class TileRenderer:
         # Zustand, damit nicht jeder Frame ein identisches Bild neu setzt.
         # rect/rings sind im Bildmodus None bzw. leer (Polygon-Fallback).
         self.tiles[slot] = {"rect": rect, "model": model,
-                            "effort": effort, "ticket": ticket,
+                            "effort": effort, "cache": cache, "ticket": ticket,
                             "act": act, "mode": mode,
                             "img": img, "geom": geom, "photo": None,
                             "img_key": None,

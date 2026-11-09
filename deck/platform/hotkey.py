@@ -27,13 +27,21 @@ _KEYS = {"space": 0x20, "leertaste": 0x20, "enter": 0x0D, "tab": 0x09, "esc": 0x
          "<": 0xE2, "kleiner": 0xE2}
 
 
+VK_F13, VK_F24 = 0x7C, 0x87
+
+
 def parse(combo: str) -> tuple[int, int] | None:
     """'ctrl+alt+space' -> (Modifier-Bits, Virtual-Key). Buchstaben, Ziffern, F1-F24 und
     die Namen aus _KEYS. Mindestens ein Modifier ist Pflicht - eine nackte globale Taste
-    nimmt sie jedem anderen Programm weg. Unbrauchbar -> None."""
+    nimmt sie jedem anderen Programm weg. Ausnahme F13-F24: die hat keine normale
+    Tastatur, sie kommen nur von Makro-Tastaturen (das Makropad sendet F13-F21), und
+    kein Programm rechnet mit ihnen. Unbrauchbar -> None."""
     parts = [p.strip().lower() for p in str(combo or "").split("+") if p.strip()]
-    if len(parts) < 2:
+    if not parts:
         return None
+    if len(parts) == 1:
+        got = parse("ctrl+" + parts[0])
+        return (0, got[1]) if got and VK_F13 <= got[1] <= VK_F24 else None
     mods = 0
     for p in parts[:-1]:
         if p not in _MODS:

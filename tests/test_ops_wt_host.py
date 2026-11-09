@@ -32,17 +32,21 @@ class _Uia:
 
 
 def _host(*, starts=None, foreground=None, tmp=None, windows=None, now=None,
-          area=AREA, factor=1.0):
+          area=AREA, factor=1.0, here=None):
     """<windows>: die offenen WT-Fenster als (hwnd, Titel, minimiert); der Test darf
-    die Liste unterwegs aendern. <now>: [Uhrzeit], ebenso."""
+    die Liste unterwegs aendern. <now>: [Uhrzeit], ebenso. <here>: (Flaeche, Faktor)
+    des Monitors unter der Maus, Standard wie <area>/<factor>."""
     tmp = tmp or tempfile.mkdtemp(prefix="wthost_")
     calls = []
     starts = starts if starts is not None else {}
     windows = windows if windows is not None else []
     now = now if now is not None else [1000.0]
+    spot = here if here is not None else (area, factor)
     tiler = WtTiler(windows=lambda: list(windows),
                     place=lambda hwnd, rect: calls.append(("place", hwnd, rect)),
-                    area_of=lambda hwnd: area, factor_of=lambda hwnd: factor)
+                    restore=lambda hwnd: calls.append(("restore", hwnd)),
+                    area_of=lambda hwnd: area, factor_of=lambda hwnd: factor,
+                    here=lambda: spot or None)
     h = WtHost(hosts_path=os.path.join(tmp, "wt_hosts.json"),
                state_dir=os.path.join(tmp, "state"), uia=_Uia(calls), tiler=tiler,
                clock=lambda: now[0],
@@ -261,6 +265,55 @@ def test_klick_auf_den_reponamen_holt_alle_fenster_des_blocks_nach_vorn():
     _pid(h, "C2", 12, 1)
     assert h.raise_window("C")
     assert [c[1] for c in calls if c[0] == "focus_window"] == [102, 101]
+
+
+def _two_blocks(windows, **kw):
+    h, calls, _ = _host(starts={11: 1, 12: 1, 21: 1}, windows=windows, **kw)
+    h.open_repo("C", r"C:\r")
+    h.open_repo("D", r"C:\s")
+    _pid(h, "C1", 11, 1)
+    _pid(h, "C2", 12, 1)
+    _pid(h, "D1", 21, 1)
+    h.alive_slots()           # das Kacheln je Block beim ersten Blick ist hier nicht Thema
+    calls.clear()
+    return h, calls
+
+
+def test_alle_nach_vorn_legt_alle_bloecke_in_ein_raster_unter_der_maus():
+    wins = [(101, "C1", False), (102, "C2", True), (201, "D1", False)]
+    here = ((2400, 0, 4800, 1200), 1.0)
+    h, calls = _two_blocks(wins, here=here)
+    assert h.front_all(["D1", "C1", "C2"], "C2")
+    # Die minimierte kommt zurueck, dann ein Raster in Deck-Reihenfolge: drei
+    # nebeneinander auf dem Monitor der Maus, nicht je Block.
+    assert ("restore", 102) in calls and ("restore", 101) not in calls
+    assert [c[1:] for c in calls if c[0] == "place"] == [
+        (201, (2400, 0, 800, 1200)), (101, (3200, 0, 800, 1200)),
+        (102, (4000, 0, 800, 1200))]
+    # Das Ziel kommt zuletzt nach vorn und liegt damit oben.
+    assert [c[1] for c in calls if c[0] == "focus_window"] == [101, 201, 102]
+
+
+def test_alle_nach_vorn_ohne_mausmonitor_holt_nur_nach_vorn():
+    h, calls = _two_blocks([(101, "C1", False), (201, "D1", False)], here=())
+    assert h.front_all(["C1", "D1"], None)
+    assert not [c for c in calls if c[0] == "place"]
+    assert [c[1] for c in calls if c[0] == "focus_window"] == [201, 101]
+
+
+def test_alle_nach_vorn_ohne_lebende_agenten_tut_nichts():
+    h, calls, _ = _host()
+    h.open_repo("C", r"C:\r")
+    assert not h.front_all(["C1"], "C1")
+    assert calls == []
+
+
+def test_vorne_ist_ein_agent_nur_wenn_klasse_und_titel_passen():
+    h, _, _ = _host(foreground=lambda: (wt.WINDOW_CLASS, "C1"))
+    h.open_repo("C", r"C:\r")
+    assert h.slot_in_front() == "C1"
+    h.foreground = lambda: ("Chrome_WidgetWin_1", "C1")
+    assert h.slot_in_front() is None
 
 
 def test_schliessen_beendet_den_baum_und_raeumt_die_pid_datei_weg():

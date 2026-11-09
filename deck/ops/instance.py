@@ -15,7 +15,17 @@ Mechanik: eine Lock-Datei im State-Ordner haelt die PID des lebenden Panels.
     recycelt (kein Panel-Fenster) -> Lock gilt als veraltet und wird uebernommen.
   * Der eigene Neustart (agent_deck.restart()) meldet sich per RESTART_ENV explizit
     an: waehrend des Neustarts leben alt+neu kurz gleichzeitig – das ist KEIN
-    Doppelstart, das Kind uebernimmt das Lock ohne Pruefung.
+    Doppelstart, das Kind uebernimmt das Lock ohne Pruefung. Der Wert ist die PID des
+    ALTEN Panels, und er gilt nur, wenn genau diese PID im Lock steht.
+
+Warum die PID und nicht einfach "1" (gefunden 2026-11-06): eine Umgebungsvariable
+erbt jeder Prozess, den das Kind startet. Das Panel startet wt.exe, und laeuft Windows
+Terminal noch nicht, wird es dabei zum Kind des Panels und erbt AGENT_DECK_RESTART=1 -
+und mit ihm jede Shell und jeder Claude-Agent darin, bis Windows Terminal endet. Ein
+`start.bat` oder `python agent_deck.py` aus so einem Terminal sah dann aus wie ein
+Neustart, uebersprang die Pruefung und brachte ein ZWEITES Panel hoch. Darum zwei
+Sicherungen: das Kind nimmt die Variable sofort aus seiner eigenen Umgebung (seine
+Kinder erben sie nicht mehr), und ein geerbter Rest passt zu keinem Lock.
 
 Zuruecktreten heisst NICHT "nichts tun": der Zweitstart hinterlaesst zusaetzlich
 einen Reveal-Wunsch (request_reveal), den das lebende Panel in seiner Poll-
@@ -188,12 +198,14 @@ def acquire_or_focus() -> bool:
                ist Fokus allein unsichtbar). Der Aufrufer soll sich beenden
                (kein zweites, totes Panel oeffnen).
 
-    Der Neustart-Fall (RESTART_ENV gesetzt) uebernimmt das Lock IMMER: waehrend des
-    Neustarts leben alt+neu kurz gleichzeitig, das ist KEIN Doppelstart."""
-    if os.environ.get(RESTART_ENV):
+    Der Neustart-Fall (RESTART_ENV = PID des alten Panels, die im Lock steht) uebernimmt
+    das Lock ohne Pruefung: waehrend des Neustarts leben alt+neu kurz gleichzeitig, das
+    ist KEIN Doppelstart. Jeder andere Wert ist ein geerbter Rest und zaehlt nicht."""
+    handoff = os.environ.pop(RESTART_ENV, None)   # nie an eigene Kinder weitergeben
+    pid = _read_lock_pid()
+    if handoff and pid and handoff.strip() == str(pid):
         _write_lock()
         return True
-    pid = _read_lock_pid()
     if pid and pid != os.getpid() and _pid_alive(pid):
         # Lebende PID – aber lebt dahinter wirklich ein PANEL? Frueher entschied das
         # allein focus_pid(), also die Frage "hat der Prozess ein sichtbares Fenster".

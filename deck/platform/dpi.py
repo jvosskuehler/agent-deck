@@ -84,6 +84,23 @@ def system_factor() -> float:
     return 1.0
 
 
+def factor_at(x: int, y: int) -> float:
+    """Skalierung des Monitors unter dem Punkt (x, y). Fuer Fenster, die erst noch
+    dorthin ziehen: ihr eigener Faktor ist dann der des alten Monitors."""
+    try:
+        from ctypes import wintypes
+
+        from deck.platform.win32 import shcore, user32
+        mon = user32.MonitorFromPoint(wintypes.POINT(int(x), int(y)), 2)   # NEAREST
+        dx, dy = wintypes.UINT(), wintypes.UINT()
+        if mon and shcore is not None and shcore.GetDpiForMonitor(
+                mon, 0, ctypes.byref(dx), ctypes.byref(dy)) == 0 and dx.value:
+            return dx.value / 96.0      # 0 = MDT_EFFECTIVE_DPI, die eingestellte Skalierung
+    except (AttributeError, OSError):
+        pass
+    return system_factor()
+
+
 def factor_for_window(hwnd: int) -> float:
     """Skalierung des Monitors, auf dem <hwnd> gerade liegt.
 

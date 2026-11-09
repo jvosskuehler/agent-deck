@@ -9,7 +9,7 @@ sechs Hooks und die statusLine in ~/.claude/settings.json mergen - und danach
 BEWEISEN, dass ein Hook wirklich schreibt. Der Beweis ist der Punkt: die Falle vom
 2026-07-29 (ein 'cmd /c' vor dem Hook) endete mit Exit 0 und sah darum gesund aus.
 Erkennbar war sie nur daran, dass in state\ keine Datei mehr frisch wurde - genau
-das prueft Schritt 5.
+das prueft Schritt 6.
 
 Der Lauf ist idempotent: fremde Hooks anderer Werkzeuge bleiben stehen, eigene
 werden ersetzt statt verdoppelt (siehe deck/claude/hook_setup.py). Ein zweiter
@@ -129,7 +129,7 @@ Write-Host 'Agent Deck - Einrichtung' -ForegroundColor White
 Write-Host "  Repo: $Here" -ForegroundColor DarkGray
 
 # ── 1. Voraussetzungen ───────────────────────────────────────────────────────
-Step '1/5  Voraussetzungen'
+Step '1/6  Voraussetzungen'
 
 $py = (Get-Command python.exe -ErrorAction SilentlyContinue).Source
 if (-not $py) {
@@ -183,7 +183,7 @@ if (Test-Path (Join-Path $env:USERPROFILE '.claude\.credentials.json')) {
 }
 
 # ── 2. Pillow ────────────────────────────────────────────────────────────────
-Step '2/5  Abhaengigkeit (Pillow)'
+Step '2/6  Abhaengigkeit (Pillow)'
 
 if (-not $py) {
     Fail 'ohne Python nicht pruefbar'
@@ -199,7 +199,7 @@ if (-not $py) {
 }
 
 # ── 3. Extension ─────────────────────────────────────────────────────────────
-Step '3/5  VS-Code-Extension'
+Step '3/6  VS-Code-Extension'
 
 # Die Hauptdatei steht stellvertretend fuer "ueberhaupt installiert"; verglichen wird
 # darunter der ganze Ordner.
@@ -258,9 +258,43 @@ if ($Remove) {
     Info 'In JEDEM offenen VS-Code-Fenster: "Developer: Reload Window"'
 }
 
-# ── 4. Hooks in ~/.claude/settings.json ──────────────────────────────────────
+# ── 4. Fokus-Rahmen ──────────────────────────────────────────────────────────
+# Den leuchtenden Rahmen um das WT-Agentenfenster zeichnet ein eigenes Programm auf der
+# Grafikkarte (focus-frame/, C#; warum: deck/ops/frame_helper.py). Ohne gebautes
+# Programm laeuft das Deck trotzdem, nur ohne Rahmen - darum Warn, nicht Fail.
+Step '4/6  Fokus-Rahmen (focus-frame/)'
+
+$FrameDir = Join-Path $Here 'focus-frame'
+$FrameOut = Join-Path $FrameDir 'out'
+$FrameExe = Join-Path $FrameOut 'FocusFrame.exe'
+$quellen = Get-ChildItem $FrameDir -File | Where-Object { $_.Extension -in '.cs', '.hlsl', '.csproj' }
+$neueste = ($quellen | Measure-Object LastWriteTime -Maximum).Maximum
+$aktuell = (Test-Path $FrameExe) -and ((Get-Item $FrameExe).LastWriteTime -ge $neueste)
+
+if ($Remove) {
+    Get-Process FocusFrame -ErrorAction SilentlyContinue | Stop-Process -Force
+    if (Test-Path $FrameOut) { Remove-Item $FrameOut -Recurse -Force }
+    Ok 'Fokus-Rahmen entfernt'
+} elseif ($Check) {
+    if (-not (Test-Path $FrameExe)) { Warn 'Fokus-Rahmen nicht gebaut - install.ps1 ohne -Check baut ihn (braucht das .NET-9-SDK).' }
+    elseif (-not $aktuell) { Warn 'Fokus-Rahmen ist aelter als seine Quellen - install.ps1 neu laufen lassen.' }
+    else { Ok 'Fokus-Rahmen gebaut und aktuell' }
+} elseif ($aktuell) {
+    Ok 'Fokus-Rahmen war schon aktuell'
+} elseif (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
+    Warn 'dotnet fehlt - ohne .NET-9-SDK gibt es keinen Fokus-Rahmen (das Deck laeuft trotzdem).'
+} else {
+    # Ein laufender Rahmen sperrt seine exe. Das Deck startet ihn danach selbst neu.
+    Get-Process FocusFrame -ErrorAction SilentlyContinue | Stop-Process -Force
+    Info 'dotnet build focus-frame -c Release'
+    $r = Try-Run 'dotnet' @('build', $FrameDir, '-c', 'Release', '-o', $FrameOut, '--nologo', '-v', 'q')
+    if ($r.ok -and (Test-Path $FrameExe)) { Ok "Fokus-Rahmen gebaut -> $FrameExe" }
+    else { Warn "Bau des Fokus-Rahmens fehlgeschlagen:`n$($r.out)" }
+}
+
+# ── 5. Hooks in ~/.claude/settings.json ──────────────────────────────────────
 $SettingsShown = if ($SettingsPath) { $SettingsPath } else { '~/.claude/settings.json' }
-Step "4/5  Hooks und statusLine in $SettingsShown"
+Step "5/6  Hooks und statusLine in $SettingsShown"
 
 $a = @()
 if ($Check)  { $a += '--check' }
@@ -269,8 +303,8 @@ if ($Force)  { $a += '--force' }
 if ($SettingsPath) { $a += @('--settings', $SettingsPath) }
 Invoke-DeckTool 'deck.claude.hook_setup' $a
 
-# ── 5. Der Beweis: schreibt ein Hook wirklich? ───────────────────────────────
-Step '5/5  Beweis (Hook feuern und state\ pruefen)'
+# ── 6. Der Beweis: schreibt ein Hook wirklich? ───────────────────────────────
+Step '6/6  Beweis (Hook feuern und state\ pruefen)'
 
 if ($Remove) {
     Ok 'uebersprungen (-Remove)'

@@ -51,6 +51,8 @@ if _user32 is not None:
     _user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
     _user32.GetAncestor.restype = wintypes.HWND
     _user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    _user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+    _user32.GetCursorPos.restype = wintypes.BOOL
 
 
 def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
@@ -75,6 +77,20 @@ def work_area(x: int, y: int) -> tuple[int, int, int, int] | None:
         if r.right <= r.left or r.bottom <= r.top:
             return None
         return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+    except Exception:
+        return None
+
+
+def cursor_pos() -> tuple[int, int] | None:
+    """Wo der Mauszeiger steht, in Bildschirmpixeln. None, wenn Windows es nicht sagt
+    (etwa auf dem Sperrbildschirm)."""
+    if _user32 is None:
+        return None
+    try:
+        pt = wintypes.POINT()
+        if not _user32.GetCursorPos(ctypes.byref(pt)):
+            return None
+        return (int(pt.x), int(pt.y))
     except Exception:
         return None
 

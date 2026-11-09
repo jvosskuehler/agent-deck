@@ -290,22 +290,128 @@ class NoTokenError(RuntimeError):
     """Keine der beiden Quellen hat ein brauchbares Token hergegeben."""
 
 
+# ── Kontowechsel erkennen (seit 2026-11-08) ──────────────
+# Nach '/login' auf ein zweites Konto zeigte die Anzeige stundenlang die Zahlen des
+# ersten: das alte Token blieb im Speicher und ist nach einem Wechsel noch Stunden
+# gueltig, und bei 429 sprang der Abruf auf das Desktop-Token, das zu einem anderen
+# Konto gehoeren kann. Darum: die Aenderungszeit von .credentials.json ist das
+# Signal, und jedes Token bekommt sein Konto (api/oauth/profile, einmal je Token).
+# Spiegelbild von claude-usage-shared/usage_poller.py.
+PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
+_cred_sig: Any = "unset"          # Signatur der .credentials.json beim letzten Lesen
+_account: str | None = None       # Konto der Tokens in _token_cache (E-Mail, klein)
+_token_accounts: dict[str, str] = {}   # Token -> Konto; Fehler werden neu gefragt
+
+
+def _credentials_signature() -> tuple[int, int] | None:
+    """(mtime_ns, Groesse) der .credentials.json, None ohne Datei. Die CLI schreibt
+    die Datei bei jedem Login und jeder Token-Erneuerung neu."""
+    try:
+        st = os.stat(cli_credentials_path())
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _norm_account(value: Any) -> str | None:
+    return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+
+def cli_account() -> str | None:
+    """Konto der CLI laut ~/.claude.json (oauthAccount.emailAddress). Nur Rueckfall,
+    wenn api/oauth/profile nicht antwortet: direkt nach einem Login kann dort noch
+    das alte Konto stehen."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    path = (os.path.join(base, ".claude.json") if base
+            else os.path.join(os.path.expanduser("~"), ".claude.json"))
+    try:
+        d = json.loads(_read_shared(path).decode("utf-8"))
+        return _norm_account((d.get("oauthAccount") or {}).get("emailAddress"))
+    except Exception:
+        return None
+
+
+def _fetch_profile_account(token: str) -> str | None:
+    import urllib.request
+    req = urllib.request.Request(PROFILE_URL, headers={
+        "Authorization": "Bearer " + token,
+        "anthropic-beta": "oauth-2025-04-20",
+        "Accept": "application/json",
+        "User-Agent": "agent-deck-usage/1",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        d = json.loads(r.read().decode("utf-8"))
+    acc = d.get("account") or {}
+    return _norm_account(acc.get("email_address") or acc.get("email"))
+
+
+def token_account(token: str) -> str | None:
+    """Konto eines Tokens (E-Mail) oder None, wenn es sich nicht klaeren laesst."""
+    if token in _token_accounts:
+        return _token_accounts[token]
+    try:
+        acc = _fetch_profile_account(token)
+    except Exception:
+        return None
+    if acc:
+        _token_accounts[token] = acc
+    return acc
+
+
+def select_tokens(cli_tokens: list[str], cli_acc: str | None,
+                  desktop_tokens: list[str],
+                  account_of: Any) -> tuple[list[str], str | None]:
+    """Pur: welche Tokens duerfen abgefragt werden, und fuer welches Konto?
+
+    Die CLI bestimmt das Konto. Desktop-Tokens zaehlen nur, wenn sie zum selben
+    Konto gehoeren; sonst wuerde ein 429 auf dem CLI-Token still auf die Zahlen
+    eines anderen Kontos umschalten. Ist das CLI-Konto unbekannt, bleibt Desktop
+    deshalb ganz draussen. Nur ohne CLI-Login traegt Desktop allein."""
+    if cli_tokens:
+        same = ([t for t in desktop_tokens if account_of(t) == cli_acc]
+                if cli_acc else [])
+        return list(cli_tokens) + same, cli_acc
+    if desktop_tokens:
+        return list(desktop_tokens), account_of(desktop_tokens[0])
+    return [], None
+
+
 def read_oauth_token(force: bool = False) -> list[str]:
-    """Alle verfuegbaren Tokens, CLI zuerst.
+    """Alle Tokens des aktuellen Kontos, CLI zuerst.
 
     Die Reihenfolge ist Absicht: die CLI ist die Quelle, die JEDER Deck-Nutzer hat
-    (ohne sie gaebe es keine Agenten), Claude Desktop ist die Zusatzquelle. Faellt
-    eine aus, traegt die andere — beide Fehler zusammen sind erst ein Fehler."""
-    global _token_cache
-    if not force and _token_cache:
+    (ohne sie gaebe es keine Agenten), Claude Desktop ist die Zusatzquelle, und nur
+    fuer dasselbe Konto. Ohne force kommt der Speicher zurueck, solange
+    .credentials.json unveraendert ist; ein Login aendert die Datei, und dann wird
+    neu gelesen."""
+    global _token_cache, _cred_sig, _account
+    sig = _credentials_signature()
+    if not force and _token_cache and sig == _cred_sig:
         return _token_cache
-    tokens, errors = [], []
-    for label, src in (("CLI", _read_tokens_from_cli), ("Desktop", _read_tokens_from_disk)):
-        try:
-            tokens += src() or []
-        except Exception as e:                       # Quelle fehlt/kaputt -> die andere zaehlt
-            errors.append(f"{label}: {type(e).__name__}")
+    cli: list[str] = []
+    desk: list[str] = []
+    errors = []
+    try:
+        cli = _read_tokens_from_cli() or []
+    except Exception as e:                           # Quelle fehlt/kaputt
+        errors.append(f"CLI: {type(e).__name__}")
+        if sig is not None and _token_cache:
+            # Datei da, aber gerade nicht lesbar (die CLI schreibt sie vermutlich
+            # in diesem Moment). Nicht auf Desktop ausweichen, das kann ein anderes
+            # Konto sein: alten Stand behalten, beim naechsten Aufruf neu versuchen.
+            return _token_cache
+    try:
+        desk = _read_tokens_from_disk() or []
+    except Exception as e:
+        errors.append(f"Desktop: {type(e).__name__}")
+    cli_acc = (token_account(cli[0]) or cli_account()) if cli else None
+    tokens, acc = select_tokens(cli, cli_acc, desk, token_account)
     if not tokens:
         raise NoTokenError("; ".join(errors) or "kein Token gefunden")
-    _token_cache = tokens
+    _token_cache, _cred_sig, _account = tokens, sig, acc
     return _token_cache
+
+
+def current_account() -> str | None:
+    """Konto, fuer das zuletzt Tokens gelesen wurden (E-Mail, None = unbekannt)."""
+    return _account

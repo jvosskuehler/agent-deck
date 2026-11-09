@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Der Fokus-Rahmen des Agent Deck: zeichnet den leuchtenden Rahmen um das
+       Windows-Terminal-Fenster, in das gerade getippt wird, mit der Grafikkarte.
+       Das Deck (deck/ops/frame_helper.py) startet das Programm und steuert es ueber
+       stdin. Gebaut wird es von install.ps1 nach focus-frame/out/. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>FocusFrame</AssemblyName>
+    <RootNamespace>FocusFrame</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DirectComposition" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Frame.hlsl" LogicalName="Frame.hlsl" />
+  </ItemGroup>
+
+</Project>

@@ -36,6 +36,7 @@ from collections.abc import Callable
 from typing import Any
 
 from deck.claude import settings as cset
+from deck.claude.hooks.statusline import REFRESH_S
 from deck.domain import paths
 
 # (Hook-Event, Status-Argument fuer report.py, Matcher). Die sechs Meldungen, aus denen
@@ -184,8 +185,13 @@ def merge(settings: dict[str, Any], repo_root: str, *,
                               "stehen — Modell, Effort und Kontext-% bleiben auf den "
                               "Kacheln leer (mit --force ersetzen)"))
     elif not _points_here(cur, repo_root, "statusline.py"):
-        out["statusLine"] = {"type": "command", "command": want}
+        out["statusLine"] = {"type": "command", "command": want, "refreshInterval": REFRESH_S}
         notes.append(("info", "statusLine -> statusline.py"))
+    elif isinstance(sl, dict) and "refreshInterval" not in sl:
+        # Ohne Takt zeichnet Claude Code die Zeile nur bei Ereignissen neu, und der
+        # Cache-Countdown stuende im Leerlauf still. Ein selbst gesetzter Wert bleibt.
+        out["statusLine"] = {**sl, "refreshInterval": REFRESH_S}
+        notes.append(("info", f"statusLine: alle {REFRESH_S} s neu zeichnen"))
     return out, notes
 
 

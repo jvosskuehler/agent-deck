@@ -255,6 +255,16 @@ def _frame_insets(hwnd: int) -> tuple[int, int, int, int]:
             outer[2] - vis.right, outer[3] - vis.bottom)
 
 
+def restore_window(hwnd: int) -> bool:
+    """Ein minimiertes Fenster wiederherstellen, ohne es nach vorn zu holen. Ein nicht
+    minimiertes bleibt, wie es ist. True = es war minimiert."""
+    handle = wintypes.HWND(hwnd)
+    if not user32.IsIconic(handle):
+        return False
+    user32.ShowWindow(handle, _SW_SHOWNOACTIVATE)
+    return True
+
+
 def place_window(hwnd: int, rect: tuple[int, int, int, int]) -> bool:
     """<hwnd> so legen, dass sein SICHTBARER Rahmen genau <rect> = (x, y, w, h) fuellt,
     ohne es nach vorn zu holen. True = Windows hat den Auftrag angenommen.

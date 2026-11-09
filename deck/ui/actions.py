@@ -12,7 +12,7 @@ from typing import Any
 from deck import i18n
 from deck.claude import settings as cset
 from deck.claude import summarize as cs
-from deck.domain import attention
+from deck.domain import attention, front
 from deck.domain import config as cfg
 from deck.domain import restart_plan as rp
 from deck.domain import slot_state as dc
@@ -130,6 +130,27 @@ class ActionsMixin:
         slot = attention.next_slot(dc.read_all(), list(self.tiles), self.active_slot)
         if slot:
             self.focus_slot(slot)
+
+    def bring_all_front(self) -> None:
+        """Taste „alle nach vorn“ (config.FRONT_HOTKEYS): jedes Agentenfenster in Windows
+        Terminal als Raster auf den Monitor unter der Maus, Fokus auf den, der am
+        laengsten wartet. Steht man schon bei einem Agenten, geht es zurueck in das
+        Fenster, aus dem man kam. Rechnung in domain/front.py.
+
+        VS-Code-Bloecke bleiben aussen vor: ein VS Code ist meist maximiert und deckte
+        die Terminals zu. Fuer sie gibt es den Klick auf den Repo-Namen."""
+        fg = wf.foreground_hwnd()
+        if fg and wf.pid_of(fg) == os.getpid():
+            fg = 0                    # ins Deck selbst will niemand zurueck
+        back = self.front_toggle.press(fg, bool(fg) and bool(self.wt.slot_in_front()),
+                                       wf.is_window)
+        if back:
+            wf.focus_window(back)
+            return
+        slots = [s for w in self._shown_windows() if self.broker.is_wt(w)
+                 for s in self._ordered_slots(w)]
+        target = front.focus_target(dc.read_all(), slots, self.active_slot)
+        self.wt.front_all(slots, target)
 
     def open_repo_in_terminal(self, folder) -> str:
         """Ein Repo als Windows-Terminal-Block oeffnen (Knopf in den Einstellungen) und

@@ -13,6 +13,7 @@ from deck.ops import vscode_glow as rg
 from deck.ops import window_gather as wg
 from deck.render import kit as ck
 from deck.render.kit import BG, INK, INK_2, INK_3
+from deck.ui import auto_compact as ac
 
 
 class SettingsDialog:
@@ -111,7 +112,24 @@ class SettingsDialog:
         # Statuszeile (von Speichern UND dem Ring-Schalter genutzt) – vor beiden anlegen.
         status = tk.Label(dlg, text="", bg=BG, fg=INK_3, justify="left",
                           font=("Segoe UI", 9))
-        status.grid(row=12, column=0, columnspan=2, sticky="w", padx=16, pady=(8, 0))
+        status.grid(row=13, column=0, columnspan=2, sticky="w", padx=16, pady=(8, 0))
+
+        # ── Automatisch kompaktieren ─────────────────────────────────────────
+        # Deck-Einstellung 'auto_compact' (Standard an), wirkt sofort: ui/auto_compact
+        # liest denselben settings-Dict in jedem Poll.
+        compact_var = tk.BooleanVar(value=ac.enabled(self.settings))
+
+        def _toggle_compact() -> None:
+            self.settings[ac.SETTING] = compact_var.get()
+            self.store.save_settings()
+
+        tk.Checkbutton(dlg, text=i18n.L("Automatisch kompaktieren  (5 min bevor der Cache abläuft)",
+                                        "Auto-compact  (5 min before the cache expires)"),
+                       variable=compact_var, command=_toggle_compact, bg=BG, fg=INK_2,
+                       selectcolor="#23232b", activebackground=BG, activeforeground=INK,
+                       bd=0, highlightthickness=0, anchor="w", font=("Segoe UI", 10),
+                       cursor="hand2").grid(row=12, column=0, columnspan=2, sticky="w",
+                                            padx=14, pady=(10, 2))
 
         # ── Ring um Chat (VS-Code-Glow) ──────────────────────────────────────
         # Eigene Deck-Einstellung (deck_settings.json 'glow'), KEIN Claude-Setting:
@@ -400,7 +418,7 @@ class SettingsDialog:
                     fg="#ff6b6b")
 
         btns = tk.Frame(dlg, bg=BG)
-        btns.grid(row=13, column=0, columnspan=2, sticky="e", padx=12, pady=(10, 12))
+        btns.grid(row=14, column=0, columnspan=2, sticky="e", padx=12, pady=(10, 12))
         ck.btn(btns, i18n.L("💾 Speichern", "💾 Save"), _save)
         ck.btn(btns, i18n.L("⟳ Panel neu starten", "⟳ Restart panel"), self.restart)
         ck.btn(btns, i18n.L("Schließen", "Close"), dlg.destroy)

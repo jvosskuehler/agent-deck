@@ -71,6 +71,40 @@ def foreground_hwnd() -> int:
     return user32.GetForegroundWindow()
 
 
+class _LastInput(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
+
+
+user32.GetLastInputInfo.argtypes = [ctypes.POINTER(_LastInput)]
+user32.GetLastInputInfo.restype = wintypes.BOOL
+kernel32.GetTickCount.restype = wintypes.DWORD
+
+
+def input_idle_s() -> float:
+    """Sekunden seit der letzten Tastatur- oder Mauseingabe, systemweit. Unbekannt -> 0,
+    also "du bist gerade dran": wer fragt, will im Zweifel lieber nichts senden.
+    Eingaben, die das Deck selbst per WriteConsoleInputW schreibt, zaehlen nicht mit."""
+    info = _LastInput(ctypes.sizeof(_LastInput), 0)
+    if not user32.GetLastInputInfo(ctypes.byref(info)):
+        return 0.0
+    return ((kernel32.GetTickCount() - info.dwTime) & 0xFFFFFFFF) / 1000.0
+
+
+def pid_of(hwnd: int) -> int:
+    """Prozess-ID des Fensters (0, wenn es keins gibt)."""
+    if not hwnd:
+        return 0
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return int(pid.value)
+
+
+def is_window(hwnd: int) -> bool:
+    """Lebt das Fenster noch und ist es sichtbar? (Ein verstecktes zaehlt nicht: dorthin
+    zurueckzuspringen saehe aus, als passiere nichts.)"""
+    return bool(hwnd) and bool(user32.IsWindow(hwnd)) and bool(user32.IsWindowVisible(hwnd))
+
+
 def title_of(hwnd: int) -> str:
     """Fenstertitel zu einem HWND (leerer String, wenn keiner)."""
     return _title(hwnd) if hwnd else ""
@@ -165,6 +199,21 @@ def round_corners(hwnd: int, *, small: bool = True) -> None:
         return
     _dwm_set(hwnd, _DWMWA_WINDOW_CORNER_PREFERENCE,
              _DWMWCP_ROUNDSMALL if small else _DWMWCP_ROUND)
+
+
+_DWMWCP_DONOTROUND = 1
+
+
+def square_corners(hwnd: int) -> None:
+    """Die runden Win11-Ecken eines (auch fremden) Fensters abschalten. Fuer die
+    Agentenfenster in Windows Terminal: der Fokus-Rahmen ist eckig, um eine runde Ecke
+    herum schiene dort der Hintergrund durch."""
+    if hwnd:
+        _dwm_set(hwnd, _DWMWA_WINDOW_CORNER_PREFERENCE, _DWMWCP_DONOTROUND)
+
+
+def is_minimized(hwnd: int) -> bool:
+    return bool(hwnd) and bool(user32.IsIconic(hwnd))
 
 
 # ── Groesse nur an der Ecke unten-rechts ziehbar ────────

@@ -53,6 +53,8 @@ _decl(gdi32, "DeleteObject", wintypes.BOOL, wintypes.HGDIOBJ)
 _decl(gdi32, "GetDeviceCaps", ctypes.c_int, _HDC, ctypes.c_int)
 # Monitor-/Anzeigeabfragen
 _decl(user32, "MonitorFromWindow", _HMONITOR, _HWND, wintypes.DWORD)
+_decl(user32, "MonitorFromPoint", _HMONITOR, wintypes.POINT, wintypes.DWORD)
+_decl(user32, "GetCursorPos", wintypes.BOOL, ctypes.POINTER(wintypes.POINT))
 _decl(user32, "GetMonitorInfoW", wintypes.BOOL, _HMONITOR, ctypes.c_void_p)
 _decl(user32, "EnumDisplaySettingsW", wintypes.BOOL, wintypes.LPCWSTR,
       wintypes.DWORD, ctypes.c_void_p)
@@ -83,3 +85,14 @@ try:
     dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long   # HRESULT
 except OSError:
     dwmapi = None   # sehr altes Windows -> Titelleiste bleibt Standard
+
+# Optional wie dwmapi: GetDpiForMonitor gibt es erst ab Windows 8.1.
+shcore: ctypes.WinDLL | None
+try:
+    shcore = ctypes.WinDLL("shcore")
+    shcore.GetDpiForMonitor.argtypes = [_HMONITOR, ctypes.c_int,
+                                        ctypes.POINTER(wintypes.UINT),
+                                        ctypes.POINTER(wintypes.UINT)]
+    shcore.GetDpiForMonitor.restype = ctypes.c_long        # HRESULT
+except (OSError, AttributeError):
+    shcore = None

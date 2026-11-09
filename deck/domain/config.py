@@ -160,10 +160,10 @@ TICKET_PROMPT = (
 # allen Repos (Heimat-Block, config.TERMINAL_HOME). Dort gibt es kein
 # `git rev-parse --show-toplevel`; der Agent muss erst am Ticket ablesen, welche Repos
 # es betrifft, und legt die Worktrees nach dem Schema der CLAUDE.md in diesem Ordner an
-# (`wt-<Nummer>-<Kuerzel>`, Branch nach der Regel des jeweiligen Repos).
+# (`wt/<Nummer>-<Kuerzel>`, Branch nach der Regel des jeweiligen Repos).
 # Bewusst OHNE Marker-Datei: das Deck raeumt markierte Worktrees beim Schliessen des
 # Agenten mit `git worktree remove --force` weg - auch mit offenen Aenderungen. Die
-# wt-*-Worktrees leben aber bis zum Merge und gehoeren nicht dem einzelnen Agenten.
+# Worktrees unter wt/ leben aber bis zum Merge und gehoeren nicht dem einzelnen Agenten.
 # Platzhalter: {jira_key} {number} {root} {task}. Einzeilig, wie TICKET_PROMPT.
 TICKET_PROMPT_HUB = (
     "You are assigned Jira ticket {jira_key}. You are running in {root}, the folder that "
@@ -171,8 +171,8 @@ TICKET_PROMPT_HUB = (
     "repo map and the worktree convention. Set yourself up first: look up {jira_key} with "
     "your Atlassian/Jira integration (e.g. the Jira MCP getJiraIssue) and read its "
     "summary, description and acceptance criteria. Decide which repositories the ticket "
-    "touches. For EACH of them, work in a git worktree next to the repos named "
-    "`{root}/wt-{number}-<short>` (short name as in the CLAUDE.md, e.g. api, ui, dotnet, "
+    "touches. For EACH of them, work in a git worktree in the shared worktree folder "
+    "`{root}/wt/{number}-<short>` (short name as in the CLAUDE.md, e.g. api, ui, dotnet, "
     "client) on a branch that follows that repository's own convention from its "
     "CLAUDE.md (typically `<type>/{jira_key}-<slug>` from the default branch). If such a "
     "worktree or branch already exists, reuse it instead of creating a new one. From now "
@@ -331,6 +331,16 @@ TERMINAL_HOME = os.path.join(os.path.expanduser("~"), "Repos")
 # globale Taste naehme es ueberall weg. Frei geprueft 2026-11-06 (belegt waren
 # Strg+Alt+Leertaste und Win+Alt+Leertaste).
 JUMP_HOTKEY = "ctrl+<"
+
+# Alle nach vorn: holt jedes Agentenfenster in Windows Terminal auf den Monitor unter der
+# Maus, kachelt sie in Deck-Reihenfolge, Fokus auf den, der am laengsten wartet; nochmal
+# druecken = zurueck in das Fenster, aus dem man kam (domain/front.py).
+# Strg+Shift+< liegt auf denselben Tasten wie die Sprung-Taste: ohne Shift einer, mit
+# Shift alle. F20 ist der gedrueckte Drehregler am Makropad. NICHT Strg+Alt+<: das ist auf
+# der deutschen Tastatur AltGr+< und tippt den senkrechten Strich. Frei geprueft
+# 2026-11-08. Ueberschreibbar per deck_settings.json ("front_hotkeys", Liste oder ein
+# Text), leere Liste schaltet sie ab.
+FRONT_HOTKEYS = ("ctrl+shift+<", "f20")
 
 # Unterstuetzte VS-Code-Fenster (je ein Buchstabe), bewusst mit Reserve: ist KEIN
 # Buchstabe mehr frei, erscheint ein neu geoeffnetes Fenster STILL nicht im Deck

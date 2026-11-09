@@ -152,7 +152,7 @@ Fenster verschiedene Ordner haben. `PFAD` = Repo-Wurzel.
     "Notification": [{ "hooks": [{ "type": "command", "command": "python \"PFAD\\report.py\" waiting || exit 0" }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "python \"PFAD\\report.py\" done || exit 0" }] }]
   },
-  "statusLine": { "type": "command", "command": "python \"PFAD\\statusline.py\"" }
+  "statusLine": { "type": "command", "command": "python \"PFAD\\statusline.py\"", "refreshInterval": 15 }
 }
 ```
 
@@ -160,6 +160,10 @@ Die **`statusLine` ist kein Beiwerk**: sie liefert Modell, Effort, Kontext-% und
 in `state\<slot>.live.json`, und nur daraus zeigt die Kachel diese Werte. Ohne sie läuft
 das Deck vollständig — die Felder bleiben aber leer, ohne dass irgendwo ein Fehler
 auftaucht. (Genau das war jahrelang die Lücke in dieser Anleitung.)
+
+`refreshInterval` lässt Claude Code die Zeile alle 15 s neu zeichnen, auch wenn im Chat
+nichts passiert. Sonst stünde der Countdown des Prompt-Caches (`cache 42 min`) genau im
+Leerlauf still, also dann, wenn er abläuft.
 
 Warum die Einträge so und nicht anders aussehen — jeder Punkt ist einmal wehgetan:
 

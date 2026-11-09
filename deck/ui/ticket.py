@@ -21,7 +21,7 @@ from deck.render.kit import BG, INK, INK_2
 
 def _hub_prompt(jira: str, root: str, task: str) -> str:
     """Ticket-Prompt fuer einen Block, der im Ordner ueber allen Repos laeuft. {number}
-    ist die reine Ticketnummer (ORPH-4116 -> 4116) fuer den Worktree-Namen wt-4116-<kurz>."""
+    ist die reine Ticketnummer (ORPH-4116 -> 4116) fuer den Worktree-Pfad wt/4116-<kurz>."""
     digits = "".join(ch for ch in jira.split("-")[-1] if ch.isdigit()) or jira
     return cfg.TICKET_PROMPT_HUB.format(jira_key=jira, number=digits,
                                         root=root.replace("\\", "/"), task=task)

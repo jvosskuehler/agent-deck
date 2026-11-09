@@ -38,11 +38,11 @@ def test_ticket_search_prompt_single_line_and_filled():
 
 def test_heimat_block_bekommt_den_prompt_ueber_allen_repos_ohne_marker():
     """Im Ordner ueber allen Repos gibt es kein git rev-parse: der Agent bestimmt die
-    Repos am Ticket und legt wt-<Nummer>-<Kuerzel> an. KEINE Marker-Datei - sonst
+    Repos am Ticket und legt wt/<Nummer>-<Kuerzel> an. KEINE Marker-Datei - sonst
     raeumte das Deck die Worktrees beim Schliessen per --force weg."""
     from deck.ui.ticket import _hub_prompt
     p = _hub_prompt("ORPH-4116", r"C:\Users\x\Repos", "mach was")
-    _assert_clean_prompt(p, ["ORPH-4116", "C:/Users/x/Repos/wt-4116-", "mach was", "Jira"])
+    _assert_clean_prompt(p, ["ORPH-4116", "C:/Users/x/Repos/wt/4116-", "mach was", "Jira"])
     assert ".worktree" not in p and "git rev-parse" not in p
 
 
