@@ -16,7 +16,7 @@ use deck_win::procs::ProcessInfo;
 use deck_win::{Hwnd, Rect, Result, WindowInfo};
 
 use crate::hosts::VsCodeHost;
-use crate::wt_host::Launcher;
+use crate::wt_setup::Launcher;
 
 #[derive(Default)]
 struct Desk {
@@ -105,9 +105,6 @@ impl Desktop for FakeDesktop {
     fn foreground(&self) -> Option<WindowInfo> {
         self.0.lock().unwrap().fg.clone()
     }
-    fn describe(&self, _: Hwnd) -> Option<WindowInfo> {
-        None
-    }
     fn is_minimized(&self, hwnd: Hwnd) -> bool {
         self.0.lock().unwrap().wt.iter().any(|(w, _)| w.hwnd == hwnd && w.minimized)
     }
@@ -120,18 +117,12 @@ impl Desktop for FakeDesktop {
     fn class_windows(&self, _: &str) -> Vec<ClassWindow> {
         self.0.lock().unwrap().wt.iter().map(|(w, _)| w.clone()).collect()
     }
-    fn windows_of_pid(&self, _: u32) -> Vec<Hwnd> {
-        Vec::new()
-    }
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         self.0.lock().unwrap().wt.iter().find(|(w, _)| w.hwnd == hwnd).map(|(_, r)| *r)
     }
     fn monitors(&self) -> Vec<Monitor> {
         let d = self.0.lock().unwrap();
         if d.monitors.is_empty() { default_monitors() } else { d.monitors.clone() }
-    }
-    fn monitor_of_window(&self, _: Hwnd) -> Option<Monitor> {
-        self.monitors().into_iter().next()
     }
     fn work_area(&self, _: i32, _: i32) -> Option<Rect> {
         Some(Rect::new(0, 0, 1920, 1040))

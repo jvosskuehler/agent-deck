@@ -5,6 +5,7 @@
 
 use std::sync::atomic::Ordering;
 
+use deck_core::tooltip::ScreenRect;
 use deck_core::view::{DeckView, DockView, SettingsView, TicketView};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
@@ -13,7 +14,7 @@ use tauri_plugin_opener::OpenerExt;
 use crate::applog::note;
 use crate::settings::Effect;
 use crate::state::{lock, shared};
-use crate::tooltip::{self, ScreenRect};
+use crate::tooltip;
 use crate::ui_windows::{SETTINGS, present};
 use crate::dock_drag::DragMode;
 use crate::{dock, dock_drag, menu, poll, ticket_dialog};

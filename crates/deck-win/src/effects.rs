@@ -23,15 +23,12 @@ use crate::window::{self, WindowInfo};
 pub trait Desktop: Send + Sync {
     // ── lesen ──
     fn foreground(&self) -> Option<WindowInfo>;
-    fn describe(&self, hwnd: Hwnd) -> Option<WindowInfo>;
     fn is_minimized(&self, hwnd: Hwnd) -> bool;
     fn find_window(&self, needles: &[&str]) -> Option<Hwnd>;
     fn list_titles(&self, needles: &[&str]) -> Vec<String>;
     fn class_windows(&self, class: &str) -> Vec<ClassWindow>;
-    fn windows_of_pid(&self, pid: u32) -> Vec<Hwnd>;
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect>;
     fn monitors(&self) -> Vec<Monitor>;
-    fn monitor_of_window(&self, hwnd: Hwnd) -> Option<Monitor>;
     fn work_area(&self, x: i32, y: i32) -> Option<Rect>;
     fn scale_of(&self, hwnd: Hwnd) -> f64;
     /// Lebt das Fenster noch und ist es sichtbar?
@@ -83,9 +80,6 @@ impl Desktop for Win32Desktop {
     fn foreground(&self) -> Option<WindowInfo> {
         focus::foreground()
     }
-    fn describe(&self, hwnd: Hwnd) -> Option<WindowInfo> {
-        window::describe(hwnd)
-    }
     fn is_minimized(&self, hwnd: Hwnd) -> bool {
         window::is_minimized(hwnd)
     }
@@ -98,17 +92,11 @@ impl Desktop for Win32Desktop {
     fn class_windows(&self, class: &str) -> Vec<ClassWindow> {
         arrange::class_windows(class)
     }
-    fn windows_of_pid(&self, pid: u32) -> Vec<Hwnd> {
-        focus::windows_of_pid(pid)
-    }
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         arrange::window_rect(hwnd)
     }
     fn monitors(&self) -> Vec<Monitor> {
         monitor::monitors()
-    }
-    fn monitor_of_window(&self, hwnd: Hwnd) -> Option<Monitor> {
-        monitor::monitor_of_window(hwnd)
     }
     fn work_area(&self, x: i32, y: i32) -> Option<Rect> {
         monitor::work_area(x, y)

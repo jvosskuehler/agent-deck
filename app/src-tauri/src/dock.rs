@@ -25,7 +25,7 @@ use deck_core::dock::{
     Area, AutoHide, DockAction, Edge, HIDE_AFTER_CLOSE_MS, INSIDE_MARGIN, POLL_MS, Sight, handle_rect, panel_body,
     panel_rect, reveal_zone,
 };
-use deck_core::zoom::{ZOOM_MAX, ZOOM_MIN, fit_zoom};
+use deck_core::zoom::fit_zoom;
 use deck_core::view::DockView;
 use deck_win::effects::Desktop;
 use tauri::{AppHandle, Emitter};
@@ -316,55 +316,4 @@ pub fn monitor_at(desktop: &dyn Desktop, x: i32, y: i32) -> (Area, f64) {
 /// Liegt das Panel gerade offen? (Tooltips nur dann.)
 pub fn is_open(app: &AppHandle) -> bool {
     lock(&shared(app).dock).open()
-}
-
-/// Gemerkte Lage entlang der Kante aus `deck_settings.json`.
-pub fn saved_along(settings: &serde_json::Map<String, serde_json::Value>) -> Option<i32> {
-    settings.get("dock_along").and_then(serde_json::Value::as_f64).map(|v| v as i32)
-}
-
-/// Gemerkte Lage des freien Panels (`panel_pos`: `[x, y]`).
-pub fn saved_free(settings: &serde_json::Map<String, serde_json::Value>) -> Option<(i32, i32)> {
-    let pos = settings.get("panel_pos")?.as_array()?;
-    match pos.as_slice() {
-        [x, y] => Some((x.as_f64()? as i32, y.as_f64()? as i32)),
-        _ => None,
-    }
-}
-
-/// Gemerkter Zoom (`panel_zoom`), in seinen Grenzen; fehlt er, 1.
-pub fn saved_zoom(settings: &serde_json::Map<String, serde_json::Value>) -> f64 {
-    settings
-        .get("panel_zoom")
-        .and_then(serde_json::Value::as_f64)
-        .filter(|z| z.is_finite())
-        .map_or(1.0, |z| z.clamp(ZOOM_MIN, ZOOM_MAX))
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::{Map, Value, json};
-
-    fn settings(v: Value) -> Map<String, Value> {
-        v.as_object().cloned().unwrap_or_default()
-    }
-
-    #[test]
-    fn the_floating_panel_comes_back_where_it_was_left() {
-        assert_eq!(saved_free(&settings(json!({"panel_pos": [360, 260]}))), Some((360, 260)));
-        assert_eq!(saved_free(&settings(json!({"panel_pos": [360.7, -20]}))), Some((360, -20)));
-        assert_eq!(saved_free(&settings(json!({}))), None);
-        assert_eq!(saved_free(&settings(json!({"panel_pos": [1]}))), None, "kaputter Wert = Vorgabe");
-        assert_eq!(saved_free(&settings(json!({"panel_pos": "oben"}))), None);
-    }
-
-    #[test]
-    fn a_saved_zoom_stays_within_its_bounds() {
-        assert_eq!(saved_zoom(&settings(json!({"panel_zoom": 1.2}))), 1.2);
-        assert_eq!(saved_zoom(&settings(json!({"panel_zoom": 9}))), ZOOM_MAX);
-        assert_eq!(saved_zoom(&settings(json!({"panel_zoom": 0.1}))), ZOOM_MIN);
-        assert_eq!(saved_zoom(&settings(json!({}))), 1.0);
-    }
 }

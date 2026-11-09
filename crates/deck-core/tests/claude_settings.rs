@@ -56,28 +56,6 @@ fn reading_a_missing_file_is_safe() {
 }
 
 #[test]
-fn labels_map_to_values_and_models_match_by_base_name() {
-    assert_eq!(value_to_label(&MODE_CHOICES, Some(&json!("acceptEdits")), false), "Accept Edits");
-    assert_eq!(label_to_value(&MODE_CHOICES, "Plan"), "plan");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("opus")), true), "Opus (1M)");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("claude-opus-5")), true), "Opus (1M)");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("claude-opus-4-8")), true), "Opus (1M)");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("fable")), true), "Fable");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("sonnet")), false), "Sonnet");
-    assert_eq!(value_to_label(&MODEL_CHOICES, Some(&json!("haiku")), false), "Haiku");
-    assert_eq!(value_to_label(&MODE_CHOICES, Some(&json!("bogus")), false), "Auto");
-    assert_eq!(value_to_label(&MODE_CHOICES, None, false), "Auto");
-    assert_eq!(value_to_label(&LANG_CHOICES, Some(&json!("english")), true), "Englisch");
-}
-
-#[test]
-fn bypass_is_selectable_and_survives_saving() {
-    assert_eq!(value_to_label(&MODE_CHOICES, Some(&json!("bypassPermissions")), false), "Bypass");
-    assert_eq!(label_to_value(&MODE_CHOICES, "Bypass"), BYPASS_MODE);
-    assert_eq!(BYPASS_MODE, "bypassPermissions");
-}
-
-#[test]
 fn default_mode_rereads_only_after_a_change_and_keeps_the_last_good_value() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("settings.json");

@@ -38,6 +38,7 @@ pub mod idle;
 pub mod monitor;
 pub mod procs;
 pub mod taskbar;
+pub mod which;
 pub mod window;
 
 mod guard;

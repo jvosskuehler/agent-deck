@@ -19,18 +19,17 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use deck_core::paths::{WT_HOSTS_FILE, load_json, save_json};
+use deck_core::paths::{load_json, save_json};
 use deck_core::protocol::Command;
 use deck_core::wt::{self, Step};
 use deck_win::console_input::Step as ConsoleStep;
-use deck_win::effects::{ConsoleInput, Desktop, Processes};
 use serde_json::Value;
 
 use crate::applog::note;
 use crate::worker::Worker;
+use crate::wt_setup::{WtEffects, WtSetup};
 use crate::wt_tiles::{self, WtTiler};
 
 /// So lange gilt ein angeforderter Slot-Name als vergeben (s).
@@ -40,34 +39,8 @@ const ALIVE_CACHE_S: f64 = 0.3;
 /// So lange gilt die gemessene Fensterlage (s). Ein Blick kostet ein EnumWindows.
 const SCREEN_CACHE_S: f64 = 0.5;
 
-/// Startet `wt.exe`. Eigener Trait, damit Tests nie ein Terminal öffnen.
-pub trait Launcher: Send + Sync {
-    fn launch(&self, argv: &[String]) -> bool;
-}
-
 /// Die Buchstaben, die in Windows Terminal leben, geteilt mit dem Fokus-Rahmen.
 pub type HostMap = Arc<RwLock<BTreeMap<String, String>>>;
-
-/// Die Wirkungen nach außen, gebündelt.
-#[derive(Clone)]
-pub struct WtEffects {
-    pub desktop: Arc<dyn Desktop>,
-    pub procs: Arc<dyn Processes>,
-    pub console: Arc<dyn ConsoleInput>,
-    pub launcher: Arc<dyn Launcher>,
-}
-
-/// Programme und Pfade für das Öffnen eines Agenten.
-#[derive(Debug, Clone)]
-pub struct WtSetup {
-    pub hosts_file: PathBuf,
-    pub state_dir: PathBuf,
-    pub script: PathBuf,
-    pub wt_exe: String,
-    pub shell: String,
-    /// Verstecktes Profil „Agent Deck“, falls in den WT-Einstellungen vorhanden.
-    pub profile: Option<String>,
-}
 
 pub struct WtHost {
     setup: WtSetup,
@@ -404,27 +377,5 @@ impl WtHost {
         });
         self.alive_ts = -1.0;
         true
-    }
-}
-
-/// Programme suchen wie `shutil.which`: erst der PATH, dann die Vorgabe.
-pub fn which(name: &str) -> Option<String> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file()).map(|p| p.to_string_lossy().into_owned())
-}
-
-/// Die echte Einrichtung: `wt.exe`, PowerShell 7 (sonst Windows PowerShell) und das
-/// Profil „Agent Deck“, wenn es in den Einstellungen von Windows Terminal steht.
-pub fn real_setup(app_dir: &std::path::Path, state_dir: &std::path::Path, script: PathBuf) -> WtSetup {
-    let local = deck_core::paths::local_app_data();
-    let wt_settings = local.join("Packages").join("Microsoft.WindowsTerminal_8wekyb3d8bbwe").join("LocalState").join("settings.json");
-    let profile = fs::read_to_string(wt_settings).ok().filter(|t| t.contains(&format!("\"{}\"", wt::PROFILE))).map(|_| wt::PROFILE.to_string());
-    WtSetup {
-        hosts_file: app_dir.join(WT_HOSTS_FILE),
-        state_dir: state_dir.to_path_buf(),
-        script,
-        wt_exe: which("wt.exe").unwrap_or_else(|| "wt.exe".into()),
-        shell: which("pwsh.exe").unwrap_or_else(|| "powershell.exe".into()),
-        profile,
     }
 }

@@ -93,20 +93,9 @@ pub fn read_shared(path: &Path, retries: u32, pause: Duration) -> io::Result<Vec
     Err(last.unwrap_or_else(|| io::Error::other("nicht lesbar")))
 }
 
-/// Atomar schreiben über eine eigene Zwischendatei (`<path><suffix>`), dann ersetzen.
-pub fn atomic_write_with(path: &Path, bytes: &[u8], suffix: &str) -> io::Result<()> {
-    if let Some(dir) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        fs::create_dir_all(dir)?;
-    }
-    let mut tmp: OsString = path.as_os_str().to_owned();
-    tmp.push(suffix);
-    let tmp = PathBuf::from(tmp);
-    if let Err(e) = fs::write(&tmp, bytes).and_then(|_| fs::rename(&tmp, path)) {
-        let _ = fs::remove_file(&tmp);
-        return Err(e);
-    }
-    Ok(())
-}
+/// Atomares Schreiben gibt es genau einmal, in `deck_core::paths`. Der Name bleibt hier
+/// erreichbar, weil `usage::shared` ihn von hier holt.
+pub use deck_core::paths::atomic_write_with;
 
 /// Kopie `<path>.bak-YYYYmmdd-HHMMSS` neben die Datei legen, bevor sie geändert wird.
 /// Nur bei echter Änderung aufrufen, sonst sammelt jeder Lauf eine Sicherung an.
@@ -152,34 +141,6 @@ fn clear_readonly(path: &Path) {
             clear_readonly(&e.path());
         }
     }
-}
-
-/// Programm auf dem PATH suchen wie `shutil.which` unter Windows (mit PATHEXT).
-pub fn which(name: &str) -> Option<PathBuf> {
-    let exts: Vec<String> = std::env::var("PATHEXT")
-        .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into())
-        .split(';')
-        .filter(|e| !e.is_empty())
-        .map(|e| e.to_lowercase())
-        .collect();
-    let has_ext = exts.iter().any(|e| name.to_lowercase().ends_with(e));
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        if has_ext {
-            let p = dir.join(name);
-            if p.is_file() {
-                return Some(p);
-            }
-            continue;
-        }
-        for ext in &exts {
-            let p = dir.join(format!("{name}{ext}"));
-            if p.is_file() {
-                return Some(p);
-            }
-        }
-    }
-    None
 }
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);

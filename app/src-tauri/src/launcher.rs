@@ -5,7 +5,7 @@ use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 
 use crate::applog::note;
-use crate::wt_host::Launcher;
+use crate::wt_setup::Launcher;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 

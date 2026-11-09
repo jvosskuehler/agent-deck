@@ -95,17 +95,25 @@ pub fn load_json(path: &Path) -> Option<Value> {
 /// Atomar schreiben: erst `<path>.tmp`, dann ersetzen, nie halbe Dateien. Legt den
 /// Zielordner bei Bedarf an.
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    atomic_write_with(path, bytes, ".tmp")
+}
+
+/// Wie [`atomic_write`], aber über die Zwischendatei `<path><suffix>`. Ein eigenes
+/// Anhängsel braucht, wer dieselbe Datei aus mehreren Prozessen schreibt (gemeinsamer
+/// Usage-Cache) oder fremde Dateien anfasst, deren `.tmp` einem anderen gehören könnte.
+/// Scheitert das Schreiben, bleibt keine Zwischendatei liegen.
+pub fn atomic_write_with(path: &Path, bytes: &[u8], suffix: &str) -> io::Result<()> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         fs::create_dir_all(parent)?;
     }
     let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
+    tmp.push(suffix);
     let tmp = PathBuf::from(tmp);
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(bytes)?;
+    let written = fs::File::create(&tmp).and_then(|mut f| f.write_all(bytes)).and_then(|()| fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
     }
-    fs::rename(&tmp, path)
+    written
 }
 
 /// JSON atomar schreiben, Byte für Byte wie Pythons `json.dump(data, f)`.

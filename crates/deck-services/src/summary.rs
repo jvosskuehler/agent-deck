@@ -26,8 +26,9 @@ use deck_core::claude::summary_cache::{
     projects_dir, prune, summary_dir,
 };
 use deck_core::i18n::Lang;
+use deck_win::which::which;
 
-use crate::fsutil::{now_unix, which};
+use crate::fsutil::now_unix;
 use crate::guard;
 
 /// Höchstens so viele `claude`-Läufe gleichzeitig (der Rest wartet im Thread).

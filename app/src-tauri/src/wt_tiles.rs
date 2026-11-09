@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use deck_core::arrange::{self, max_cols_for, tile_grid};
+use deck_core::dock::Area;
 use deck_core::wt::{WINDOW_CLASS, slot_from_title};
 use deck_win::effects::Desktop;
 use deck_win::{Hwnd, Rect};
@@ -101,14 +102,16 @@ pub fn tile(desktop: &dyn Desktop, slots: &[String]) -> usize {
     placed
 }
 
-/// Arbeitsfläche und Skalierung des Monitors unter dem Punkt `pos` (Mauszeiger).
-/// `None`, wenn kein Monitor ihn enthält oder es keinen Punkt gibt.
+/// Arbeitsfläche und Skalierung des Monitors unter dem Punkt `pos` (Mauszeiger). Steht
+/// der Zeiger in einer Lücke zwischen Monitoren, gilt der nächstgelegene, wie
+/// `MonitorFromPoint(MONITOR_DEFAULTTONEAREST)` in der Python-Fassung. `None` nur ohne
+/// Punkt oder ohne Monitor.
 pub fn monitor_under(desktop: &dyn Desktop, pos: Option<(i32, i32)>) -> Option<(Rect, f64)> {
     let (x, y) = pos?;
     desktop
         .monitors()
         .into_iter()
-        .find(|m| (m.rect.left..m.rect.right).contains(&x) && (m.rect.top..m.rect.bottom).contains(&y))
+        .min_by_key(|m| Area::new(m.rect.left, m.rect.top, m.rect.right, m.rect.bottom).distance_sq(x, y))
         .map(|m| (m.work, m.scale))
 }
 
@@ -203,10 +206,19 @@ mod tests {
     }
 
     #[test]
-    fn without_a_monitor_under_the_mouse_nothing_moves() {
+    fn a_mouse_between_monitors_picks_the_nearest_one() {
+        let d = FakeDesktop::default();
+        d.add_monitor(Rect::new(2000, 0, 4400, 1200), Rect::new(2000, 0, 4400, 1160), 1.25);
+        // Lücke 1920..2000: 1990 liegt näher am rechten Monitor, 1930 am linken.
+        assert_eq!(monitor_under(&d, Some((1990, 500))), Some((Rect::new(2000, 0, 4400, 1160), 1.25)));
+        assert_eq!(monitor_under(&d, Some((1930, 500))), Some((Rect::new(0, 0, 1920, 1040), 1.0)));
+        assert_eq!(monitor_under(&d, Some((-5000, -5000))), Some((Rect::new(0, 0, 1920, 1040), 1.0)));
+    }
+
+    #[test]
+    fn without_a_mouse_position_nothing_moves() {
         let d = FakeDesktop::default();
         d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 800, 600), false);
-        assert_eq!(monitor_under(&d, Some((-5000, -5000))), None);
         assert_eq!(monitor_under(&d, None), None);
         assert_eq!(gather(&d, &["A1".into()], None), [("A1".into(), Hwnd(11))]);
         assert!(d.placed().is_empty());
