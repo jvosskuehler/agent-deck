@@ -88,10 +88,9 @@ Blöcke; Hover in der Ticketfarbe), daneben klein der Host („Windows Terminal�
 zu einer Gruppe bindet; beim Hover über den Block wird sie kräftiger. Heimat-Block
 (`Repos`) steht immer oben.
 
-Der Kopf meint das ganze Fenster: beim Hover erscheint rechts neben dem Host ein kleines
-rundes ✕ (16 px, Stil wie das ✕ der Karte), das nach einer nativen Rückfrage das Fenster
-schließt (Terminal: alle Agenten beenden). Rechtsklick auf den Kopf öffnet das native
-Menü (vergessen, mit einem VS-Code-Fenster verbinden). Solange verbunden wird, steht statt des
+Der Kopf meint das ganze Fenster: Rechtsklick auf den Kopf öffnet das native Menü
+(vergessen, mit einem VS-Code-Fenster verbinden). Ein ✕ für das ganze Fenster gibt es
+bewusst nicht. Solange verbunden wird, steht statt des
 Hosts „Klicke jetzt ein VS-Code-Fenster an“ in Bernstein (Ink) mit atmendem Punkt.
 
 ## Panel, Leiste, Griff
@@ -134,8 +133,9 @@ Kein Speichern-Knopf: jede Änderung gilt sofort, ein kurzes „Gespeichert“ b
 
 Bewusst **nicht** (seit 09.11.2026, Jorrit arbeitet nur noch in Windows Terminal): kein
 Warnsatz und kein Rot bei Bypass, kein Ring um den Chat, kein Jira-Präfix, kein
-Heimatordner, keine Werkzeuge für VS Code und kein „Repo öffnen“. Die Werte bleiben in der
-Datei und wirken wie zuletzt gesetzt.
+Heimatordner, keine Werkzeuge für VS Code und kein „Repo öffnen“. Jira-Präfix
+(`jira_prefix`) und Heimatordner (`terminal_home`) liest das Deck weiter aus
+`deck_settings.json`, wenn sie dort von Hand stehen.
 
 ## Schrift und Texte
 

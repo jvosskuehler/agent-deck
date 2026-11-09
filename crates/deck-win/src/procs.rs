@@ -1,13 +1,10 @@
 //! Laufende Prozesse: auflisten, nachsehen, beenden (aus `platform/procs.py`).
 //!
-//! Gebraucht vom VS-Code-Neustart: ein geschlossenes Fenster beweist nichts. VS Code
-//! räumt danach noch Renderer, Extension-Hosts und den pty-Host ab, und in dieser Lücke
-//! würde ein neu gestartetes `Code.exe` sich beim sterbenden Prozess anmelden statt eine
-//! frische Instanz zu werden. Darum wird nicht gewartet, sondern nachgesehen.
+//! Gebraucht für die Windows-Terminal-Agenten: welche Shell lebt noch (PID samt
+//! Startzeit), und beim Schließen eines Agenten sein ganzer Prozessbaum.
 //!
 //! **„Weiß nicht“ ist nie „nein“.** Jede Abfrage, die scheitern kann, liefert dann `None`
-//! und nicht die leere Liste bzw. 0: sonst startet der Neustart in einen noch lebenden
-//! VS Code hinein.
+//! und nicht die leere Liste: sonst sähe ein lebender Agent tot aus.
 //!
 //! Nachgesehen wird per Toolhelp-Snapshot (kein Subprozess je Blick, keine lokalisierte
 //! Ausgabe). Beendet wird dagegen absichtlich mit `taskkill /F /T`: unter einem Prozess
@@ -52,44 +49,10 @@ pub fn processes() -> Option<Vec<ProcessInfo>> {
     Some(list)
 }
 
-/// Nur die Exe-Namen (billiger als [`processes`], ohne Startzeiten).
-pub fn exe_names() -> Option<Vec<String>> {
-    snapshot().map(|l| l.into_iter().map(|p| p.exe).collect())
-}
-
-/// Wie viele Prozesse dieses Exe-Namens laufen (ohne Groß-/Kleinschreibung).
-/// `None` = konnte nicht nachsehen; leerer Name = 0.
-pub fn count_exe(name: &str) -> Option<usize> {
-    if name.is_empty() {
-        return Some(0);
-    }
-    let names = exe_names()?;
-    Some(count_in(&names, name))
-}
-
-/// „Läuft noch ein `name`?“ Drei Antworten: ja, nein, weiß nicht (`None`).
-pub fn is_running(name: &str) -> Option<bool> {
-    count_exe(name).map(|n| n > 0)
-}
-
-/// Zählung ohne Groß-/Kleinschreibung, ausgelagert für Tests.
-pub fn count_in(names: &[String], name: &str) -> usize {
-    names
-        .iter()
-        .filter(|n| n.eq_ignore_ascii_case(name))
-        .count()
-}
-
 /// Startzeit eines LEBENDEN Prozesses (FILETIME), sonst `None` (beendet, unbekannt,
 /// kein Zugriff).
 pub fn process_start(pid: u32) -> Option<u64> {
     start_time(pid, true)
-}
-
-/// FILETIME → Unix-Sekunden.
-pub fn filetime_to_unix(ft: u64) -> f64 {
-    const EPOCH_DIFF: u64 = 116_444_736_000_000_000; // 1601 → 1970 in 100 ns
-    (ft as f64 - EPOCH_DIFF as f64) / 10_000_000.0
 }
 
 fn snapshot() -> Option<Vec<ProcessInfo>> {
@@ -157,35 +120,6 @@ pub fn kill_tree(pid: u32) -> Result<()> {
     taskkill(&["/F", "/T", "/PID", &pid.to_string()])
 }
 
-/// Alle Prozesse dieses Exe-Namens samt Kindern hart beenden. Die Notbremse des
-/// Neustarts: unter VS Code hängen Renderer, Extension-Hosts, der pty-Host und die
-/// Claude-Sessions (die danach per `claude --resume` zurückkommen). Ein einzeln
-/// abgeschossener Hauptprozess ließe die Kinder als Waisen zurück.
-///
-/// Der Name muss ein schlichter Exe-Name sein ([`is_plain_exe_name`]): er geht als
-/// Argument in eine Kommandozeile, und ein `/F` oder `*` darin wäre ein anderer Befehl.
-pub fn kill_by_name(name: &str) -> Result<()> {
-    guard::check("kill_by_name")?;
-    if !is_plain_exe_name(name) {
-        return Err(Error::Rejected(format!(
-            "kein schlichter Exe-Name: {name:?}"
-        )));
-    }
-    taskkill(&["/F", "/T", "/IM", name])
-}
-
-/// `^[A-Za-z0-9 ._-]+\.exe$`, ohne Groß-/Kleinschreibung der Endung.
-pub fn is_plain_exe_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    let Some(stem) = lower.strip_suffix(".exe") else {
-        return false;
-    };
-    !stem.is_empty()
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'.' | b'_' | b'-'))
-}
-
 /// taskkill-Exitcodes: 0 = beendet, 128 = kein solcher Prozess (aus Sicht des
 /// Aufrufers dasselbe Ziel erreicht).
 pub fn taskkill_succeeded(code: i32) -> bool {
@@ -242,17 +176,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_plain_exe_names_reach_taskkill() {
-        assert!(is_plain_exe_name("Code.exe"));
-        assert!(is_plain_exe_name("Code - Insiders.EXE"));
-        assert!(!is_plain_exe_name("*.exe"));
-        assert!(!is_plain_exe_name("/F.exe"));
-        assert!(!is_plain_exe_name("Code"));
-        assert!(!is_plain_exe_name(".exe"));
-        assert!(!is_plain_exe_name("a\"b.exe"));
-    }
-
-    #[test]
     fn missing_process_counts_as_killed() {
         assert!(taskkill_succeeded(0));
         assert!(taskkill_succeeded(128));
@@ -260,22 +183,8 @@ mod tests {
     }
 
     #[test]
-    fn exe_count_ignores_case_and_empty_name_is_zero() {
-        let names = vec!["Code.exe".to_string(), "code.EXE".into(), "pwsh.exe".into()];
-        assert_eq!(count_in(&names, "CODE.exe"), 2);
-        assert_eq!(count_exe(""), Some(0));
-    }
-
-    #[test]
-    fn filetime_epoch_maps_to_unix_zero() {
-        assert_eq!(filetime_to_unix(116_444_736_000_000_000), 0.0);
-        assert_eq!(filetime_to_unix(116_444_736_000_000_000 + 15_000_000), 1.5);
-    }
-
-    #[test]
     fn killing_is_blocked_in_tests() {
         assert!(matches!(kill_tree(12345), Err(Error::Forbidden(_))));
-        assert!(matches!(kill_by_name("Code.exe"), Err(Error::Forbidden(_))));
     }
 
     #[test]
@@ -291,15 +200,6 @@ mod tests {
         assert_ne!(entry.parent_pid, 0);
         let start = process_start(me).expect("eigene Startzeit");
         assert_eq!(entry.start, Some(start));
-        let unix = filetime_to_unix(start);
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64();
-        assert!(
-            unix <= now && now - unix < 24.0 * 3600.0,
-            "Start liegt in den letzten 24 h"
-        );
     }
 
     #[test]

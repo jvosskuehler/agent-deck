@@ -108,15 +108,6 @@ impl Rect {
             self.bottom + dy,
         )
     }
-
-    pub(crate) fn to_win(self) -> RECT {
-        RECT {
-            left: self.left,
-            top: self.top,
-            right: self.right,
-            bottom: self.bottom,
-        }
-    }
 }
 
 impl From<RECT> for Rect {
@@ -158,11 +149,6 @@ impl Error {
             code: e.code().0 as u32,
             message: e.message(),
         }
-    }
-
-    /// Fehler aus `GetLastError` für Aufrufe, die nur `BOOL` liefern.
-    pub(crate) fn last(call: &'static str) -> Self {
-        Error::win(call, windows::core::Error::from_thread())
     }
 }
 

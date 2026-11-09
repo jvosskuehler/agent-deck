@@ -12,7 +12,6 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::binding::is_placeholder_ws;
-use crate::config::WINDOW_MATCH;
 use crate::paths::{
     BINDINGS_FILE, EFFORT_FILE, ORDER_FILE, SETTINGS_FILE, TICKETS_FILE, WIN_ORDER_FILE, load_json, save_json,
 };
@@ -65,13 +64,13 @@ impl BindStore {
         let _ = save_json(&self.path(name), &value);
     }
 
-    /// Erst-Start, kaputt oder kein Objekt → aus `WINDOW_MATCH` vorbelegen. Platzhalter-
+    /// Erst-Start, kaputt oder kein Objekt → leer. Platzhalter-
     /// Bindungen (leer, `unknown`) fliegen beim Laden raus, und die bereinigte Datei wird
     /// zurückgeschrieben: ein altes Phantom ist nach dem Neustart weg.
     fn load_bindings(&self) -> BTreeMap<String, String> {
         let raw: Vec<(String, Value)> = match load_json(&self.path(BINDINGS_FILE)) {
             Some(Value::Object(m)) => m.into_iter().collect(),
-            _ => WINDOW_MATCH.iter().map(|(w, r)| (w.to_string(), Value::from(*r))).collect(),
+            _ => Vec::new(),
         };
         let total = raw.len();
         let clean: BTreeMap<String, String> = raw

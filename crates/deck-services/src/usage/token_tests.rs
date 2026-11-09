@@ -1,5 +1,8 @@
 //! Tests zu `token.rs` (aus `tests/test_claude_usage.py`, Abschnitt CLI-Token).
 
+use std::sync::{Arc, Mutex};
+
+use super::super::account::tests::ProfileHttp;
 use super::*;
 use serde_json::json;
 
@@ -68,47 +71,135 @@ fn the_credentials_path_follows_the_environment_variable() {
     }
 }
 
-fn reader(r: Result<Vec<&'static str>, &'static str>) -> Reader {
-    Box::new(move || r.clone().map(|v| v.into_iter().map(String::from).collect()).map_err(String::from))
+/// Attrappe für alles, was `DiskTokens` außerhalb des Prozesses fragt: die Dateien der
+/// beiden Quellen, ihre Signatur und das Konto je Token (über die Profil-Attrappe, sonst
+/// ginge der Test ans Netz). Die Felder lassen sich zwischen zwei Abrufen umstellen.
+#[derive(Clone)]
+struct Disk(Arc<Mutex<DiskState>>);
+
+struct DiskState {
+    cli: Result<Vec<String>, String>,
+    desk: Result<Vec<String>, String>,
+    sig: Option<CredSig>,
+    cli_reads: usize,
+}
+
+fn s(v: &[&str]) -> Vec<String> {
+    v.iter().map(|t| t.to_string()).collect()
+}
+
+impl Disk {
+    fn new(cli: &[&str], desk: &[&str], sig: Option<CredSig>) -> Disk {
+        Disk(Arc::new(Mutex::new(DiskState { cli: Ok(s(cli)), desk: Ok(s(desk)), sig, cli_reads: 0 })))
+    }
+
+    fn set(&self, f: impl FnOnce(&mut DiskState)) {
+        f(&mut self.0.lock().unwrap());
+    }
+
+    fn cli_reads(&self) -> usize {
+        self.0.lock().unwrap().cli_reads
+    }
+
+    /// `DiskTokens` über dieser Attrappe; `accounts` = Token → Konto laut Profil.
+    fn source(&self, accounts: Vec<(&'static str, &'static str)>) -> DiskTokens {
+        let (a, b, c) = (self.clone(), self.clone(), self.clone());
+        let files = TokenFiles {
+            cli: Box::new(move || {
+                let mut st = a.0.lock().unwrap();
+                st.cli_reads += 1;
+                st.cli.clone()
+            }),
+            desktop: Box::new(move || b.0.lock().unwrap().desk.clone()),
+            signature: Box::new(move || c.0.lock().unwrap().sig),
+            cli_account: Box::new(|| None),
+        };
+        DiskTokens::new(files, TokenAccounts::new(Arc::new(ProfileHttp::new(accounts))))
+    }
 }
 
 #[test]
 fn both_token_sources_are_combined_cli_first() {
-    let src = DiskTokens::with_sources(vec![("CLI", reader(Ok(vec!["cli"]))), ("Desktop", reader(Ok(vec!["desk"])))]);
+    // Der Kern des Rückfalls: fällt EINE Quelle aus, trägt die andere. Erst wenn beide
+    // nichts liefern, ist es ein Fehler, und der nennt beide Quellen. Desktop zählt nur
+    // für dasselbe Konto.
+    let disk = Disk::new(&["cli"], &["desk"], None);
+    let src = disk.source(vec![("cli", "a@x.de"), ("desk", "a@x.de")]);
     assert_eq!(src.tokens(true).unwrap(), ["cli", "desk"]);
-}
-
-#[test]
-fn if_one_source_fails_the_other_carries() {
-    let src = DiskTokens::with_sources(vec![("CLI", reader(Ok(vec!["cli"]))), ("Desktop", reader(Err("weg")))]);
-    assert_eq!(src.tokens(true).unwrap(), ["cli"]);
-}
-
-#[test]
-fn only_both_sources_failing_is_an_error_naming_both() {
-    let src = DiskTokens::with_sources(vec![("CLI", reader(Err("fehlt"))), ("Desktop", reader(Err("weg")))]);
+    disk.set(|d| d.cli = Err("weg".into()));
+    assert_eq!(src.tokens(true).unwrap(), ["desk"], "ohne Datei trägt Desktop");
+    disk.set(|d| d.desk = Err("auch weg".into()));
     let err = src.tokens(true).unwrap_err();
     assert!(err.contains("CLI") && err.contains("Desktop"), "{err}");
 }
 
 #[test]
-fn tokens_are_read_from_disk_only_when_forced_or_unknown() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    let reads = Arc::new(AtomicUsize::new(0));
-    let r = reads.clone();
-    let src = DiskTokens::with_sources(vec![(
-        "CLI",
-        Box::new(move || {
-            r.fetch_add(1, Ordering::SeqCst);
-            Ok(vec!["t".to_string()])
-        }),
-    )]);
+fn a_desktop_token_of_another_account_is_not_asked() {
+    let disk = Disk::new(&["cli"], &["desk"], Some((1, 1)));
+    let src = disk.source(vec![("cli", "b@x.de"), ("desk", "a@x.de")]);
+    assert_eq!(src.tokens(false).unwrap(), ["cli"]);
+    assert_eq!(src.current_account().as_deref(), Some("b@x.de"));
+}
+
+#[test]
+fn an_account_switch_rereads_the_tokens_at_once() {
+    // Das alte Token ist nach dem Wechsel noch Stunden gültig und liefert 200. Signal
+    // ist die geänderte .credentials.json, nicht erst ein 401.
+    let disk = Disk::new(&["tok-a"], &[], Some((1, 1)));
+    let src = disk.source(vec![("tok-a", "a@x.de"), ("tok-b", "b@x.de")]);
+    assert_eq!(src.tokens(false).unwrap(), ["tok-a"]);
+    assert_eq!(src.account().as_deref(), Some("a@x.de"));
+    disk.set(|d| {
+        d.cli = Ok(s(&["tok-b"]));
+        d.sig = Some((2, 1));
+    });
+    assert_eq!(src.current_account().as_deref(), Some("b@x.de"));
+    assert_eq!(src.tokens(false).unwrap(), ["tok-b"]);
+}
+
+#[test]
+fn without_a_change_the_files_are_not_read_again() {
+    let disk = Disk::new(&["cli"], &[], Some((1, 1)));
+    let src = disk.source(vec![("cli", "a@x.de")]);
     src.tokens(false).unwrap();
     src.tokens(false).unwrap();
-    assert_eq!(reads.load(Ordering::SeqCst), 1, "zweiter Abruf ohne force liest nicht neu");
+    src.current_account();
+    assert_eq!(disk.cli_reads(), 1, "ohne Änderung der Datei nicht neu lesen");
     src.tokens(true).unwrap();
-    assert_eq!(reads.load(Ordering::SeqCst), 2);
+    assert_eq!(disk.cli_reads(), 2, "force liest neu");
+}
+
+#[test]
+fn half_written_credentials_do_not_switch_to_desktop() {
+    let disk = Disk::new(&["cli"], &[], Some((1, 1)));
+    let src = disk.source(vec![("cli", "a@x.de"), ("desk", "z@x.de")]);
+    src.tokens(false).unwrap();
+    disk.set(|d| {
+        d.desk = Ok(s(&["desk"]));
+        d.sig = Some((2, 1));
+        d.cli = Err("kein JSON".into());
+    });
+    assert_eq!(src.tokens(false).unwrap(), ["cli"], "alter Stand bleibt");
+    assert_eq!(src.account().as_deref(), Some("a@x.de"));
+    disk.set(|d| d.cli = Ok(s(&["cli"])));
+    src.tokens(false).unwrap();
+    assert_eq!(disk.cli_reads(), 3, "die alte Signatur bleibt stehen, beim nächsten Blick wird neu gelesen");
+}
+
+#[test]
+fn without_an_answer_from_the_profile_the_cli_account_file_decides() {
+    let disk = Disk::new(&["cli"], &["desk"], Some((1, 1)));
+    let (a, b, c) = (disk.clone(), disk.clone(), disk.clone());
+    let files = TokenFiles {
+        cli: Box::new(move || a.0.lock().unwrap().cli.clone()),
+        desktop: Box::new(move || b.0.lock().unwrap().desk.clone()),
+        signature: Box::new(move || c.0.lock().unwrap().sig),
+        cli_account: Box::new(|| Some("a@x.de".into())),
+    };
+    // Das Profil kennt nur das Desktop-Token: das CLI-Konto kommt aus ~/.claude.json.
+    let src = DiskTokens::new(files, TokenAccounts::new(Arc::new(ProfileHttp::new(vec![("desk", "a@x.de")]))));
+    assert_eq!(src.tokens(false).unwrap(), ["cli", "desk"]);
+    assert_eq!(src.account().as_deref(), Some("a@x.de"));
 }
 
 /// Ein Claude-Desktop-Paar (config.json, Local State) bauen, verschlüsselt wie Chromium.

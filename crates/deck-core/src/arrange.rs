@@ -1,28 +1,6 @@
-//! Fenster anordnen: welche gehören dazu, und wohin genau.
-//!
-//! Die anzeigefreien Regeln hinter „VS-Code-Fenster einsammeln“ und hinter dem
-//! Kachelraster der Windows-Terminal-Agenten. Der Win32-Teil (aufzählen, verschieben,
-//! maximieren) steht in `deck-win`.
-//!
-//! **Erkannt wird am PROZESS, nicht am Titel.** Ein Browser-Tab „VS-Code-Doku - Visual
-//! Studio Code - Firefox“ würde sonst mitgenommen, ein Fenster mit eigenem
-//! `window.title` übersehen. Der Titel ist nur der Notnagel, wenn Windows den Prozess
-//! nicht herausgibt.
-
-use crate::config::VSCODE_MARKER;
-use crate::pystr::strip;
-
-/// Prozessnamen, die als VS-Code-Fenster gelten (klein verglichen). Absichtlich knapp:
-/// Stable, Insiders, VSCodium. Wer hier zu breit filtert, verschiebt fremde Fenster.
-pub const EDITOR_EXES: [&str; 3] = ["code.exe", "code - insiders.exe", "codium.exe"];
-
-/// Fensterstil-Bit „hat einen Maximieren-Knopf“.
-pub const WS_MAXIMIZEBOX: u32 = 0x0001_0000;
-
-/// Untergrenze des Wiederherstellungs-Rechtecks: eine kaputte Normalgröße (0x0) läge
-/// sonst nach dem Entmaximieren als unauffindbarer Punkt auf dem Monitor.
-pub const MIN_W: i64 = 640;
-pub const MIN_H: i64 = 420;
+//! Kachelraster der Windows-Terminal-Agenten: wie viele nebeneinander passen, wohin
+//! jede Kachel kommt, und in welchen Reihen die Fenster gerade liegen. Der Win32-Teil
+//! (aufzählen, verschieben) steht in `deck-win`.
 
 /// Höchstens so viele Agentenfenster nebeneinander; danach beginnt eine zweite Reihe.
 pub const MAX_COLS: i64 = 4;
@@ -34,34 +12,6 @@ pub const MIN_TILE_W: i64 = 600;
 pub type Rect = (i64, i64, i64, i64);
 /// Fläche `(links, oben, rechts, unten)`.
 pub type Area = (i64, i64, i64, i64);
-
-/// Gehört das Fenster zu VS Code? `exe` ist der volle Pfad (leer, wenn Windows ihn nicht
-/// hergibt: dann entscheidet der Titel). Ist der Prozess bekannt, entscheidet nur er.
-pub fn is_editor_window(exe: &str, title: &str) -> bool {
-    let base = exe.rsplit(['/', '\\']).next().unwrap_or("");
-    let base = strip(base).to_lowercase();
-    if !base.is_empty() {
-        return EDITOR_EXES.contains(&base.as_str());
-    }
-    !title.is_empty() && title.to_lowercase().contains(&VSCODE_MARKER.to_lowercase())
-}
-
-/// Darf dieses Fenster maximiert werden? Dialoge haben das Bit nicht; maximiert wären
-/// sie ein Bildschirm voll grauer Fläche.
-pub fn is_maximizable(style: u32) -> bool {
-    style & WS_MAXIMIZEBOX != 0
-}
-
-/// Wiederherstellungs-Rechteck für ein Fenster `w × h`, zentriert auf der Arbeitsfläche
-/// und nie größer als sie (eine vom großen Monitor gemerkte Größe stünde sonst über).
-pub fn normal_rect(w: i64, h: i64, area: Area) -> Rect {
-    let (left, top, right, bottom) = area;
-    let aw = (right - left).max(1);
-    let ah = (bottom - top).max(1);
-    let w = w.max(MIN_W).min(aw);
-    let h = h.max(MIN_H).min(ah);
-    (left + (aw - w).div_euclid(2), top + (ah - h).div_euclid(2), w, h)
-}
 
 /// Wie viele Kacheln auf `width` Pixel nebeneinander passen, bei Skalierung `factor`
 /// (1.5 = 150 %): jede mindestens `MIN_TILE_W` breit, höchstens `MAX_COLS`, mindestens 1.

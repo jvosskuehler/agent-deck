@@ -3,17 +3,20 @@
 //! Alle asynchron: Tauri führt synchrone Befehle auf dem Hauptthread aus, und der darf
 //! nie auf einen Mutex des Decks warten (siehe `poll.rs`).
 
-use deck_core::view::{DeckView, DockView, SettingsView, TicketView, ToolStatus};
+use std::sync::atomic::Ordering;
+
+use deck_core::view::{DeckView, DockView, SettingsView, TicketView};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_opener::OpenerExt;
 
+use crate::applog::note;
 use crate::settings::Effect;
 use crate::state::{lock, shared};
 use crate::tooltip::{self, ScreenRect};
 use crate::ui_windows::{SETTINGS, present};
 use crate::dock_drag::DragMode;
-use crate::{dock, dock_drag, menu, poll, ticket_dialog, tools};
+use crate::{dock, dock_drag, menu, poll, ticket_dialog};
 
 const USAGE_URL: &str = "https://claude.ai/settings/usage";
 
@@ -125,44 +128,27 @@ pub async fn set_setting(app: AppHandle, key: String, value: Value) -> Res<Setti
             poll::nudge(&app);
         }
         Effect::Edge(edge) => dock::set_edge(&app, edge),
-        Effect::Ring(on) => {
-            // Patcht die workbench.html aller VS-Code-Installationen: nicht im Befehl.
-            let app = app.clone();
-            std::thread::spawn(move || {
-                let s = shared(&app);
-                let (lang, css) = {
-                    let d = lock(&s.deck);
-                    (d.lang, d.paths.glow_css())
-                };
-                let msg = deck_services::vscode_glow::set_glow(on, &css, lang);
-                tools::emit(&app, &tools::ring_text(on, &msg, lang));
-            });
-        }
         Effect::None => {}
     }
     let _ = app.emit("deck://settings", &view);
     Ok(view)
 }
 
+/// „Panel neu starten“ (`panel.py: restart`): eine frische Instanz mit denselben
+/// Argumenten und derselben Umgebung, dann diese beenden. Tauri gibt vorher Port und
+/// Einzelinstanz-Sperre frei. Bewusst ohne „normales Ende“ im Herzschlag: kommt das
+/// Kind nicht hoch, soll der Wächter einspringen.
 #[tauri::command]
-pub async fn run_tool(app: AppHandle, tool: String) -> Res<Option<ToolStatus>> {
-    // Der Ordner-Dialog blockiert, bis er zu ist: nicht auf einem Arbeiter der Laufzeit.
-    tauri::async_runtime::spawn_blocking(move || tools::run(&app, &tool)).await.map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn foreign_vscode_windows(app: AppHandle) -> Res<Vec<String>> {
-    Ok(tools::foreign_windows(&app))
+pub async fn restart_panel(app: AppHandle) -> Res<()> {
+    shared(&app).restarting.store(true, Ordering::SeqCst);
+    note("--- Panel-Neustart angefordert (Kind übernimmt) ---");
+    app.request_restart();
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn show_block_menu(app: AppHandle, letter: String) -> Res<()> {
     tauri::async_runtime::spawn_blocking(move || menu::show_block(&app, &letter)).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn confirm_close_block(app: AppHandle, letter: String) -> Res<()> {
-    tauri::async_runtime::spawn_blocking(move || menu::confirm_close_window(&app, &letter)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

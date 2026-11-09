@@ -1,12 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Rechte der Deck-Fenster: Ereignisse hören, Lage und Skalierung lesen (hover_tile), Links öffnen",
+  "description": "Rechte der Deck-Fenster: Ereignisse hören, Lage und Skalierung lesen (hover_tile). Links öffnet Rust (open_usage_page), dafür braucht die Oberfläche kein Recht.",
   "windows": ["panel", "handle", "tooltip", "settings", "ticket"],
   "permissions": [
     "core:default",
     "core:window:allow-inner-position",
-    "core:window:allow-scale-factor",
-    "opener:default"
+    "core:window:allow-scale-factor"
   ]
 }

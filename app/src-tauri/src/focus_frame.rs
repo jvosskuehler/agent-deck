@@ -149,7 +149,7 @@ pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGro
             let mut t0 = Instant::now();
             let mut logged = false;
             loop {
-                deck_win::overlay::pump_messages();
+                deck_win::frame_window::pump_messages();
                 if since_watch.elapsed() >= WATCH || watch.target.is_none() {
                     since_watch = Instant::now();
                     if watch.step() {

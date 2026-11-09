@@ -26,7 +26,7 @@ fn the_data_time_and_error_of_the_shared_poller_are_taken_over() {
         {"kind": "weekly_all", "group": "weekly", "percent": 9, "severity": "normal",
          "resets_at": iso(now + 86400.0), "is_active": false}]});
     let old_ts = now - 3600.0;
-    let v = SharedView { data: Some(data), error: Some("Rate-Limit".into()), data_ts: Some(old_ts) };
+    let v = SharedView { data: Some(data), error: Some("Rate-Limit".into()), data_ts: Some(old_ts), ..Default::default() };
     let mut snap = UsageSnapshot::default();
     apply_view(&mut snap, &v, now, Lang::German);
     assert_eq!(snap.ts, Some(old_ts), "die Datenzeit muss die des ABRUFS sein");
@@ -40,7 +40,7 @@ fn the_data_time_and_error_of_the_shared_poller_are_taken_over() {
 #[test]
 fn an_invalid_token_hides_the_number() {
     let mut snap = UsageSnapshot { session_percent: Some(40), ..Default::default() };
-    let v = SharedView { data: None, error: Some("Token ungueltig – 'claude auth login'".into()), data_ts: None };
+    let v = SharedView { data: None, error: Some("Token ungueltig – 'claude auth login'".into()), data_ts: None, ..Default::default() };
     apply_view(&mut snap, &v, 0.0, Lang::English);
     assert_eq!(snap.session_percent, None);
     assert_eq!(snap.error.as_deref(), Some("Token invalid, run 'claude auth login'"));
@@ -49,7 +49,7 @@ fn an_invalid_token_hides_the_number() {
 #[test]
 fn a_rate_limit_without_data_keeps_the_last_number() {
     let mut snap = UsageSnapshot { session_percent: Some(40), ..Default::default() };
-    let v = SharedView { data: None, error: Some("Rate-Limit".into()), data_ts: None };
+    let v = SharedView { data: None, error: Some("Rate-Limit".into()), data_ts: None, ..Default::default() };
     apply_view(&mut snap, &v, 0.0, Lang::German);
     assert_eq!((snap.session_percent, snap.state.as_str()), (Some(40), "error"));
 }
@@ -57,19 +57,45 @@ fn a_rate_limit_without_data_keeps_the_last_number() {
 #[test]
 fn missing_tokens_point_to_the_cli_login() {
     let mut snap = UsageSnapshot::default();
-    let v = SharedView { data: None, error: Some("NoTokenError".into()), data_ts: None };
+    let v = SharedView { data: None, error: Some("NoTokenError".into()), data_ts: None, ..Default::default() };
     apply_view(&mut snap, &v, 0.0, Lang::German);
     assert!(snap.error.unwrap().contains("claude auth login"));
 }
 
 #[test]
 fn texts_for_the_surface_have_no_dashes() {
-    for (err, lang) in [("Token ungueltig", Lang::German), ("NoTokenError", Lang::English), ("Rate-Limit", Lang::German), ("", Lang::English)] {
+    for (err, lang) in [
+        ("Token ungueltig", Lang::German),
+        ("NoTokenError", Lang::English),
+        ("Rate-Limit", Lang::German),
+        ("", Lang::English),
+        (shared::SWITCH_ERROR, Lang::German),
+        (shared::SWITCH_ERROR, Lang::English),
+    ] {
         let mut snap = UsageSnapshot::default();
-        apply_view(&mut snap, &SharedView { data: None, error: Some(err.into()), data_ts: None }, 0.0, lang);
+        apply_view(&mut snap, &SharedView { data: None, error: Some(err.into()), data_ts: None, ..Default::default() }, 0.0, lang);
         let e = snap.error.unwrap();
         assert!(!e.contains('–') && !e.contains('—'), "{e}");
     }
+}
+
+#[test]
+fn the_number_of_the_old_account_is_dropped() {
+    // Kommt nach dem Wechsel erst einmal keine Zahl (gemeinsamer Poller belegt, 429),
+    // darf die alte nicht als „letzter Wert“ stehen bleiben.
+    let now = 1_800_000_000.0;
+    let data = json!({"limits": [{"kind": "session", "group": "session", "percent": 40, "severity": "normal",
+                                  "resets_at": iso(now + 3600.0), "is_active": true}]});
+    let mut snap = UsageSnapshot::default();
+    let first = SharedView { data: Some(data), data_ts: Some(now), account: Some("a@x.de".into()), ..Default::default() };
+    apply_view(&mut snap, &first, now, Lang::German);
+    assert_eq!(snap.session_percent, Some(40));
+    let switched = SharedView { error: Some(shared::SWITCH_ERROR.into()), account: Some("b@x.de".into()), ..Default::default() };
+    apply_view(&mut snap, &switched, now, Lang::German);
+    assert_eq!(snap.account.as_deref(), Some("b@x.de"));
+    assert_eq!(snap.session_percent, None, "40 % gehören dem alten Konto");
+    assert!(snap.limits.is_empty());
+    assert_eq!(snap.error.as_deref(), Some("Kontowechsel, lade neu…"));
 }
 
 #[test]
@@ -87,7 +113,7 @@ fn service(dir: &std::path::Path, http: Arc<ScriptHttp>) -> UsageService {
     let poller = SharedPoller::new(
         dir.to_path_buf(),
         Arc::new(FakeLock { busy: AtomicBool::new(false) }),
-        Arc::new(FixedTokens(vec!["t"])),
+        Arc::new(FixedTokens::new(vec!["t"])),
         http,
         Arc::new(now_unix),
         Arc::new(|| 0.0),

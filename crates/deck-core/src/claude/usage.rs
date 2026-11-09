@@ -52,6 +52,8 @@ pub struct UsageSnapshot {
     pub error: Option<String>,
     /// Zeit der DATEN (Unix-Sekunden), nicht des Lesens.
     pub ts: Option<f64>,
+    /// Konto, zu dem die Zahlen gehören (E-Mail, klein); `None` = unbekannt.
+    pub account: Option<String>,
 }
 
 impl Default for UsageSnapshot {
@@ -64,6 +66,7 @@ impl Default for UsageSnapshot {
             limits: Vec::new(),
             error: None,
             ts: None,
+            account: None,
         }
     }
 }
@@ -125,28 +128,6 @@ pub fn severity_color(severity: &str, percent: Option<i64>) -> &'static str {
 /// allein das ALTER, nicht der Fehlertext: so fällt auch ein still gestorbener Abruf auf.
 pub fn is_stale(snap: &UsageSnapshot, now: f64) -> bool {
     !fmt_age(snap.ts, now, STALE_AFTER, Lang::German).is_empty()
-}
-
-/// Farbe abdunkeln, nicht vergrauen: die Ampel trägt Information, sie soll nur nicht
-/// mehr wie ein frischer Messwert leuchten.
-pub fn dim(hex: &str, factor: f64) -> String {
-    let ch = |i: usize| hex.get(i..i + 2).and_then(|s| u8::from_str_radix(s, 16).ok());
-    match (hex.starts_with('#'), ch(1), ch(3), ch(5)) {
-        (true, Some(r), Some(g), Some(b)) => {
-            let f = |v: u8| (f64::from(v) * factor) as u8;
-            format!("#{:02x}{:02x}{:02x}", f(r), f(g), f(b))
-        }
-        _ => hex.into(),
-    }
-}
-
-/// (Text, Farbe) des Session-Badges, wie die Python-Leiste es zeigt.
-pub fn badge_view(snap: &UsageSnapshot, now: f64) -> (String, String) {
-    let pct = snap.session_percent;
-    let color = severity_color(&snap.session_severity, pct);
-    let Some(p) = pct else { return ("—".into(), color.into()) };
-    let text = format!("{p} %");
-    if is_stale(snap, now) { (text, dim(color, 0.45)) } else { (text, color.into()) }
 }
 
 /// `str.title()`: Großbuchstabe nach jedem Nicht-Buchstaben, sonst klein.
@@ -299,6 +280,22 @@ pub fn fail(snap: &mut UsageSnapshot, msg: &str, hard: bool) {
     }
 }
 
+/// Konto der nächsten Daten vermerken (Python `UsagePoller._note_account`). Bei einem
+/// Wechsel gehören die Zahlen nicht mehr hierher: ohne das bliebe bei einem Fehler direkt
+/// nach dem Wechsel (429, gemeinsamer Poller gerade belegt) die Zahl des ALTEN Kontos
+/// als „letzter Wert“ stehen. Der Fehlertext bleibt, er beschreibt den Abruf.
+pub fn note_account(snap: &mut UsageSnapshot, account: Option<&str>) {
+    if snap.account.as_deref() == account {
+        return;
+    }
+    snap.account = account.map(String::from);
+    snap.session_percent = None;
+    snap.session_severity = String::new();
+    snap.session_resets_at = None;
+    snap.limits.clear();
+    snap.ts = None;
+}
+
 /// Fußzeile „Stand …“ bzw. „letzter Wert“; leer, wenn frisch und ohne Fehler.
 fn as_of(snap: &UsageSnapshot, now: f64, lang: Lang) -> String {
     let age = fmt_age(snap.ts, now, STALE_AFTER, lang);
@@ -314,13 +311,19 @@ fn as_of(snap: &UsageSnapshot, now: f64, lang: Lang) -> String {
 /// Mehrzeiliger Hover-Text (Python `tooltip_text`). Statt der Gedankenstriche der
 /// Python-Fassung trennt `·` (Konvention dieses Repos für Oberflächentexte).
 pub fn tooltip_text(snap: &UsageSnapshot, now: f64, lang: Lang) -> String {
-    let head = lang.l("Claude · Nutzung", "Claude · usage");
+    let mut head = lang.l("Claude · Nutzung", "Claude · usage").to_string();
+    // Wessen Zahl das ist: seit es zwei Konten gibt die erste Frage. Ohne bekanntes
+    // Konto keine leere Zeile.
+    if let Some(acc) = snap.account.as_deref().filter(|a| !a.is_empty()) {
+        head += &format!("
+{}: {acc}", lang.l("Konto", "Account"));
+    }
     let limits: Vec<&Limit> = snap.limits.iter().filter(|l| keep_in_tooltip(l)).collect();
     if limits.is_empty() {
         let err = snap.error.as_deref().filter(|e| !e.is_empty());
         return format!("{head}\n{}", err.unwrap_or(lang.l("warte auf Daten…", "waiting for data…")));
     }
-    let mut lines = vec![head.to_string()];
+    let mut lines = vec![head];
     for lim in limits {
         let p = lim.percent.map_or("— %".into(), |p| format!("{p} %"));
         let mut line = format!("{}: {p}", lim.label);
@@ -372,6 +375,7 @@ pub fn usage_view(snap: &UsageSnapshot, now: f64, lang: Lang) -> UsageView {
         ],
         extra,
         stale: is_stale(snap, now),
+        account: snap.account.clone().filter(|a| !a.is_empty()),
         error: snap.error.clone().filter(|e| !e.is_empty()),
         as_of: as_of(snap, now, lang),
     }

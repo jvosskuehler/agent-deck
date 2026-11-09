@@ -16,26 +16,24 @@ pnpm dev                # nur die Oberfläche im Browser, mit Beispieldaten
 cargo test --workspace  # alle Rust-Tests (aus der Repo-Wurzel)
 ```
 
-Neben dem laufenden alten Deck ausprobieren: `DECK_NO_BROKER=1` und `DECK_DOCK_EDGE=left`
-setzen (Details in `CLAUDE.md`, Abschnitt „Probebetrieb“).
-
-## Umstellen vom Python-Deck
+## Installieren und aktualisieren
 
 ```powershell
-pwsh tools\umstellen.ps1 -SkipBuild   # Panel tauschen (Release vorher gebaut), settings.json bleibt
-pwsh tools\umstellen.ps1 -Hooks       # neue Hooks dazu, über Git Bash bewiesen
-pwsh tools\umstellen.ps1 -Finish      # Python-Hooks heraus, statusLine umstellen
-pwsh tools\zurueck.ps1                # Rückweg zum Python-Deck, jederzeit
+pwsh tools\install.ps1              # bauen, nach %LOCALAPPDATA%\claude-agent-deck\bin kopieren, Hooks einrichten, starten
+pwsh tools\install.ps1 -SkipBuild   # dasselbe mit dem schon gebauten Release
 ```
+
+Die Symbole (Taskleiste der Terminal-Agenten, Vorlage des App-Symbols) zeichnet
+`tools/make_icons.py`.
 
 ## Aufbau
 
 | Ordner | Inhalt |
 |---|---|
-| `crates/deck-core` | Fachkern: Zustände, Reihenfolge, Neustart-Plan, Anzeigemodell; voll getestet |
+| `crates/deck-core` | Fachkern: Zustände, Reihenfolge, Anzeigemodell; voll getestet |
 | `crates/deck-win` | Win32: Fenster, Monitore, Prozesse, Tasten an Konsolen, Fokus-Rahmen |
 | `crates/deck-hooks` | `deck-report.exe`, `deck-statusline.exe` für Claude Code |
-| `crates/deck-services` | Nutzung, Zusammenfassung, Worktrees, VS-Code-Neustart, Wächter, Einrichtung |
+| `crates/deck-services` | Nutzung, Zusammenfassung, Worktrees, Wächter, Einrichtung (`deck-setup`) |
 | `app/src-tauri` | die App: Fenster, Andocken, Broker, Windows-Terminal-Host, Befehle |
 | `app/src` | die Oberfläche |
 | `extension/` | VS-Code-Extension (Brücke zum Broker) |

@@ -19,11 +19,26 @@ impl PollLock for FakeLock {
     }
 }
 
-pub(crate) struct FixedTokens(pub Vec<&'static str>);
+/// Feste Tokens eines umstellbaren Kontos (`None` = unbekannt, wie vor dem Konto-Feld).
+pub(crate) struct FixedTokens(pub Vec<&'static str>, pub Mutex<Option<String>>);
+
+impl FixedTokens {
+    pub fn new(tokens: Vec<&'static str>) -> FixedTokens {
+        FixedTokens(tokens, Mutex::new(None))
+    }
+
+    pub fn of(account: &str, tokens: Vec<&'static str>) -> FixedTokens {
+        FixedTokens(tokens, Mutex::new(Some(account.into())))
+    }
+}
 
 impl TokenSource for FixedTokens {
     fn tokens(&self, _: bool) -> Result<Vec<String>, String> {
         if self.0.is_empty() { Err("CLI: weg; Desktop: weg".into()) } else { Ok(self.0.iter().map(|s| s.to_string()).collect()) }
+    }
+
+    fn account(&self) -> Option<String> {
+        self.1.lock().unwrap().clone()
     }
 }
 
@@ -40,7 +55,8 @@ impl ScriptHttp {
 }
 
 impl UsageHttp for ScriptHttp {
-    fn get(&self, _: &str) -> Result<HttpReply, Transport> {
+    fn get(&self, url: &str, _: &str) -> Result<HttpReply, Transport> {
+        assert_eq!(url, super::super::fetch::USAGE_URL, "nur der Usage-Endpoint");
         self.calls.fetch_add(1, Ordering::SeqCst);
         let mut r = self.replies.lock().unwrap();
         if r.len() > 1 { r.remove(0) } else { r[0].clone() }
@@ -61,17 +77,14 @@ struct Rig {
 }
 
 fn rig(replies: Vec<Result<HttpReply, Transport>>) -> Rig {
+    rig_with(FixedTokens::new(vec!["tok-a", "tok-b"]), replies)
+}
+
+fn rig_with(tokens: FixedTokens, replies: Vec<Result<HttpReply, Transport>>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let http = Arc::new(ScriptHttp::new(replies));
     let lock = Arc::new(FakeLock { busy: AtomicBool::new(false) });
-    let poller = SharedPoller::new(
-        dir.path().to_path_buf(),
-        lock.clone(),
-        Arc::new(FixedTokens(vec!["tok-a", "tok-b"])),
-        http.clone(),
-        Arc::new(|| NOW),
-        Arc::new(|| 0.0),
-    );
+    let poller = SharedPoller::new(dir.path().to_path_buf(), lock.clone(), Arc::new(tokens), http.clone(), Arc::new(|| NOW), Arc::new(|| 0.0));
     Rig { _dir: dir, poller, http, lock }
 }
 
@@ -187,4 +200,87 @@ fn the_log_names_whose_budget_was_empty() {
     let log = std::fs::read_to_string(r.poller.cache_path().with_file_name(LOG_FILE)).unwrap();
     assert!(log.contains("    CLI-Token -> HTTP 429, naechste Quelle"), "{log}");
     assert!(log.contains("OK (Abruf, Desktop-Token) -> Cache aktualisiert, Takt 270s"), "{log}");
+}
+
+// ── Zwei Konten (2026-11-08): der Cache trägt sein Konto ─────────────────────────────
+
+/// Cache eines Kontos, der noch eine Minute lebt.
+fn living_cache_of(r: &Rig, account: &str) {
+    let c = json!({"data": {"a": 40}, "data_ts": NOW - 10.0, "error": null, "next_ts": NOW + 60.0, "n429": 2, "interval": 400, "account": account});
+    std::fs::write(r.poller.cache_path(), c.to_string()).unwrap();
+}
+
+#[test]
+fn every_write_carries_the_account_in_the_format_of_the_python_poller() {
+    // Ohne `account` verwirft der Tray (Python) den Cache bei jedem Blick als fremd und
+    // fragt selbst nach. Darum JEDER Schreibweg, und als letztes Feld wie in Python.
+    let ok = reply(200, None, "{}");
+    let cases = [ok, reply(401, None, ""), reply(429, None, ""), reply(503, None, ""), Err(Transport::Network)];
+    for answer in cases {
+        let r = rig_with(FixedTokens::of("a@x.de", vec!["t"]), vec![answer.clone()]);
+        let v = r.poller.get_usage(false);
+        let c = cache(&r);
+        assert_eq!(c["account"], "a@x.de", "{answer:?}");
+        assert_eq!(c.as_object().unwrap().keys().next_back().map(String::as_str), Some("account"));
+        assert_eq!(v.account.as_deref(), Some("a@x.de"));
+    }
+    let unknown = rig(vec![reply(200, None, "{}")]);
+    unknown.poller.get_usage(false);
+    assert!(cache(&unknown)["account"].is_null(), "unbekannt steht als null drin, wie in Python");
+}
+
+#[test]
+fn a_cache_of_the_same_account_lives_on_without_a_poll() {
+    let r = rig_with(FixedTokens::of("a@x.de", vec!["t"]), vec![reply(200, None, "{}")]);
+    living_cache_of(&r, "a@x.de");
+    let v = r.poller.get_usage(false);
+    assert_eq!(r.http.calls.load(Ordering::SeqCst), 0);
+    assert_eq!((v.data, v.account.as_deref()), (Some(json!({"a": 40})), Some("a@x.de")));
+}
+
+#[test]
+fn a_cache_of_another_account_is_discarded_and_only_the_interval_stays() {
+    let r = rig_with(FixedTokens::of("b@x.de", vec!["t"]), vec![reply(200, None, r#"{"b": 1}"#)]);
+    living_cache_of(&r, "a@x.de");
+    let v = r.poller.get_usage(false);
+    assert_eq!(r.http.calls.load(Ordering::SeqCst), 1, "die fremde Frist gilt nicht");
+    let c = cache(&r);
+    assert_eq!((c["account"].as_str(), c["data"].clone()), (Some("b@x.de"), json!({"b": 1})));
+    assert_eq!((c["n429"].as_u64(), c["interval"].as_f64()), (Some(0), Some(360.0)), "der gelernte Takt (400) bleibt");
+    assert_eq!(v.account.as_deref(), Some("b@x.de"));
+    let log = std::fs::read_to_string(r.poller.cache_path().with_file_name(LOG_FILE)).unwrap();
+    assert!(log.contains("Kontowechsel a@x.de -> b@x.de: Cache verworfen"), "{log}");
+}
+
+#[test]
+fn after_a_switch_a_failed_poll_shows_no_number_of_the_old_account() {
+    let r = rig_with(FixedTokens::of("b@x.de", vec!["t"]), vec![reply(429, None, "")]);
+    living_cache_of(&r, "a@x.de");
+    let v = r.poller.get_usage(false);
+    assert_eq!((v.data, v.data_ts, v.error.as_deref()), (None, None, Some("Rate-Limit")));
+    assert_eq!(cache(&r)["n429"], 1, "der Sperrzähler des alten Tokens zählt nicht mit");
+}
+
+#[test]
+fn while_another_process_polls_no_number_beats_a_foreign_one() {
+    let r = rig_with(FixedTokens::of("b@x.de", vec!["t"]), vec![reply(200, None, "{}")]);
+    living_cache_of(&r, "a@x.de");
+    r.lock.busy.store(true, Ordering::SeqCst);
+    let v = r.poller.get_usage(true);
+    assert_eq!(r.http.calls.load(Ordering::SeqCst), 0);
+    assert_eq!((v.data, v.account.as_deref(), v.error.as_deref()), (None, Some("b@x.de"), Some(SWITCH_ERROR)));
+    let same = rig_with(FixedTokens::of("a@x.de", vec!["t"]), vec![reply(200, None, "{}")]);
+    living_cache_of(&same, "a@x.de");
+    same.lock.busy.store(true, Ordering::SeqCst);
+    assert_eq!(same.poller.get_usage(true).data, Some(json!({"a": 40})), "dasselbe Konto: letzter Wert");
+}
+
+#[test]
+fn a_cache_without_account_is_foreign_once_the_account_is_known() {
+    // So sah jeder Cache vor dem Konto-Feld aus (auch der des alten Rust-Decks).
+    let r = rig_with(FixedTokens::of("a@x.de", vec!["t"]), vec![reply(200, None, "{}")]);
+    std::fs::write(r.poller.cache_path(), format!(r#"{{"data": {{"a": 1}}, "data_ts": 5.0, "next_ts": {}}}"#, NOW + 60.0)).unwrap();
+    r.poller.get_usage(false);
+    assert_eq!(r.http.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(cache(&r)["account"], "a@x.de");
 }

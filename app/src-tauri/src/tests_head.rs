@@ -1,41 +1,10 @@
-//! Der Kopf eines Blocks (Fenster schließen, vergessen, per Klick verbinden) und die
+//! Der Kopf eines Blocks (vergessen, per Klick verbinden) und die
 //! Herkunftszeilen des Tooltips, gegen Attrappen.
 
-use std::fs;
-
-use deck_core::protocol::Command;
-use deck_core::slot_state::write_state;
 use deck_win::Hwnd;
 
 use crate::tests::rig;
 use crate::tooltip::{content, origin_lines};
-
-#[test]
-fn closing_a_window_ends_all_its_agents_and_forgets_their_traces() {
-    let mut r = rig();
-    r.vs.open("repo", Some("A"), &["A1", "A2"]);
-    r.deck.store.bindings.insert("A".into(), "repo".into());
-    r.deck.store.tickets.insert("A2".into(), "X-2".into());
-    r.deck.slot_mode.insert("A2".into(), 1);
-    write_state(&r.deck.paths.state_dir, "A2", "waiting", 100.0).unwrap();
-    fs::write(r.deck.paths.state_dir.join("A2.worktree"), "C:/r.wt/x-2").unwrap();
-    r.deck.active_slot = Some("A1".into());
-    r.deck.close_window("A");
-    assert_eq!(r.vs.sent(), vec![("A".to_string(), Command::CloseWindow)]);
-    assert!(!r.deck.store.tickets.contains_key("A2"));
-    assert!(!r.deck.slot_mode.contains_key("A2"));
-    assert!(!r.deck.paths.state_dir.join("A2.worktree").exists());
-    assert_eq!(r.deck.active_slot, None);
-    assert!(r.deck.store.bindings.contains_key("A"), "die Bindung räumt erst das Abräumen nach der Frist");
-}
-
-#[test]
-fn a_disconnected_window_cannot_be_closed_from_the_deck() {
-    let mut r = rig();
-    r.deck.store.bindings.insert("B".into(), "repo".into());
-    r.deck.close_window("B");
-    assert!(r.vs.sent().is_empty());
-}
 
 #[test]
 fn connecting_by_click_binds_the_vscode_window_that_comes_to_the_front() {

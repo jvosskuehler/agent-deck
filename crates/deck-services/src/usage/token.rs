@@ -9,11 +9,15 @@
 //!    AES-256-GCM (`v10` + 12 Bytes Nonce + Chiffrat + 16 Bytes Tag).
 //!
 //! Warum beide: die Tokens haben eigene Laufzeiten und eigene Budgets. Fällt eins aus
-//! oder wird abgewiesen, trägt das andere, ohne dass der Nutzer etwas merkt. Gelesen
-//! wird nicht bei jedem Abruf, sondern erst neu, wenn die API ein Token abweist.
+//! oder wird abgewiesen, trägt das andere, ohne dass der Nutzer etwas merkt. Desktop
+//! aber nur für DASSELBE Konto wie die CLI (`account.rs`, seit 2026-11-08).
+//!
+//! Gelesen wird nicht bei jedem Abruf, sondern erst neu, wenn sich `.credentials.json`
+//! ändert (Login, Token-Erneuerung: ein Kontowechsel ist so beim nächsten Blick da, nicht
+//! erst, wenn das alte Token nach Stunden abgelehnt wird) oder die API ein Token abweist.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use aes_gcm::aead::{Aead, KeyInit};
@@ -22,6 +26,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::Value;
 
+use super::account::{TokenAccounts, select_tokens};
+use super::fetch::UsageHttp;
 use crate::fsutil::{now_unix, read_shared};
 
 const CLI_TOKEN_KEYS: [&str; 3] = ["accessToken", "access_token", "token"];
@@ -146,52 +152,127 @@ pub fn desktop_tokens(
     Ok(tokens.into_iter().map(|(_, t)| t).collect())
 }
 
-/// Liefert die Tokens, CLI zuerst. `force` liest neu statt aus dem Zwischenspeicher.
+/// (Änderungszeit in ns, Größe) der `.credentials.json`. Die CLI schreibt die Datei bei
+/// jedem Login und jeder Token-Erneuerung neu; eine geänderte Signatur ist darum das
+/// Signal für einen möglichen Kontowechsel (kostet ein `stat`).
+pub type CredSig = (u128, u64);
+
+/// Liefert die Tokens des aktuellen Kontos, CLI zuerst.
 pub trait TokenSource: Send + Sync {
-    /// `Err` nur, wenn KEINE Quelle etwas hergibt; der Text nennt beide.
+    /// `force` liest neu statt aus dem Zwischenspeicher. `Err` nur, wenn KEINE Quelle
+    /// etwas hergibt; der Text nennt beide.
     fn tokens(&self, force: bool) -> Result<Vec<String>, String>;
+    /// Konto der zuletzt gelesenen Tokens (E-Mail, klein; `None` = unbekannt), ohne neu
+    /// zu lesen.
+    fn account(&self) -> Option<String>;
+    /// Konto, für das jetzt abgefragt würde (Python `current_account`). Kostet im
+    /// Normalfall nur den Blick auf die Signatur; nach einem Wechsel wird neu gelesen.
+    fn current_account(&self) -> Option<String> {
+        let _ = self.tokens(false);
+        self.account()
+    }
 }
 
 type Reader = Box<dyn Fn() -> Result<Vec<String>, String> + Send + Sync>;
 
-/// Die echte Quelle: liest die Dateien und hält die Tokens, bis die API eins abweist.
+/// Alles, was [`DiskTokens`] außerhalb des Prozesses liest. Tests geben Attrappen.
+pub struct TokenFiles {
+    /// Tokens der CLI (`.credentials.json`).
+    pub cli: Reader,
+    /// Tokens von Claude Desktop.
+    pub desktop: Reader,
+    /// Signatur der `.credentials.json`, `None` ohne Datei.
+    pub signature: Box<dyn Fn() -> Option<CredSig> + Send + Sync>,
+    /// Konto der CLI laut `~/.claude.json` (Rückfall, wenn das Profil nicht antwortet).
+    pub cli_account: Box<dyn Fn() -> Option<String> + Send + Sync>,
+}
+
+impl TokenFiles {
+    /// Die echten Dateien dieses Kontos.
+    pub fn system() -> TokenFiles {
+        TokenFiles {
+            cli: Box::new(read_cli_tokens),
+            desktop: Box::new(read_desktop_tokens),
+            signature: Box::new(credentials_signature),
+            cli_account: Box::new(super::account::read_cli_account),
+        }
+    }
+}
+
+/// Was zuletzt gelesen wurde. `sig` ist `None`, solange noch nie gelesen wurde
+/// (Pythons `"unset"`), und `Some(None)`, wenn es damals keine Datei gab.
+#[derive(Default)]
+struct Held {
+    tokens: Vec<String>,
+    sig: Option<Option<CredSig>>,
+    account: Option<String>,
+}
+
+/// Die echte Quelle: liest die Dateien und hält die Tokens, bis sich
+/// `.credentials.json` ändert oder die API ein Token abweist.
 pub struct DiskTokens {
-    sources: Vec<(&'static str, Reader)>,
-    cache: Mutex<Vec<String>>,
+    files: TokenFiles,
+    accounts: TokenAccounts,
+    held: Mutex<Held>,
 }
 
 impl DiskTokens {
-    /// Mit eigenen Lesern (Tests): `(Name, Leser)` in der Reihenfolge der Abfrage.
-    pub fn with_sources(sources: Vec<(&'static str, Reader)>) -> DiskTokens {
-        DiskTokens { sources, cache: Mutex::new(Vec::new()) }
+    pub fn new(files: TokenFiles, accounts: TokenAccounts) -> DiskTokens {
+        DiskTokens { files, accounts, held: Mutex::new(Held::default()) }
     }
 
-    /// CLI-Datei und Claude Desktop dieses Kontos.
-    pub fn system() -> DiskTokens {
-        DiskTokens::with_sources(vec![("CLI", Box::new(read_cli_tokens)), ("Desktop", Box::new(read_desktop_tokens))])
+    /// CLI-Datei und Claude Desktop dieses Kontos; das Konto je Token über `http`.
+    pub fn system(http: Arc<dyn UsageHttp>) -> DiskTokens {
+        DiskTokens::new(TokenFiles::system(), TokenAccounts::new(http))
     }
 }
 
 impl TokenSource for DiskTokens {
     fn tokens(&self, force: bool) -> Result<Vec<String>, String> {
-        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
-        if !force && !cache.is_empty() {
-            return Ok(cache.clone());
+        let mut held = self.held.lock().unwrap_or_else(|e| e.into_inner());
+        let sig = (self.files.signature)();
+        if !force && !held.tokens.is_empty() && held.sig == Some(sig) {
+            return Ok(held.tokens.clone());
         }
-        let mut tokens = Vec::new();
         let mut errors = Vec::new();
-        for (label, read) in &self.sources {
-            match read() {
-                Ok(t) => tokens.extend(t),
-                Err(e) => errors.push(format!("{label}: {e}")),
+        let cli = match (self.files.cli)() {
+            Ok(t) => t,
+            Err(e) => {
+                errors.push(format!("CLI: {e}"));
+                // Die Datei ist da, aber gerade nicht lesbar (die CLI schreibt sie
+                // vermutlich in diesem Moment). Nicht auf Desktop ausweichen, das kann
+                // ein anderes Konto sein: alten Stand behalten, beim nächsten Mal neu
+                // (die Signatur bleibt dafür die alte).
+                if sig.is_some() && !held.tokens.is_empty() {
+                    return Ok(held.tokens.clone());
+                }
+                Vec::new()
             }
-        }
+        };
+        let desk = (self.files.desktop)().unwrap_or_else(|e| {
+            errors.push(format!("Desktop: {e}"));
+            Vec::new()
+        });
+        let account_of = |t: &str| self.accounts.account_of(t);
+        let cli_acc = cli.first().and_then(|t| account_of(t).or_else(|| (self.files.cli_account)()));
+        let (tokens, account) = select_tokens(&cli, cli_acc.as_deref(), &desk, &account_of);
         if tokens.is_empty() {
             return Err(if errors.is_empty() { "kein Token gefunden".into() } else { errors.join("; ") });
         }
-        *cache = tokens.clone();
+        *held = Held { tokens: tokens.clone(), sig: Some(sig), account };
         Ok(tokens)
     }
+
+    fn account(&self) -> Option<String> {
+        self.held.lock().unwrap_or_else(|e| e.into_inner()).account.clone()
+    }
+}
+
+/// Signatur der echten `.credentials.json`.
+fn credentials_signature() -> Option<CredSig> {
+    let meta = std::fs::metadata(cli_credentials_path()).ok()?;
+    let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    Some((mtime, meta.len()))
 }
 
 const RETRIES: u32 = 5;

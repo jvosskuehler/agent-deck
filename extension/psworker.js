@@ -17,8 +17,9 @@
 // beliebigen Text enthalten, aber nicht diese Zahl.
 //
 // Reine Protokoll-Logik (encodeRequest, takeResponses) ist ohne Prozess pruefbar,
-// die Klasse selbst braucht nur child_process - beides testet
-// tests/test_extension_psworker.py ueber node, ohne vscode.
+// die Klasse selbst braucht nur child_process - beides pruefte in der Python-Fassung
+// tests/test_extension_psworker.py ueber node, ohne vscode
+// (`git show 2856494:tests/test_extension_psworker.py`).
 
 const cp = require("child_process");
 const crypto = require("crypto");

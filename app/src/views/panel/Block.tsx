@@ -2,8 +2,8 @@
 // Kopf und Karten zu einer Gruppe bindet, darunter das Kartenraster mit der ＋-Karte.
 //
 // Der Kopf meint das ganze Fenster (connect.py): Rechtsklick öffnet das native Menü
-// (Bindung vergessen, mit einem VS-Code-Fenster verbinden), das ✕ beim Hover schließt
-// das Fenster nach einer Rückfrage, ebenfalls nativ.
+// (Bindung vergessen, mit einem VS-Code-Fenster verbinden). Ein ✕ für das ganze Fenster
+// gibt es bewusst nicht (docs/DESIGN.md).
 
 import { forwardRef, type CSSProperties, type PointerEvent } from "react";
 import type { BlockView } from "../../bindings/BlockView";
@@ -42,8 +42,6 @@ interface Props {
   onCreate(letter: string): void;
   /** Rechtsklick auf den Kopf. */
   onBlockMenu(letter: string): void;
-  /** ✕ im Kopf: Rust fragt nach und schließt dann das ganze Fenster. */
-  onCloseBlock(letter: string): void;
   onTileDragEnd(): void;
 }
 

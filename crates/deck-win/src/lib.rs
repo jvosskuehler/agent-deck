@@ -1,5 +1,5 @@
 //! Die Win32-Schicht des Agent Deck: Fenster finden, fokussieren und anordnen, Monitore
-//! und DPI, Prozesse, Tasten in fremde Konsolen, der Fokus-Rahmen als Overlay, globale
+//! und DPI, Prozesse, Tasten in fremde Konsolen, der Fokus-Rahmen, globale
 //! Tastenkürzel und DPAPI. Portiert aus `deck/platform/` der Python-Fassung.
 //!
 //! Für die App gilt: was nach außen wirkt, ruft sie über die Traits in [`effects`] auf,
@@ -11,9 +11,8 @@
 //!
 //! Der Fokus-Rahmen folgt dem Stand der Python-Fassung vom 2026-11-06 (vier animierte
 //! Designs, gezeichnet auf der Grafikkarte): [`frame_fx`] rechnet je Bild die Parameter,
-//! [`frame_gpu_overlay`] zeigt sie mit demselben Shader (`frame.hlsl`) über
-//! DirectComposition. [`frame_render`] ist derselbe Shader auf der CPU (Prüfstein und
-//! Rückfall), [`frame_overlay`] zeigt dessen Bilder in vier Layered-Streifen.
+//! [`frame_gpu_overlay`] zeigt sie mit dem Shader `frame.hlsl` über DirectComposition
+//! in einem Fenster aus [`frame_window`].
 //!
 //! Nicht portiert, weil es nur für tkinter nötig war: Per-Pixel-Alpha für das
 //! Griff-Fenster (`layered.py`; der Griff ist jetzt WebView), Timer-Auflösung
@@ -33,11 +32,10 @@ pub mod frame_fx;
 pub mod frame_gpu;
 pub mod frame_gpu_overlay;
 pub mod frame_layout;
-pub mod frame_overlay;
-pub mod frame_render;
+pub mod frame_window;
 pub mod hotkey;
+pub mod idle;
 pub mod monitor;
-pub mod overlay;
 pub mod procs;
 pub mod taskbar;
 pub mod window;

@@ -3,7 +3,7 @@
 //!
 //! Portiert aus `deck/claude/usage*.py`, `deck/claude/summarize.py` (der Prozess-Teil),
 //! `deck/ops/*.py` und `deck/ui/worktree_sweep.py` der Python-Fassung. Die reine Rechnung
-//! steht weiter in `deck-core` (Usage-Auswertung, Zusammenfassungs-Cache, Neustart-Plan,
+//! steht weiter in `deck-core` (Usage-Auswertung, Zusammenfassungs-Cache,
 //! Hook-Einträge), das Win32-Handwerk in `deck-win`; hier ist die Verdrahtung.
 //!
 //! **Alles mit Wirkung nach außen steckt hinter einem Trait**, die App reicht die echte
@@ -17,32 +17,22 @@
 //! | [`usage`] | `claude/usage.py`, `usage_token.py`, `claude-usage-shared/usage_poller.py` | nichts |
 //! | [`summary`] | `claude/summarize.py` (`generate`, `_run_claude`), `ui/uithread.py` | nichts |
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
-//! | [`restart`], [`restart_host`] | `ops/vscode_restart.py` | [`restart::EditorBridge`] (Broker) |
-//! | [`gather`] | `ops/window_gather.py` | nichts (nimmt `deck_win::effects::Desktop`) |
-//! | [`vscode_glow`], [`vscode_install`] | `ops/vscode_glow.py` | nichts |
 //! | [`vscode_ext`] | `ops/vscode_ext.py` + Kopierschritt aus `install.ps1` | nichts |
 //! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
 
-pub mod gather;
 pub mod guard;
 pub mod heartbeat;
 pub mod install;
 pub mod logfile;
 pub mod report;
-pub mod restart;
-pub mod restart_host;
 pub mod summary;
 pub mod usage;
 pub mod vscode_ext;
-pub mod vscode_glow;
-pub mod vscode_install;
 pub mod watchdog;
 pub mod worktree;
 pub mod worktree_sweep;
 
 mod fsutil;
-#[cfg(test)]
-mod testkit;

@@ -3,8 +3,7 @@
 //! Die Python-Fassung legte ihre Laufzeit-JSONs (Bindungen, Reihenfolge, Tickets …)
 //! neben den Code. Diese Fassung legt sie nach `%LOCALAPPDATA%\claude-agent-deck\`,
 //! denn eine installierte App hat kein beschreibbares Repo neben sich. Die
-//! Zustandsdateien der Hooks liegen wie bisher in `…\claude-agent-deck\state\`, damit
-//! Python- und Rust-Fassung während der Umstellung dieselben Dateien lesen.
+//! Zustandsdateien der Hooks liegen in `…\claude-agent-deck\state\`.
 //!
 //! Jede Funktion, die eine Datei anfasst, bekommt ihren Ordner als Parameter. Die
 //! Vorgaben (`state_dir()`, `app_dir()`) ruft nur der Aufrufer ganz oben; Tests reichen
@@ -28,20 +27,7 @@ pub const SETTINGS_FILE: &str = "deck_settings.json";
 pub const TICKETS_FILE: &str = "tickets.json";
 pub const ORDER_FILE: &str = "slot_order.json";
 pub const WIN_ORDER_FILE: &str = "win_order.json";
-pub const PLAN_FILE: &str = "restart_plan.json";
 pub const WT_HOSTS_FILE: &str = "wt_hosts.json";
-
-/// Was beim ersten Start aus dem Python-Repo übernommen wird.
-pub const RUNTIME_FILES: [&str; 8] = [
-    BINDINGS_FILE,
-    EFFORT_FILE,
-    SETTINGS_FILE,
-    TICKETS_FILE,
-    ORDER_FILE,
-    WIN_ORDER_FILE,
-    PLAN_FILE,
-    WT_HOSTS_FILE,
-];
 
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
@@ -99,11 +85,6 @@ pub fn worktree_marker_path(dir: &Path, slot: &str) -> PathBuf {
     dir.join(format!("{slot}.worktree"))
 }
 
-/// `state\<slot>.wtpid`: Shell eines Windows-Terminal-Agenten samt Startzeit.
-pub fn wtpid_path(dir: &Path, slot: &str) -> PathBuf {
-    dir.join(format!("{slot}.wtpid"))
-}
-
 /// JSON lesen; fehlt, ist halb geschrieben oder kaputt: `None` (nie ein Fehler).
 pub fn load_json(path: &Path) -> Option<Value> {
     let bytes = fs::read(path).ok()?;
@@ -130,21 +111,4 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
 /// JSON atomar schreiben, Byte für Byte wie Pythons `json.dump(data, f)`.
 pub fn save_json(path: &Path, data: &Value) -> io::Result<()> {
     atomic_write(path, pyjson::dumps(data).as_bytes())
-}
-
-/// Die Laufzeitdateien aus dem alten Python-Repo übernehmen, die es im App-Ordner noch
-/// nicht gibt. Vorhandene werden nie überschrieben: wer die neue Fassung schon benutzt
-/// hat, verliert nichts. Rückgabe: die Namen der übernommenen Dateien.
-pub fn adopt_legacy_files(legacy_root: &Path, app_dir: &Path) -> io::Result<Vec<&'static str>> {
-    let mut adopted = Vec::new();
-    for name in RUNTIME_FILES {
-        let src = legacy_root.join(name);
-        let dst = app_dir.join(name);
-        if src.is_file() && !dst.exists() {
-            let bytes = fs::read(&src)?;
-            atomic_write(&dst, &bytes)?;
-            adopted.push(name);
-        }
-    }
-    Ok(adopted)
 }

@@ -3,11 +3,6 @@
 //! aussehen, was ein Befund ist) stehen in `deck_core::claude::hook_setup`; hier sind
 //! Lesen, Schreiben, Sicherung und Bilanz.
 //!
-//! Umstellung von der Python-Fassung: beide Melder schreiben dieselben Zustandsdateien.
-//! Darum lässt [`install`] die alten Python-Einträge STEHEN; erst wenn der neue Weg
-//! bewiesen ist (eine Datei in `state\` wird frisch), nimmt [`remove_legacy`] sie auf
-//! ausdrücklichen Aufruf heraus. Nie umgekehrt.
-//!
 //! Eine settings.json, die da ist, aber nicht als JSON-Objekt liest, wird nicht
 //! angefasst: sie wird auch von Hand gepflegt, ein Zurückschreiben nähme alles andere mit.
 
@@ -17,10 +12,9 @@ use deck_core::claude::hook_setup::{self, MergeOptions};
 use deck_core::claude::settings;
 use serde_json::{Map, Value};
 
-use crate::fsutil::{backup, normcase};
+use crate::fsutil::{backup, normcase, real_path};
 use crate::guard;
 use crate::report::{Grade, Report};
-use crate::vscode_install::real_path;
 
 /// `~/.claude/settings.json`.
 pub fn settings_path() -> PathBuf {
@@ -74,12 +68,12 @@ fn bin(bin_dir: &Path) -> String {
 }
 
 /// Die sechs Hooks und die statusLine auf die Programme in `bin_dir` richten (dort liegen
-/// `deck-report.exe` und `deck-statusline.exe`). Fremde Einträge bleiben, Python-Einträge
-/// auch. `force_statusline` ersetzt auch eine fremde statusLine.
+/// `deck-report.exe` und `deck-statusline.exe`). Fremde Einträge bleiben.
+/// `force_statusline` ersetzt auch eine fremde statusLine.
 pub fn install(settings_file: &Path, bin_dir: &Path, force_statusline: bool) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
-    let opts = MergeOptions { force_statusline, keep_legacy: true };
+    let opts = MergeOptions { force_statusline };
     let (after, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
     write(settings_file, &before, after, &mut r);
     r.extend_notes(&notes);
@@ -87,7 +81,7 @@ pub fn install(settings_file: &Path, bin_dir: &Path, force_statusline: bool) -> 
 }
 
 /// Prüfen, was am Exit-Code nicht auffällt: fehlende Einträge, `cmd /c`, fehlendes
-/// `|| exit 0`, Pfade ins Leere, Python-Einträge daneben.
+/// `|| exit 0`, Pfade ins Leere.
 pub fn check(settings_file: &Path, bin_dir: &Path) -> Report {
     let mut r = Report::default();
     let Some(s) = read(settings_file, &mut r) else { return r };
@@ -96,22 +90,6 @@ pub fn check(settings_file: &Path, bin_dir: &Path) -> Report {
     let resolve = |p: &str| real_path(Path::new(p)).map_or_else(|| p.to_string(), |r| r.to_string_lossy().into_owned());
     let findings = hook_setup::audit(&s, &bin(bin_dir), &exists, &resolve);
     r.extend_notes(&findings);
-    r
-}
-
-/// Stehen noch Python-Einträge in der Datei?
-pub fn has_legacy(settings_file: &Path) -> bool {
-    hook_setup::has_legacy(&settings::load(settings_file))
-}
-
-/// Die Python-Einträge herausnehmen. Nur auf ausdrücklichen Aufruf, nachdem der neue
-/// Weg bewiesen ist.
-pub fn remove_legacy(settings_file: &Path) -> Report {
-    let mut r = Report::default();
-    let Some(before) = read(settings_file, &mut r) else { return r };
-    let (after, notes) = hook_setup::remove_legacy(&before);
-    write(settings_file, &before, after, &mut r);
-    r.extend_notes(&notes);
     r
 }
 
@@ -168,34 +146,6 @@ mod tests {
         assert_eq!(n, 0);
     }
 
-    fn with_python(s: &Path) {
-        let py = |status: &str| json!([{"hooks": [{"type": "command", "command": format!("python \"C:/agent-deck/report.py\" {status} || exit 0")}]}]);
-        let mut m = Map::new();
-        m.insert("model".into(), "opus[1m]".into());
-        m.insert("hooks".into(), json!({"Stop": py("done"), "SessionStart": py("idle")}));
-        m.insert("statusLine".into(), json!({"type": "command", "command": "python \"C:/agent-deck/statusline.py\" || exit 0"}));
-        settings::save(&m, s).unwrap();
-    }
-
-    #[test]
-    fn python_entries_stay_by_default_and_go_only_on_explicit_request() {
-        let (_d, bin, s) = rig();
-        with_python(&s);
-        let r = install(&s, &bin, false);
-        assert!(r.backup.is_some(), "vorhandene Datei: Sicherung");
-        let m = load(&s);
-        assert_eq!(commands_of(&m, "Stop", Owner::Legacy).len(), 1, "Python meldet weiter");
-        assert_eq!(commands_of(&m, "Stop", Owner::Deck).len(), 1);
-        assert_eq!(owner(m["statusLine"]["command"].as_str().unwrap()), Owner::Legacy);
-        assert_eq!(m["model"], "opus[1m]", "andere Schlüssel bleiben");
-        assert!(has_legacy(&s));
-        remove_legacy(&s);
-        let m = load(&s);
-        assert!(commands_of(&m, "Stop", Owner::Legacy).is_empty());
-        assert_eq!(commands_of(&m, "Stop", Owner::Deck).len(), 1);
-        assert!(!has_legacy(&s));
-    }
-
     #[test]
     fn an_unreadable_settings_file_is_not_touched() {
         let (_d, bin, s) = rig();
@@ -216,14 +166,24 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_leaves_python_and_foreign_entries() {
+    fn install_keeps_other_keys_and_foreign_hooks_and_uninstall_takes_out_only_ours() {
         let (_d, bin, s) = rig();
-        with_python(&s);
-        install(&s, &bin, false);
+        let lint = json!([{"hooks": [{"type": "command", "command": "python C:/tools/lint.py"}]}]);
+        let mut m = Map::new();
+        m.insert("model".into(), "opus[1m]".into());
+        m.insert("hooks".into(), json!({"Stop": lint}));
+        settings::save(&m, &s).unwrap();
+        let r = install(&s, &bin, false);
+        assert!(r.backup.is_some(), "vorhandene Datei: Sicherung");
+        let m = load(&s);
+        assert_eq!(m["model"], "opus[1m]", "andere Schlüssel bleiben");
+        assert_eq!(commands_of(&m, "Stop", Owner::Foreign).len(), 1);
+        assert_eq!(commands_of(&m, "Stop", Owner::Deck).len(), 1);
         uninstall(&s);
         let m = load(&s);
         assert!(commands_of(&m, "Stop", Owner::Deck).is_empty());
-        assert_eq!(commands_of(&m, "Stop", Owner::Legacy).len(), 1);
+        assert_eq!(commands_of(&m, "Stop", Owner::Foreign).len(), 1);
+        assert!(m.get("statusLine").is_none());
     }
 
     #[test]

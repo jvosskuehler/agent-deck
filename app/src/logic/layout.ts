@@ -9,8 +9,6 @@ export const CARD_GAP = 10;
 export const MAX_COLS = 4;
 export const TERMINAL_H = 118;
 export const VSCODE_H = 58;
-/** Luft zwischen zwei Repo-Blöcken. */
-export const BLOCK_GAP = 18;
 
 export function cardHeight(host: Host): number {
   return host === "terminal" ? TERMINAL_H : VSCODE_H;
@@ -54,9 +52,4 @@ export function blockWidth(block: Pick<BlockView, "rows" | "screenCols" | "tiles
 export function wrapLimit(block: Pick<BlockView, "rows" | "screenCols">, cols: number): number {
   if (!block.screenCols) return cols;
   return Math.max(block.screenCols, ...block.rows);
-}
-
-/** Breite des Rasters bei <cols> Spalten. */
-export function gridWidth(cols: number): number {
-  return cols * CARD_W + (cols - 1) * CARD_GAP;
 }

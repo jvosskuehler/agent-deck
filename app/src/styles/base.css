@@ -27,7 +27,6 @@
   --muted: #9893a5;
   --meta: #575279;
   --ref: #6a5590;
-  --bypass: #8f3f58;
 
   /* Blockkopf, ＋-Karte, Leiste */
   --rail: #dfdad9;
@@ -39,15 +38,12 @@
   --add-ink-hot: #6e6a86;
 
   /* Signalfarben außerhalb der Karten: Pigment für Flächen, Ink für Text. */
-  --ok-pig: #4fa36a;
   --ok-ink: #2c7247;
   --warn-pig: #e8813f;
   --warn-ink: #a4441c;
-  --on-warn: #3a1c06;
   --err-pig: #c4536f;
   --err-ink: #a13d59;
   --on-err: #fffaf3;
-  --knob: #fffaf3;
 
   --font-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   --font-sans: "IBM Plex Sans", "Segoe UI Variable", "Segoe UI", sans-serif;
@@ -87,7 +83,6 @@
     --muted: #6f6b66;
     --meta: #cfc9bf;
     --ref: #bda2e0;
-    --bypass: #f497a8;
 
     --rail: #3a3734;
     --rail-hot: #6f6b66;
@@ -97,15 +92,12 @@
     --add-ink: #6f6b66;
     --add-ink-hot: #8e8a84;
 
-    --ok-pig: #86d2a3;
     --ok-ink: #86d2a3;
     --warn-pig: #f5a27c;
     --warn-ink: #f5a27c;
-    --on-warn: #1d1c1b;
     --err-pig: #f08a9e;
     --err-ink: #f08a9e;
     --on-err: #1d1c1b;
-    --knob: #e6e0d6;
   }
 }
 

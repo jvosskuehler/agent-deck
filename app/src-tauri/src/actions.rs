@@ -1,15 +1,13 @@
 //! Was ein Klick auslöst (`deck/ui/actions.py`, Teile von `connect.py`): Fenster nach
 //! vorn, Pane fokussieren, Agent anlegen und schließen, Modell/Effort/Modus setzen,
-//! Sprung-Taste, Repo in Windows Terminal öffnen.
+//! Sprung-Taste.
 
-use std::path::Path;
-
+use deck_core::agent_flags::flags;
 use deck_core::attention::next_slot;
 use deck_core::claude::settings::{MODEL_CHOICES, effort_label, read_values};
-use deck_core::config::{MODE_START, VSCODE_MARKER, WINDOWS};
+use deck_core::config::{MODE_START, VSCODE_MARKER};
 use deck_core::front::focus_target;
 use deck_core::protocol::Command;
-use deck_core::restart_plan::flags;
 use deck_core::slot_state::{clear_state, read_all, write_state};
 use deck_core::status_model::mode_steps;
 use deck_win::Hwnd;
@@ -184,48 +182,6 @@ impl Deck {
         self.active_slot = Some(slot.to_string());
         let cycle = self.mode_cycle();
         self.set_slot_mode(slot, target, &cycle, None);
-    }
-
-    /// Ein Repo als Windows-Terminal-Block öffnen und gleich den ersten Agenten darin
-    /// starten. Steht es schon als WT-Block da, kommt nur ein Agent dazu. Hängt es an
-    /// einem VS-Code-Fenster OHNE Agenten, wird diese Bindung gelöst (sonst stünde der
-    /// Name zweimal da). Rückgabe: Text für die Rückmeldung.
-    pub fn open_repo_in_terminal(&mut self, folder: &str, now: f64) -> String {
-        let folder = folder.trim_end_matches(['\\', '/']).to_string();
-        let path = Path::new(&folder);
-        let repo = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let l = self.lang;
-        if repo.is_empty() || !path.is_dir() {
-            return l.l("Kein Ordner gewählt.", "No folder chosen.").into();
-        }
-        for (w, r) in self.store.bindings.clone() {
-            if r.to_lowercase() != repo.to_lowercase() {
-                continue;
-            }
-            if self.hosts.is_wt(&w) {
-                self.create_agent(&w, now);
-                return if l.is_english() {
-                    format!("“{repo}”: another agent in the terminal.")
-                } else {
-                    format!("„{repo}“: weiterer Agent im Terminal.")
-                };
-            }
-            if self.hosts.terminals(&w).is_empty() {
-                self.forget_window(&w);
-            }
-        }
-        let Some(free) = WINDOWS.iter().find(|w| !self.store.bindings.contains_key(**w)).map(|w| w.to_string()) else {
-            return l.l("Kein Buchstabe mehr frei.", "No letter left.").into();
-        };
-        self.hosts.wt.open_repo(&free, &folder);
-        self.store.bindings.insert(free.clone(), repo.clone());
-        self.store.save_bindings();
-        self.create_agent(&free, now);
-        if l.is_english() {
-            format!("“{repo}” opens in Windows Terminal.")
-        } else {
-            format!("„{repo}“ öffnet sich in Windows Terminal.")
-        }
     }
 
     /// Die Bindung eines Buchstabens vergessen (auch eine verbundene, bindungslose).

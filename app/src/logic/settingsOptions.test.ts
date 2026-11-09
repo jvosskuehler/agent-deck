@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { t } from "./i18n";
-import { effortOptions, matchOption, modelOptions, modeOptions } from "./settingsOptions";
+import { effortOptions, matchOption, modelOptions, modeOptions, onOffOptions } from "./settingsOptions";
 
 describe("Segment zum gespeicherten Wert", () => {
   it("trifft den exakten Wert", () => {
@@ -16,6 +16,11 @@ describe("Segment zum gespeicherten Wert", () => {
     expect(matchOption(effortOptions(), "ultracode")).toBe("Ultracode");
   });
 
+  it("zeigt einen Schalter als An und Aus", () => {
+    expect(onOffOptions("de").map((o) => o.label)).toEqual(["An", "Aus"]);
+    expect(onOffOptions("en").map((o) => o.value)).toEqual(["on", "off"]);
+  });
+
   it("markiert nichts bei einem fremden Wert", () => {
     expect(matchOption(modeOptions("de"), "yolo")).toBeNull();
     expect(matchOption(modeOptions("de"), "")).toBeNull();
@@ -29,7 +34,7 @@ describe("Texte", () => {
   });
 
   it("enthalten keine Gedankenstriche", () => {
-    const keys = ["waitingForAgents", "usageOpen", "newAgentsHint", "liveNote"] as const;
+    const keys = ["waitingForAgents", "usageOpen", "newAgentsHint", "liveNote", "autoCompact"] as const;
     for (const k of keys) {
       for (const lang of ["de", "en"] as const) expect(t(lang, k)).not.toMatch(/[—–]/);
     }

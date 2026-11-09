@@ -207,17 +207,6 @@ fn a_linked_orphan_worktree_is_removed_through_git_after_the_grace() {
 // ── Verdrahtung ─────────────────────────────────────────────────────────────
 
 #[test]
-fn while_the_restart_runs_nothing_is_swept() {
-    let base = tempfile::tempdir().unwrap();
-    let mut sw = WorktreeSweeper::new(Arc::new(ops(base.path())), base.path().to_path_buf());
-    let v = SweepView { now: 0.0, markers: map(&[("A1", r"C:\r.wt\x")]), cwds: map(&[("A1", r"C:\r")]), ..Default::default() };
-    for t in [0.0, 1000.0, 5000.0] {
-        assert!(sw.tick(&SweepView { now: t, ..v.clone() }, true).is_empty());
-    }
-    assert!(!sw.disk_busy(), "auch kein Platten-Durchgang");
-}
-
-#[test]
 fn an_orphaned_slot_loses_its_marker_and_found_ticket() {
     let base = tempfile::tempdir().unwrap();
     let state = real(base.path()).join("state");
@@ -227,8 +216,8 @@ fn an_orphaned_slot_loses_its_marker_and_found_ticket() {
     std::fs::write(found_ticket_path(&state, "A1"), "ABC-1").unwrap();
     let mut sw = WorktreeSweeper::new(Arc::new(ops(base.path())), state.clone());
     let v = SweepView { now: 0.0, markers: map(&[("A1", &wt.to_string_lossy())]), ..Default::default() };
-    assert!(sw.tick(&v, false).is_empty());
-    assert_eq!(sw.tick(&SweepView { now: WT_ORPHAN_GRACE_S, ..v }, false), ["A1"]);
+    assert!(sw.tick(&v).is_empty());
+    assert_eq!(sw.tick(&SweepView { now: WT_ORPHAN_GRACE_S, ..v }), ["A1"]);
     assert!(!worktree_marker_path(&state, "A1").exists());
     assert!(!found_ticket_path(&state, "A1").exists());
 }

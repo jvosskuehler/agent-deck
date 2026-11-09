@@ -21,7 +21,7 @@ pub const CMD_SEND: &str = "send";
 /// Einzelne Taste (enter/esc/shift-tab, ggf. `repeat`).
 pub const CMD_KEY: &str = "key";
 /// Ein weiteres Claude-Terminal öffnen. Felder: `model` (CLI `--model`), `args` (fertige
-/// Flag-Zeile aus `restart_plan::flags`, hat Vorrang vor `model`), `cwd` (beim Resume
+/// Flag-Zeile aus `agent_flags::flags`, hat Vorrang vor `model`), `cwd` (beim Resume
 /// PFLICHT: Claude findet eine Session über ihr Projektverzeichnis) und `slot`
 /// (Wunschname; belegt oder fremd → die Extension vergibt selbst).
 pub const CMD_CREATE_AGENT: &str = "createAgent";

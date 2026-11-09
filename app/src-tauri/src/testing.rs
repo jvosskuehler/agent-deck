@@ -6,8 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use deck_core::protocol::Command;
-use deck_core::restart_plan::ClientInfo;
-use deck_win::arrange::{ClassWindow, Placement, TopWindow};
+use deck_win::arrange::ClassWindow;
 use deck_win::console_input::Step;
 use deck_win::effects::{ConsoleInput, Desktop, Processes};
 use deck_win::focus::Corners;
@@ -32,6 +31,7 @@ struct Desk {
     light: Option<bool>,
     restored: Vec<Hwnd>,
     monitors: Vec<Monitor>,
+    idle_s: f64,
 }
 
 #[derive(Default)]
@@ -50,6 +50,10 @@ impl FakeDesktop {
     }
     pub fn set_foreground(&self, hwnd: Hwnd, title: &str, class: &str) {
         self.0.lock().unwrap().fg = Some(WindowInfo { hwnd, title: title.into(), class: class.into(), pid: 1 });
+    }
+    /// Sekunden seit der letzten Eingabe (ohne Aufruf 0: gerade getippt).
+    pub fn set_input_idle(&self, secs: f64) {
+        self.0.lock().unwrap().idle_s = secs;
     }
     pub fn placed(&self) -> Vec<(Hwnd, Rect)> {
         self.0.lock().unwrap().placed.clone()
@@ -116,17 +120,11 @@ impl Desktop for FakeDesktop {
     fn class_windows(&self, _: &str) -> Vec<ClassWindow> {
         self.0.lock().unwrap().wt.iter().map(|(w, _)| w.clone()).collect()
     }
-    fn visible_windows(&self) -> Vec<TopWindow> {
-        Vec::new()
-    }
     fn windows_of_pid(&self, _: u32) -> Vec<Hwnd> {
         Vec::new()
     }
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         self.0.lock().unwrap().wt.iter().find(|(w, _)| w.hwnd == hwnd).map(|(_, r)| *r)
-    }
-    fn placement(&self, _: Hwnd) -> Option<Placement> {
-        None
     }
     fn monitors(&self) -> Vec<Monitor> {
         let d = self.0.lock().unwrap();
@@ -145,6 +143,9 @@ impl Desktop for FakeDesktop {
         let d = self.0.lock().unwrap();
         d.wt.iter().any(|(w, _)| w.hwnd == hwnd) || d.titles.iter().any(|(h, _)| *h == hwnd)
     }
+    fn input_idle_s(&self) -> f64 {
+        self.0.lock().unwrap().idle_s
+    }
     fn focus(&self, hwnd: Hwnd) -> Result<bool> {
         self.0.lock().unwrap().focused.push(hwnd);
         Ok(true)
@@ -156,12 +157,6 @@ impl Desktop for FakeDesktop {
     fn restore(&self, hwnd: Hwnd) -> Result<bool> {
         self.0.lock().unwrap().restored.push(hwnd);
         Ok(true)
-    }
-    fn move_maximized(&self, _: Hwnd, _: Rect) -> Result<()> {
-        Ok(())
-    }
-    fn post_close(&self, _: Hwnd) -> Result<()> {
-        Ok(())
     }
     fn set_corners(&self, hwnd: Hwnd, _: Corners) -> Result<bool> {
         self.0.lock().unwrap().corners.push(hwnd);
@@ -191,17 +186,11 @@ impl Processes for FakeProcesses {
     fn list(&self) -> Option<Vec<ProcessInfo>> {
         None
     }
-    fn count_exe(&self, _: &str) -> Option<usize> {
-        None
-    }
     fn process_start(&self, pid: u32) -> Option<u64> {
         self.alive.lock().unwrap().get(&pid).copied()
     }
     fn kill_tree(&self, pid: u32) -> Result<()> {
         self.killed.lock().unwrap().push(pid);
-        Ok(())
-    }
-    fn kill_by_name(&self, _: &str) -> Result<()> {
         Ok(())
     }
 }
@@ -298,8 +287,5 @@ impl VsCodeHost for FakeVsCode {
     fn workspace_slots(&self, workspace: &str) -> Vec<String> {
         let ws = self.windows.lock().unwrap();
         ws.iter().find(|w| w.workspace.eq_ignore_ascii_case(workspace)).map(|w| w.slots.clone()).unwrap_or_default()
-    }
-    fn client_info(&self) -> Vec<ClientInfo> {
-        Vec::new()
     }
 }

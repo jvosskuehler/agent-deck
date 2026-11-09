@@ -11,9 +11,11 @@
 //! Die Logik steht hier in der Bibliothek, damit Tests sie mit Wegwerf-Ordnern und
 //! eigener Eingabe aufrufen können; die Programme in `src/bin` sind nur Hüllen.
 
+pub mod cache_scan;
 pub mod env;
 pub mod procs;
 pub mod report;
+pub mod status_extras;
 pub mod statusline;
 
 use std::io::{IsTerminal, Read};

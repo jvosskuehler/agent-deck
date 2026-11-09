@@ -32,7 +32,7 @@ pub(crate) struct Rig {
     pub(crate) vs: Arc<FakeVsCode>,
     pub(crate) desk: Arc<FakeDesktop>,
     procs: Arc<FakeProcesses>,
-    console: Arc<FakeConsole>,
+    pub(crate) console: Arc<FakeConsole>,
     launcher: Arc<FakeLauncher>,
 }
 
@@ -67,7 +67,7 @@ impl Rig {
     fn status(&self, slot: &str) -> Option<String> {
         read_all(&self.deck.paths.state_dir).get(slot).and_then(|s| s.get("status")).and_then(|v| v.as_str()).map(String::from)
     }
-    fn wt_agent(&self, slot: &str, pid: u32) {
+    pub(crate) fn wt_agent(&self, slot: &str, pid: u32) {
         let rec = json!({"pid": pid, "created": 133_000_000_000_000_000i64, "slot": slot});
         fs::write(self.deck.paths.state_dir.join(format!("{slot}.wtpid")), rec.to_string()).unwrap();
         self.procs.alive.lock().unwrap().insert(pid, 133_000_000_000_000_000);
@@ -101,17 +101,6 @@ fn a_closed_vscode_window_goes_only_after_the_grace_and_while_no_title_shows_it(
     r.deck.tick(123.5);
     assert!(!r.deck.store.bindings.contains_key("A"));
     assert!(!r.deck.store.tickets.contains_key("A1"), "Ticket geht mit");
-}
-
-#[test]
-fn in_trial_mode_nothing_is_cleaned_up() {
-    let mut r = rig();
-    r.deck.cleanup_allowed = false;
-    r.deck.store.bindings.insert("A".into(), "repo".into());
-    for t in [100.0, 104.0, 108.0] {
-        r.deck.tick(t);
-    }
-    assert!(r.deck.store.bindings.contains_key("A"));
 }
 
 #[test]
@@ -271,8 +260,9 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
     let mut r = rig();
     let folder = r._tmp.path().join("repo");
     fs::create_dir_all(&folder).unwrap();
-    let msg = r.deck.open_repo_in_terminal(&folder.to_string_lossy(), 100.0);
-    assert!(msg.contains("repo"));
+    r.deck.hosts.wt.open_repo("A", &folder.to_string_lossy());
+    r.deck.store.bindings.insert("A".into(), "repo".into());
+    r.deck.create_agent("A", 100.0);
     let argv = r.launcher.0.lock().unwrap().last().cloned().unwrap();
     assert_eq!(&argv[..4], ["wt.exe", "-w", "deck-A1", "new-tab"]);
     assert!(argv.contains(&"--suppressApplicationTitle".to_string()));
@@ -334,7 +324,7 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     assert_eq!(r.deck.set_setting("effort", &json!("Ultracode")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("model", &json!("fable")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("language", &json!("english")), Ok(Effect::Language));
-    assert_eq!(r.deck.set_setting("jiraPrefix", &json!(" orph-x ")), Ok(Effect::None));
+    assert!(r.deck.set_setting("jiraPrefix", &json!("ORPH")).is_err(), "nicht mehr im Fenster");
     let edge = r.deck.set_setting("dockEdge", &json!("bottom")).unwrap();
     assert_eq!(edge, Effect::Edge(deck_core::dock::Edge::Bottom));
     assert!(r.deck.set_setting("nonsense", &json!(1)).is_err());
@@ -344,6 +334,6 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     assert_eq!(claude["ultracode"], true);
     let v = r.deck.settings_view();
     assert_eq!((v.model.as_str(), v.effort.as_str(), v.language.as_str()), ("fable", "Ultracode", "english"));
-    assert_eq!((v.jira_prefix.as_str(), v.dock_edge.as_str()), ("ORPHX", "bottom"));
+    assert_eq!(v.dock_edge.as_str(), "bottom");
     assert!(r.deck.lang.is_english());
 }

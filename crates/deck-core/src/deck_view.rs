@@ -136,11 +136,6 @@ impl DeckInput<'_> {
             .collect()
     }
 
-    /// Die Slots eines Fensters in der vom Nutzer gezogenen Reihenfolge.
-    pub fn ordered_slots(&self, letter: &str) -> Vec<String> {
-        self.layout(letter).0
-    }
-
     /// Die Slots eines Fensters samt Reihenlängen. Liegen die Fenster auf dem
     /// Bildschirm (Windows Terminal), bestimmt ihre Lage Reihenfolge und Reihen; was
     /// dort fehlt (minimiert), hängt in gezogener Reihenfolge hinten an. Sonst gilt die

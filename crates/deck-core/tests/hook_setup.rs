@@ -1,5 +1,5 @@
 //! Der Hook-Merge in Claudes settings.json (Python `test_claude_hook_setup.py`), auf die
-//! neuen Programme übertragen, dazu die Erkennung der alten Python-Einträge.
+//! Programme dieser Fassung übertragen.
 //!
 //! Diese Datei fasst die eine Stelle an, an der ein Fehler den AGENTEN blockiert: ein
 //! kaputter Eintrag unter UserPromptSubmit oder PreToolUse gilt als Veto.
@@ -16,10 +16,6 @@ fn obj(v: Value) -> Map<String, Value> {
 
 fn fremd() -> Value {
     json!({"hooks": [{"type": "command", "command": "python C:\\tools\\lint.py"}]})
-}
-
-fn legacy_cmd(status: &str) -> String {
-    format!("python \"C:\\Users\\x\\Repos\\agent-deck\\report.py\" {status} || exit 0")
 }
 
 fn cmds(s: &Map<String, Value>, event: &str) -> Vec<String> {
@@ -117,7 +113,7 @@ fn a_foreign_statusline_stays_with_a_warning_unless_forced() {
     let (out, notes) = merged(before.clone());
     assert_eq!(out["statusLine"], before["statusLine"]);
     assert_eq!(notes.iter().filter(|(g, _)| *g == "warn").count(), 1);
-    let (forced, _) = merge(&obj(before), BIN, MergeOptions { force_statusline: true, ..Default::default() });
+    let (forced, _) = merge(&obj(before), BIN, MergeOptions { force_statusline: true });
     assert_eq!(forced["statusLine"]["command"], statusline_command(BIN));
 }
 
@@ -130,11 +126,31 @@ fn done_is_info_and_left_out_is_warn() {
 #[test]
 fn our_own_statusline_with_an_extra_tail_is_not_rewritten_but_one_from_elsewhere_is() {
     let own = format!("{} --x", statusline_command(BIN));
-    let (out, notes) = merged(json!({"statusLine": {"type": "command", "command": own}}));
+    let (out, notes) =
+        merged(json!({"statusLine": {"type": "command", "command": own, "refreshInterval": STATUSLINE_REFRESH_S}}));
     assert_eq!(out["statusLine"]["command"], own);
     assert!(!notes.iter().any(|(_, t)| t.contains("statusLine")));
     let (out, _) = merged(json!({"statusLine": {"type": "command", "command": statusline_command(OTHER)}}));
     assert_eq!(out["statusLine"]["command"], statusline_command(BIN));
+}
+
+#[test]
+fn the_statusline_gets_a_beat_so_the_cache_countdown_keeps_running() {
+    // Ohne refreshInterval zeichnet Claude Code die Zeile nur bei Ereignissen neu: im
+    // Leerlauf, wenn der Cache abläuft, stünde der Countdown still und live.json würde alt.
+    let (fresh, _) = merged(json!({}));
+    assert_eq!(fresh["statusLine"]["refreshInterval"], STATUSLINE_REFRESH_S);
+    let old = json!({"statusLine": {"type": "command", "command": statusline_command(BIN)}});
+    let (out, notes) = merged(old.clone());
+    assert_eq!(out["statusLine"]["refreshInterval"], STATUSLINE_REFRESH_S);
+    assert_eq!(out["statusLine"]["command"], statusline_command(BIN));
+    assert!(notes.iter().any(|(_, t)| t.contains("statusLine")));
+    // Ein selbst gesetzter Takt bleibt stehen.
+    let mut own = old;
+    own["statusLine"]["refreshInterval"] = json!(60);
+    let (out, notes) = merged(own);
+    assert_eq!(out["statusLine"]["refreshInterval"], 60);
+    assert!(!notes.iter().any(|(_, t)| t.contains("statusLine")));
 }
 
 #[test]
@@ -145,30 +161,6 @@ fn other_keys_stay_untouched_and_the_input_is_not_mutated() {
     assert_eq!(before, copy);
     assert_eq!(out["model"], "opus[1m]");
     assert_eq!(out["permissions"], json!({"allow": ["Bash(git*)"]}));
-}
-
-#[test]
-fn legacy_python_entries_are_recognized_and_replaced_by_default() {
-    let before = json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": legacy_cmd("done")}]}]},
-        "statusLine": {"type": "command", "command": "python \"C:\\Users\\x\\Repos\\agent-deck\\statusline.py\""}});
-    assert!(has_legacy(&obj(before.clone())));
-    let (out, _) = merged(before);
-    assert_eq!(cmds(&out, "Stop"), [hook_command(BIN, "done")]);
-    assert_eq!(out["statusLine"]["command"], statusline_command(BIN));
-    assert!(!has_legacy(&out));
-}
-
-#[test]
-fn during_the_switch_legacy_entries_can_stay_until_the_new_path_is_proven() {
-    let before = json!({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": legacy_cmd("done")}]}]},
-        "statusLine": {"type": "command", "command": "python \"C:\\x\\statusline.py\""}});
-    let (out, notes) = merge(&obj(before), BIN, MergeOptions { keep_legacy: true, ..Default::default() });
-    assert_eq!(cmds(&out, "Stop"), [legacy_cmd("done"), hook_command(BIN, "done")]);
-    assert_eq!(out["statusLine"]["command"], "python \"C:\\x\\statusline.py\"");
-    assert!(notes.iter().any(|(g, _)| *g == "warn"));
-    let (clean, _) = remove_legacy(&out);
-    assert_eq!(cmds(&clean, "Stop"), [hook_command(BIN, "done")]);
-    assert!(clean.get("statusLine").is_none());
 }
 
 #[test]
@@ -188,8 +180,7 @@ fn remove_takes_out_only_our_entries() {
 fn ownership_is_recognized_by_file_name_with_boundaries() {
     assert_eq!(owner("python C:\\tools\\my_report.py"), Owner::Foreign);
     assert_eq!(owner("python C:\\tools\\report.pyc"), Owner::Foreign);
-    assert_eq!(owner("python \"C:\\x\\report.py\" idle || exit 0"), Owner::Legacy);
-    assert_eq!(owner("python C:/x/statusline.py"), Owner::Legacy);
+    assert_eq!(owner("python \"C:\\x\\report.py\" idle || exit 0"), Owner::Foreign, "Python-Fassung: fremd");
     assert_eq!(owner("\"C:/x/deck-report.exe\" idle || exit 0"), Owner::Deck);
     assert_eq!(owner("C:\\x\\deck-statusline.exe"), Owner::Deck);
     assert_eq!(owner("C:\\x\\my-deck-report.exe"), Owner::Foreign);
@@ -243,24 +234,21 @@ fn short_and_long_windows_paths_are_the_same_folder() {
 }
 
 #[test]
-fn two_reporters_under_one_event_warn_also_when_one_is_the_old_python_hook() {
+fn two_reporters_under_one_event_warn() {
     let mut s = merged(json!({})).0;
     s["hooks"]["Stop"].as_array_mut().unwrap().push(json!({"hooks": [{"type": "command", "command": hook_command(OTHER, "done")}]}));
     assert!(audit_ok(&s).iter().any(|(g, t)| *g == "warn" && t.contains("gegeneinander")));
-    let mut s = merged(json!({})).0;
-    s["hooks"]["Stop"].as_array_mut().unwrap().push(json!({"hooks": [{"type": "command", "command": legacy_cmd("done")}]}));
-    assert!(audit_ok(&s).iter().any(|(g, t)| *g == "warn" && t.contains("report.py")));
 }
 
 #[test]
-fn a_missing_or_legacy_statusline_is_a_warning_not_a_failure() {
+fn a_missing_or_foreign_statusline_is_a_warning_not_a_failure() {
     let mut s = merged(json!({})).0;
     s.shift_remove("statusLine");
     let f = audit_ok(&s);
     assert!(f.iter().any(|(g, t)| *g == "warn" && t.contains("statusLine")));
     assert!(!f.iter().any(|(g, _)| *g == "fail"));
     s.insert("statusLine".into(), json!({"type": "command", "command": "python C:\\x\\statusline.py"}));
-    assert!(audit_ok(&s).iter().any(|(g, t)| *g == "warn" && t.contains("Python")));
+    assert!(audit_ok(&s).iter().any(|(g, t)| *g == "warn" && t.contains("anderen Werkzeug")));
 }
 
 #[test]

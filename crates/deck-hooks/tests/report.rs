@@ -13,6 +13,7 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
     HookEnv {
         state_dir: dir.join("state"),
         app_dir: dir.to_path_buf(),
+        claude_settings: dir.join("settings.json"),
         agent_slot: slot.map(String::from),
         cwd: Some(r"C:\Users\x\Repos\deck".into()),
         now: 1000.5,

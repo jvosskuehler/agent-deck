@@ -78,6 +78,7 @@ function UsageTip({ usage, lang, scheme }: { usage: UsageView; lang: Lang; schem
   return (
     <div className="usage-tip" role="tooltip">
       <div className="usage-tip-head">{t(lang, "usageHead")}</div>
+      {usage.account && <div className="usage-tip-account">{t(lang, "usageAccount", { account: usage.account })}</div>}
       {rows.map((l) => (
         <div key={l.label} className="usage-tip-row">
           <span className="bar-dot" style={{ background: dotColor(l, scheme) }} />

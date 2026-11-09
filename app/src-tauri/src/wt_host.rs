@@ -82,9 +82,6 @@ pub struct WtHost {
     /// Zuletzt gemessene Fensterlage je Block (Zeitpunkt, Reihen, Spalten des Monitors).
     screen: HashMap<String, (f64, Vec<Vec<String>>, u32)>,
     clock: fn() -> f64,
-    /// Fenster kacheln, wenn Agenten kommen oder gehen. Im Probebetrieb aus: dort
-    /// kachelt noch das Python-Deck, und zwei Decks schöben dieselben Fenster.
-    pub retile: bool,
 }
 
 /// Eingabe-Schritte aus dem Fachkern in die Form von `deck-console` (Pausen als Dauer).
@@ -116,7 +113,6 @@ impl WtHost {
             tiler: WtTiler::default(),
             screen: HashMap::new(),
             clock,
-            retile: true,
         }
     }
 
@@ -186,7 +182,7 @@ impl WtHost {
         let names: Vec<String> = out.keys().cloned().collect();
         for win in self.hosts().into_keys() {
             let slots = wt::slots_of(&win, &names);
-            if self.tiler.changed(&win, &slots) && self.retile {
+            if self.tiler.changed(&win, &slots) {
                 // Wer schon liegt, behält seinen Platz in der Reihenfolge (zuletzt
                 // gemessene Lage), Neue kommen hinten dazu. Sonst sortierte jedes neue
                 // Fenster den Bildschirm nach Slot-Namen um.
@@ -236,7 +232,7 @@ impl WtHost {
     pub fn retile_in(&mut self, win: &str, order: &[String]) {
         let live = self.terminals(win);
         let slots: Vec<String> = order.iter().filter(|s| live.contains(s)).cloned().collect();
-        if slots.is_empty() || !self.retile {
+        if slots.is_empty() {
             return;
         }
         self.screen.remove(win);

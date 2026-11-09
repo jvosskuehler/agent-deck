@@ -31,7 +31,6 @@ die Oberfläche animiert das Gleiten im Fenster (`deck://dock`).
 | `deck://tooltip-hide` | – | Tooltip ausblenden |
 | `deck://settings` | `SettingsView` | Einstellungen haben sich geändert (auch von außen) |
 | `deck://ticket` | `TicketView` | Ticket-Dialog für einen Slot geöffnet |
-| `deck://tool` | `ToolStatus` | Rückmeldung eines Werkzeugs, die später kommt: Fortschritt des VS-Code-Neustarts, Ergebnis des Rings |
 
 Beim Start ruft jede Ansicht zusätzlich einmal den passenden `get_*`-Befehl, damit sie
 nicht auf das erste Ereignis warten muss.
@@ -54,10 +53,8 @@ nicht auf das erste Ereignis warten muss.
 | `open_usage_page` | – | – | claude.ai/settings/usage im Browser |
 | `open_settings` | – | – | Einstellungsfenster zeigen |
 | `set_setting` | `key` (Feldname aus `SettingsView`), `value` | `SettingsView` | sofort speichern |
-| `run_tool` | `tool`: `openRepo` \| `gatherWindows` \| `restartVscode` \| `restartPanel` | `ToolStatus` oder `null` | Werkzeug aus den Einstellungen; die Antwort ist die Zeile für die Statuszeile (`null`: nichts zu melden bzw. kommt als `deck://tool`) |
-| `foreign_vscode_windows` | – | `string[]` | offene VS-Code-Fenster ohne Deck-Verbindung, nach Repo benannt (für die Rückfrage vor dem Neustart) |
+| `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
 | `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen, mit VS-Code-Fenster verbinden) |
-| `confirm_close_block` | `letter` | – | ✕ im Kopf: native Rückfrage, dann das ganze Fenster schließen (Terminal: alle Agenten beenden) |
 | `panel_hold` | `hold: boolean` | – | Karte oder Block wird gezogen: Panel bleibt offen (höchstens 60 s) |
 | `panel_drag` | `mode`: `move` \| `zoom`, `x`, `y` (Stelle des Drucks, CSS-Pixel) | – | Nur frei schwebend: Rust folgt dem Zeiger, bis die Taste los ist, verschiebt bzw. zoomt und merkt sich das Ergebnis |
 | `focus_block` | `letter` | – | Klick auf den Repo-Namen: Fenster des Blocks nach vorn (wie `show_window` in Python) |
@@ -85,20 +82,17 @@ nicht auf das erste Ereignis warten muss.
 - `set_setting` gibt den vollen `SettingsView` zurück und sendet `deck://settings`; bei
   `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`.
 
-### Blockkopf, Werkzeuge, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
+### Blockkopf, Neustart, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
 
 - Kopf eines Blocks (`connect.py`): Rechtsklick → natives Menü mit „Mit VS-Code-Fenster
   verbinden …“ (nur VS Code; der nächste Klick in ein VS-Code-Fenster binnen 20 s bindet
   es, ein zweites Mal bricht ab) und „<Repo> vergessen“ (nicht beim Heimat-Block). Solange
   verbunden wird, steht `BlockView.binding` und der Kopf zeigt die Bitte statt des Hosts.
-  Das ✕ erscheint beim Hover über den Kopf eines verbundenen Blocks; die Rückfrage ist
-  ein natives Menü mit nicht wählbarer Kopfzeile unter dem Zeiger (Doppelklick-Fang).
 - `TooltipView.origin`: Herkunftszeilen über Ticket und Zusammenfassung („Repo · Fenster
   A · A2“, bei worktree „↳ wt/<Ordner>“), wie `hover.py: _origin_lines`.
-- Werkzeuge: „Panel neu starten“ startet die Exe mit denselben Argumenten und derselben
-  Umgebung neu (Tauri `request_restart`); im Herzschlag steht dann kein normales Ende,
-  damit der Wächter einspringt, falls das Kind nicht hochkommt. Die Rückfrage vor dem
-  VS-Code-Neustart nennt fremde Fenster (die ersten vier, dann „…“).
+- „Panel neu starten“ (`restart_panel`) startet die Exe mit denselben Argumenten und
+  derselben Umgebung neu (Tauri `request_restart`); im Herzschlag steht dann kein normales
+  Ende, damit der Wächter einspringt, falls das Kind nicht hochkommt.
 - Zoom (`layout.py`): Rust rechnet `DockView.zoom` = gezogener Zoom (`panel_zoom`, 0,5 bis
   2), höchstens so groß, dass das Panel auf die Arbeitsfläche passt, und setzt ihn als
   Zoom der Panel-Webview. Die Oberfläche misst weiter ihre natürliche Größe;

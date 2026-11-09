@@ -21,18 +21,11 @@ effort: string,
  */
 language: string, 
 /**
- * Ring um den aktiven Chat in VS Code.
- */
-ring: boolean, 
-/**
- * Jira-Projektpräfix, z. B. `ORPH`.
- */
-jiraPrefix: string, 
-/**
  * Rand, an dem das Deck andockt: `top`, `left`, `right`, `bottom` oder `off`.
  */
 dockEdge: string, 
 /**
- * Heimatordner für Windows-Terminal-Agenten (`Repos`).
+ * Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
+ * abläuft (`deck_settings.json` `auto_compact`, Standard an).
  */
-terminalHome: string, };
+autoCompact: boolean, };

@@ -4,11 +4,8 @@ Dashboard für parallel laufende Claude-Code-Agenten in **Windows Terminal** und
 Eine Kachel je Agent, Farbe = Zustand; dockt am Bildschirmrand an und klappt weg.
 Windows-only. Rust (Tauri 2) hinten, React + TypeScript vorn.
 
-Diese Fassung ersetzt das Python/tkinter-Deck **ohne Funktionsänderung**: was das alte
-Deck kann, kann dieses auch, nur schöner. Die Python-Fassung ist die **Referenz**: sie liegt seit dem Merge
-nach `main` (09.11.2026) nur noch in der Historie, letzter Stand `2856494`
-(`git show 2856494:<pfad>`). Im Zweifel gilt, was sie tut. Was ihr gegenüber noch fehlt,
-steht in `docs/STAND.md` unter „Was offen ist“.
+Die frühere Python/tkinter-Fassung liegt nur noch in der Historie (letzter Stand
+`2856494`, lesen mit `git show 2856494:<pfad>`).
 
 ## Lehre aus dem verworfenen .NET-Port (Juli 2026)
 
@@ -21,19 +18,20 @@ angeschaut (Screenshot), nicht nur gebaut. Die Vorgabe steht in `docs/DESIGN.md`
 
 ```
 Cargo.toml              Workspace
-crates/deck-core/       Fachkern: Zustände, Pfade, Konfiguration, Reihenfolge, Neustart-Plan,
-                        Protokoll, Ticket/PR-Erkennung, Usage-Auswertung, settings.json,
-                        Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll getestet.
+crates/deck-core/       Fachkern: Zustände, Pfade, Konfiguration, Reihenfolge, Flag-Zeile für
+                        claude, Protokoll, Ticket/PR-Erkennung, Usage-Auswertung,
+                        settings.json, Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll
+                        getestet.
 crates/deck-win/        Win32: Fenster finden/fokussieren/anordnen, Monitore, DPI, Prozesse,
-                        Tasten in fremde Konsolen, Overlay, globale Tastenkürzel.
+                        Tasten in fremde Konsolen, Fokus-Rahmen (GPU), globale Tastenkürzel.
 crates/deck-hooks/      Die Claude-Code-Hooks als kleine Programme: deck-report, deck-statusline.
 crates/deck-services/   Hintergrunddienste: Usage-Abruf (gemeinsamer Poller), KI-Zusammenfassung,
-                        Worktree-Aufräumen und Sweep, VS-Code-Neustart, Fenster einsammeln, Ring
-                        um den Chat, Extension-Registratur, Hook-Installation, Watchdog
-                        (deck-watchdog). Wirkung nach außen hinter Traits, in Tests gesperrt.
+                        Worktree-Aufräumen und Sweep, Extension-Registratur, Hook-Installation
+                        (deck-setup), Watchdog (deck-watchdog). Wirkung nach außen hinter
+                        Traits, in Tests gesperrt.
 app/src-tauri/          Die App: Fenster, Andocken, Broker zur VS-Code-Extension, Windows-
                         Terminal-Host, Poll-Schleife, Usage, Zusammenfassung, Worktrees,
-                        VS-Code-Neustart, Befehle für die Oberfläche.
+                        Befehle für die Oberfläche.
 app/src/                React-Oberfläche: Panel, Kacheln, Griff, Tooltip, Einstellungen.
 app/src/bindings/       aus Rust erzeugte TypeScript-Typen (nicht von Hand ändern).
 extension/              VS-Code-Extension (JavaScript, unverändertes Protokoll).
@@ -67,35 +65,28 @@ Neben `agent-deck.exe` müssen `deck-console`, `deck-report`, `deck-statusline` 
 `app/src-tauri/binaries/` (nicht eingecheckt). `pnpm tauri dev` und `pnpm tauri build`
 rufen das selbst auf (`beforeDevCommand`/`beforeBuildCommand`). `pnpm tauri build` baut nur
 die Exe; das Installationspaket macht `pnpm bundle` (zusätzlich `tauri.bundle.conf.json`
-mit `externalBin`). `wt_agent.ps1` und `agent-deck-glow.css` (in `resources/`) sind in die
+mit `externalBin`). `wt_agent.ps1` und `agent-taskbar.ico` (in `resources/`) sind in die
 Exe eingebaut und werden beim Start in den App-Ordner geschrieben.
 
-### Probebetrieb neben dem Python-Deck
-
-`DECK_NO_BROKER=1` (oder `DECK_BROKER_PORT=<anderer Port>`) und `DECK_DOCK_EDGE=off|left|…`
-(Kante nur für diesen Lauf). Ohne eigenen Broker auf 8765 räumt das Deck nichts ab, kachelt
-keine Terminal-Fenster, erzeugt keine Zusammenfassungen vorab, belegt die Sprung-Taste
-nicht und zeichnet keinen Fokus-Rahmen. Bis zur Übernahme (erster Start mit echtem
-Broker, Merker `python-adopted` im App-Ordner) holt jeder Start die Laufzeitdateien neu
-aus dem Python-Repo (`DECK_LEGACY_ROOT` überschreibt den Ort; abweichende alte als `.bak`).
+Installiert und aktualisiert wird mit `pwsh tools\install.ps1` (`-SkipBuild` nimmt das
+schon gebaute Release): bauen, Deck und Wächter beenden, alle Programme samt `deck-setup`
+nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup install` und `check`
+(Hooks in `~/.claude/settings.json`), Deck starten und prüfen, dass es Port 8765 hält.
+`deck-setup uninstall` nimmt die Hooks wieder heraus.
 
 ## Daten und Verträge
 
 1. **Zustandsdateien** `%LOCALAPPDATA%\claude-agent-deck\state\<slot>.json` (Hooks schreiben,
    App liest; zwei Prozesse). Feldnamen snake_case, `ts` Unix-Sekunden als Float. Immer
-   atomar schreiben (`.tmp` + ersetzen), nie mit Sperre lesen. Format exakt wie in der
-   Python-Fassung (`deck/domain/slot_state.py`, `deck/claude/hooks/report.py`,
-   `statusline.py`), damit beide Fassungen während der Umstellung dieselben Dateien lesen.
-   Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
+   atomar schreiben (`.tmp` + ersetzen), nie mit Sperre lesen. `deck-report` und
+   `deck-statusline` schreiben, die App liest; das Format bleibt stabil, wer ein Feld
+   ändert, ändert beide Seiten. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 2. **Laufzeitdateien der App** (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts …)
-   liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht mehr neben dem Code. Beim ersten
-   Start werden die alten aus dem Python-Repo übernommen.
+   liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht neben dem Code.
 3. **Ein Hook endet nie mit Fehler.** Bei `UserPromptSubmit`/`PreToolUse` liest Claude Code
    Exit ≠ 0 als Veto. Jeder Pfad in `deck-hooks` hat ein Fangnetz und Exit-Code 0; jeder
    Eintrag in `settings.json` endet zusätzlich auf `|| exit 0`. **Kein `cmd /c` davor**
    (MSYS macht aus `/c` den Pfad `C:\`, `cmd` liest dann das Hook-JSON als Befehl).
-   Umstellen heißt: erst den neuen Pfad beweisen (eine Datei in `state\` wird frisch),
-   dann den alten entfernen.
 4. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
 5. **Das Protokoll zur Extension** (newline-getrenntes JSON über TCP 127.0.0.1:8765) ist
    `deck-core::protocol` und `extension/extension.js`. Wer einen String ändert, ändert beide.
@@ -105,9 +96,6 @@ aus dem Python-Repo (`DECK_LEGACY_ROOT` überschreibt den Ort; abweichende alte 
    Nutzers, also nur ergänzen. Fehlt eine der Nebendateien, lädt VS Code gar nichts.
 7. **`Ctrl+Alt+K` (Extension) ist eine Sicherheitsfrage:** Claude, Sitzung 0 und der
    Broker-Port bleiben gesperrt (`extension/killable.js`).
-8. **Neustart mit Chats** braucht `session_id` UND `cwd` je Slot, prüft, ob das Transcript
-   noch existiert, prüft echte Prozesse statt zu warten (unlesbare Liste = Nein), schließt
-   Terminals vor Fenstern, und setzt währenddessen Aufräumarbeiten aus.
 
 ## Fallen, die schon einmal wehgetan haben
 
@@ -131,3 +119,20 @@ aus dem Python-Repo (`DECK_LEGACY_ROOT` überschreibt den Ort; abweichende alte 
 - Testnamen beschreiben die Regel, nicht die Methode.
 - In Texten der Oberfläche keine Gedankenstriche („—“, „–“).
 - Keine Commits ohne ausdrücklichen Auftrag.
+
+## Offen
+
+- **Im Betrieb prüfen**, was nur gegen Attrappen getestet ist: VS-Code-Fenster am Broker
+  (Port 8765), Strg+< springt zum Wartenden, Klick auf eine Karte holt das richtige
+  Terminal, ＋ legt einen Agenten an, Worktree-Aufräumen. Protokoll:
+  `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
+- **Taskleisten-Abzeichen:** der dringlichste Status als Overlay auf dem Agenten-Knopf
+  (`ITaskbarList3::SetOverlayIcon`, wirkt auch auf fremde Fenster, gemessen 09.11.2026).
+- **Makropad:** 6 Tasten mit Drehregler und ARGB je Taste (Taste = Agent, Licht = Status,
+  Druck = zum Agenten springen, Halten = Aufnahme mit Claude `/voice`).
+- **Rest des letzten Python-Commits:** der Rust-Port beruht auf `1c41595`, nicht auf
+  `2856494`. Nachgezogen sind automatisches `/compact` (`deck-core::prompt_cache`,
+  `auto_compact`), Konto je Token samt Konto im gemeinsamen Cache (`usage/account.rs`),
+  `limits` und `pr` in der Statuszeile (`deck-hooks::status_extras`) und der Hub-Prompt
+  mit `wt/<Nummer>-<Kürzel>`; offen ist die Cache-Restzeit auf der Kachel (braucht eine
+  Design-Entscheidung).

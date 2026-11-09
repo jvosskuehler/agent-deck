@@ -2,8 +2,8 @@
 //!
 //! Wie `deck/ops/log.py`: eine Zeile je Ereignis mit Zeitstempel, beim Start einmal
 //! rotiert (`.1`), damit die Datei klein genug bleibt, um sie im Zweifel ganz zu lesen.
-//! Eigener Name neben `panel.log` der Python-Fassung: während der Umstellung laufen
-//! beide, und zwei Prozesse in einer Datei machen jede Diagnose unlesbar.
+//! Eigener Name statt `panel.log` der Python-Fassung, damit ein altes Log nicht mit
+//! dem neuen verwechselt wird.
 //!
 //! Schreiben ist best effort: ein Log, das nicht schreiben kann, darf nichts kippen.
 

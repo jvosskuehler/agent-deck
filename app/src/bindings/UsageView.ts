@@ -18,6 +18,11 @@ extra: Array<LimitView>,
  */
 stale: boolean, 
 /**
+ * Konto, zu dem die Zahlen gehören (E-Mail, klein); `None` = unbekannt. Seit es
+ * zwei Konten gibt (2026-11-08), die erste Frage im Tooltip: wessen Zahl ist das?
+ */
+account: string | null, 
+/**
  * Letzter Fehler beim Abruf, für den Tooltip.
  */
 error: string | null, 

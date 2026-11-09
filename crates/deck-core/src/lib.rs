@@ -4,12 +4,14 @@
 //! Panel testbar (`cargo test -p deck-core`), und die Hooks (`deck-hooks`) können es
 //! benutzen, ohne die Oberfläche nachzuziehen.
 //!
-//! Die Module entsprechen den Python-Modulen der Referenzfassung (`deck/domain`,
+//! Die Module entsprechen den Python-Modulen der früheren Fassung (`deck/domain`,
 //! `deck/claude`, `deck/i18n.py`); `pystr` und `pyjson` halten die Python-Semantik fest,
-//! die beide Fassungen während der Umstellung teilen müssen.
+//! in der die geteilten Dateiformate geschrieben sind.
 
+pub mod agent_flags;
 pub mod arrange;
 pub mod attention;
+pub mod auto_compact;
 pub mod auto_mode;
 pub mod bind_store;
 pub mod binding;
@@ -17,17 +19,16 @@ pub mod claude;
 pub mod config;
 pub mod dock;
 pub mod deck_view;
-pub mod focus_frame;
 pub mod front;
 pub mod i18n;
 pub mod isotime;
 pub mod ordering;
 pub mod paths;
+pub mod prompt_cache;
 pub mod prompts;
 pub mod protocol;
 pub mod pyjson;
 pub mod pystr;
-pub mod restart_plan;
 pub mod slot_state;
 pub mod status_model;
 pub mod view;

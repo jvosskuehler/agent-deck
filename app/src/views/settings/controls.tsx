@@ -1,5 +1,4 @@
-// Baustein des Einstellungsfensters: die Segmente. Schalter und Textfeld sind mit
-// Ring, Jira-Präfix und Heimatordner am 09.11.2026 weggefallen.
+// Baustein des Einstellungsfensters: die Segmente.
 
 import type { Option } from "../../logic/settingsOptions";
 

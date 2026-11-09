@@ -176,23 +176,6 @@ fn a_hard_failure_hides_the_number_and_a_soft_one_keeps_it() {
 }
 
 #[test]
-fn the_badge_shows_a_fresh_value_bright_and_an_old_one_dimmed_not_grey() {
-    let now = 1_000_000.0;
-    let fresh = UsageSnapshot { session_percent: Some(42), session_severity: "normal".into(), ts: Some(now), ..Default::default() };
-    assert_eq!(badge_view(&fresh, now), ("42 %".to_string(), severity_color("normal", Some(42)).to_string()));
-    let old = UsageSnapshot { session_percent: Some(0), session_severity: "normal".into(), ts: Some(now - STALE_AFTER - 60.0), error: Some("Rate-Limit".into()), ..Default::default() };
-    let (text, color) = badge_view(&old, now);
-    assert_eq!(text, "0 %");
-    let bright = severity_color("normal", Some(0));
-    assert_ne!(color, bright);
-    let sum = |c: &str| (1..7).step_by(2).map(|i| u32::from_str_radix(&c[i..i + 2], 16).unwrap()).sum::<u32>();
-    assert!(color.len() == 7 && sum(&color) < sum(bright));
-    let silent = UsageSnapshot { session_percent: Some(55), session_severity: "warning".into(), ts: Some(now - STALE_AFTER - 60.0), ..Default::default() };
-    assert_ne!(badge_view(&silent, now).1, severity_color("warning", Some(55)));
-    assert_eq!(badge_view(&UsageSnapshot::default(), now), ("—".to_string(), severity_color("", None).to_string()));
-}
-
-#[test]
 fn badge_and_tooltip_share_one_staleness_threshold_and_no_timestamp_is_not_old() {
     let now = 1_000_000.0;
     let just_fresh = UsageSnapshot { ts: Some(now - (STALE_AFTER - 30.0)), ..Default::default() };
@@ -219,4 +202,42 @@ fn the_view_always_has_session_and_week_and_shows_extra_limits_only_with_signal(
     let old = usage_view(&snap(vec![], Some("Rate-Limit"), Some(now - 3600.0)), now, DE);
     assert!(old.stale);
     assert_eq!((old.as_of.as_str(), old.error.as_deref()), ("Stand vor 1 Std.", Some("Rate-Limit")));
+}
+
+// ── Zwei Konten (2026-11-08): nach '/login' auf das zweite Konto zeigte die Anzeige
+// stundenlang die Zahlen des ersten.
+
+#[test]
+fn the_tooltip_names_the_account_and_has_no_empty_line_without_one() {
+    let mut s = snap(vec![], None, None);
+    s.account = Some("b@x.de".into());
+    let de = tooltip_text(&s, 0.0, DE);
+    assert!(de.contains("Konto: b@x.de"), "{de}");
+    assert!(tooltip_text(&s, 0.0, Lang::English).contains("Account: b@x.de"));
+    let without = tooltip_text(&snap(vec![], None, None), 0.0, DE);
+    assert!(!without.contains("Konto"), "ohne bekanntes Konto keine leere Zeile: {without}");
+    assert!(!without.contains("\n\n"));
+}
+
+#[test]
+fn an_account_switch_drops_the_numbers_of_the_old_account() {
+    let now = at("2026-07-21T21:55:00+00:00");
+    let mut s = UsageSnapshot { account: Some("a@x.de".into()), ..Default::default() };
+    apply(&mut s, &sample(), Some(now), Some("Rate-Limit".into()), now, DE);
+    assert_eq!(s.session_percent, Some(91));
+    note_account(&mut s, Some("a@x.de"));
+    assert_eq!(s.session_percent, Some(91), "dasselbe Konto behält seine Zahl");
+    note_account(&mut s, Some("b@x.de"));
+    assert_eq!(s.account.as_deref(), Some("b@x.de"));
+    assert_eq!((s.session_percent, s.session_resets_at.as_deref(), s.ts), (None, None, None), "die Zahl gehört dem alten Konto");
+    assert!(s.limits.is_empty() && s.session_severity.is_empty());
+    assert_eq!(s.error.as_deref(), Some("Rate-Limit"), "der Fehler beschreibt den Abruf und bleibt");
+}
+
+#[test]
+fn the_view_carries_the_account_for_the_tooltip() {
+    let mut s = UsageSnapshot { account: Some("b@x.de".into()), ..Default::default() };
+    assert_eq!(usage_view(&s, 0.0, DE).account.as_deref(), Some("b@x.de"));
+    s.account = Some(String::new());
+    assert_eq!(usage_view(&s, 0.0, DE).account, None);
 }

@@ -60,6 +60,15 @@ export function edgeOptions(lang: Lang): Option[] {
   ];
 }
 
+/** Ein Schalter als zwei Segmente (Schalter selbst gibt es im Fenster nicht mehr). */
+export function onOffOptions(lang: Lang): Option[] {
+  const de = lang !== "en";
+  return [
+    { value: "on", label: de ? "An" : "On" },
+    { value: "off", label: de ? "Aus" : "Off" },
+  ];
+}
+
 /**
  * Welches Segment zeigt den Wert <value>? Erst exakt, dann ohne Groß/klein, dann über
  * den Kern (`opus` trifft `opus[1m]`): settings.json kann ältere oder gekürzte Werte

@@ -1,51 +1,10 @@
-//! Fenster einsammeln und kacheln (Python `test_domain_arrange.py`), Windows Terminal als
-//! Host (`test_domain_wt.py`) und der Fokus-Rahmen (`test_domain_focus_frame.py`).
+//! Fenster kacheln (Python `test_domain_arrange.py`), Windows Terminal als Host
+//! (`test_domain_wt.py`).
 
 use deck_core::arrange as ar;
-use deck_core::focus_frame as ff;
 use deck_core::wt::{self, Step};
 use serde_json::json;
 
-const CODE: &str = r"C:\Users\jemand\AppData\Local\Programs\Microsoft VS Code\Code.exe";
-const FIREFOX: &str = r"C:\Program Files\Mozilla Firefox\firefox.exe";
-const VOLL_HD: ar::Area = (0, 0, 1920, 1040);
-
-#[test]
-fn the_process_decides_not_the_title() {
-    assert!(!ar::is_editor_window(FIREFOX, "Getting Started - Visual Studio Code - Mozilla Firefox"));
-    assert!(ar::is_editor_window(CODE, "nur-mein-repo"));
-    assert!(ar::is_editor_window(r"D:\vscode\CODE.EXE", ""));
-    assert!(ar::is_editor_window(r"C:\VS Code Insiders\Code - Insiders.exe", ""));
-    assert!(ar::is_editor_window(r"C:\VSCodium\codium.exe", ""));
-}
-
-#[test]
-fn without_process_path_the_title_decides() {
-    assert!(ar::is_editor_window("", "settings.json - agent-deck - Visual Studio Code"));
-    assert!(!ar::is_editor_window("", "Orpheus Client"));
-    assert!(!ar::is_editor_window("", ""));
-}
-
-#[test]
-fn a_dialog_is_not_maximized() {
-    assert!(ar::is_maximizable(0x15C7_0000));
-    assert!(!ar::is_maximizable(0x94C8_0AC4));
-}
-
-#[test]
-fn the_restore_rect_is_centered_clamped_and_never_a_dot() {
-    assert_eq!(ar::normal_rect(1000, 600, VOLL_HD), ((1920 - 1000) / 2, (1040 - 600) / 2, 1000, 600));
-    assert_eq!(ar::normal_rect(3800, 2000, VOLL_HD), (0, 0, 1920, 1040));
-    let (_, _, w, h) = ar::normal_rect(0, 0, VOLL_HD);
-    assert_eq!((w, h), (ar::MIN_W, ar::MIN_H));
-    let (_, _, w, h) = ar::normal_rect(0, 0, (0, 0, 320, 240));
-    assert_eq!((w, h), (320, 240));
-    let area = (-2560, -300, 0, 1140);
-    for (sw, sh) in [(800, 600), (5000, 5000), (0, 0)] {
-        let (x, y, w, h) = ar::normal_rect(sw, sh, area);
-        assert!(area.0 <= x && x + w <= area.2 && area.1 <= y && y + h <= area.3);
-    }
-}
 
 #[test]
 fn tiles_share_the_area_in_as_few_rows_as_possible_without_gaps() {
@@ -148,63 +107,6 @@ fn a_long_prompt_arrives_as_paste_with_its_own_enter_and_keys_repeat_with_pauses
         Step::Text("\x1b[Z".into()), Step::Sleep(wt::KEY_REPEAT_DELAY_S), Step::Text("\x1b[Z".into())]);
     assert_eq!(wt::key_steps("esc", 1), [Step::Text("\x1b".into())]);
     assert_eq!(wt::key_steps("q", 0), [Step::Text("q".into())]);
-}
-
-fn piece(p: &[ff::Piece], side: &str) -> Option<ff::Rect> {
-    p.iter().find(|x| x.side == side).map(|x| x.rect)
-}
-
-#[test]
-fn four_strips_enclose_the_window_without_gap_or_overlap() {
-    let p = ff::pieces((100, 50, 500, 650), 30, 10);
-    assert_eq!(piece(&p, "top"), Some((70, 20, 460, 40)));
-    assert_eq!(piece(&p, "bottom"), Some((70, 640, 460, 40)));
-    assert_eq!(piece(&p, "left"), Some((70, 60, 40, 580)));
-    assert_eq!(piece(&p, "right"), Some((490, 60, 40, 580)));
-    assert_eq!(p.iter().map(|x| x.rect.2 * x.rect.3).sum::<i32>(), 460 * 660 - 380 * 580);
-    assert_eq!(ff::pieces((0, 0, 300, 20), 30, 10).len(), 2, "zu niedrig: keine Seitenstreifen");
-}
-
-#[test]
-fn the_glow_is_cut_at_the_monitor_edge() {
-    assert_eq!(ff::clip((-30, 20, 100, 40), Some((0, 0, 1920, 1080))), Some(((0, 20, 70, 40), (30, 0, 100, 40))));
-    assert_eq!(ff::clip((2000, 0, 50, 50), Some((0, 0, 1920, 1080))), None);
-    assert_eq!(ff::clip((5, 5, 10, 10), None), Some(((5, 5, 10, 10), (0, 0, 10, 10))));
-}
-
-#[test]
-fn depth_is_positive_inside_negative_outside_and_round_at_corners() {
-    assert_eq!(ff::depth(0, 50, 100, 100), 0.0);
-    assert_eq!(ff::depth(3, 50, 100, 100), 3.0);
-    assert_eq!(ff::depth(-2, 50, 100, 100), -2.0);
-    assert!((ff::depth(-3, -4, 100, 100) + 5.0).abs() < 1e-9);
-}
-
-#[test]
-fn the_line_is_opaque_and_the_glow_fades_outwards_but_stays_narrow_inside() {
-    let (core, glows) = ((0.0, 3.0), [(5.0, 0.8), (14.0, 0.3)]);
-    assert_eq!(ff::profile(1.0, core, &glows, false).0, 1.0);
-    assert_eq!(ff::profile(-1.0, core, &glows, false).0, 0.0);
-    let (near, far) = (ff::profile(-2.0, core, &glows, false).1, ff::profile(-20.0, core, &glows, false).1);
-    assert!(near > far && far > 0.0);
-    assert!(ff::profile(-200.0, core, &glows, false).1 < 0.001);
-    assert!(ff::profile(20.0, core, &glows, false).1 < ff::profile(-17.0, core, &glows, false).1);
-}
-
-#[test]
-fn a_new_design_is_never_the_one_just_shown() {
-    let mut seed: u64 = 4;
-    let mut rnd = |n: usize| {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        (seed >> 33) as usize % n
-    };
-    let mut last: Option<&str> = None;
-    for _ in 0..50 {
-        let d = ff::pick(&ff::DESIGNS, last, &mut rnd);
-        assert!(ff::DESIGNS.contains(&d) && Some(d) != last);
-        last = Some(d);
-    }
-    assert_eq!(ff::pick(&["glut"], Some("glut"), &mut |_| 0), "glut");
 }
 
 fn named(wins: &[(&str, ar::Rect)]) -> Vec<(String, ar::Rect)> {

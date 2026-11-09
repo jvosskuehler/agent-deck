@@ -159,10 +159,6 @@ export function PanelView() {
                     tip.cancel();
                     commands.showBlockMenu(l);
                   }}
-                  onCloseBlock={(l) => {
-                    tip.cancel();
-                    commands.confirmCloseBlock(l);
-                  }}
                   onReorder={(l, slots) => {
                     holdTiles(l, slots);
                     commands.reorderTiles(l, slots);

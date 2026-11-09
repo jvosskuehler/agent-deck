@@ -130,6 +130,9 @@ pub struct UsageView {
     pub extra: Vec<LimitView>,
     /// Wert ist alt: matt zeichnen, Tooltip nennt den Stand.
     pub stale: bool,
+    /// Konto, zu dem die Zahlen gehören (E-Mail, klein); `None` = unbekannt. Seit es
+    /// zwei Konten gibt (2026-11-08), die erste Frage im Tooltip: wessen Zahl ist das?
+    pub account: Option<String>,
     /// Letzter Fehler beim Abruf, für den Tooltip.
     pub error: Option<String>,
     /// Stand für den Tooltip: „Stand vor 1 Std.“ (Daten älter als 15 Min.), „letzter
@@ -186,18 +189,6 @@ pub struct DockView {
     pub zoom: f64,
 }
 
-/// Rückmeldung eines Werkzeugs der Einstellungen (Statuszeile in `settings_dialog.py`):
-/// Antwort auf `run_tool` und Ereignis `deck://tool` (Fortschritt des VS-Code-Neustarts,
-/// Ergebnis des Rings).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub struct ToolStatus {
-    pub text: String,
-    /// `ok` (grün), `error` (rot), `warn` (bernstein) oder `info` (gedämpft).
-    pub tone: String,
-}
-
 /// Werte des Einstellungsfensters. Was hier steht, gilt sofort beim Ändern.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
@@ -211,14 +202,11 @@ pub struct SettingsView {
     pub effort: String,
     /// `german` oder `english`: Antwortsprache der Agenten UND Sprache des Decks.
     pub language: String,
-    /// Ring um den aktiven Chat in VS Code.
-    pub ring: bool,
-    /// Jira-Projektpräfix, z. B. `ORPH`.
-    pub jira_prefix: String,
     /// Rand, an dem das Deck andockt: `top`, `left`, `right`, `bottom` oder `off`.
     pub dock_edge: String,
-    /// Heimatordner für Windows-Terminal-Agenten (`Repos`).
-    pub terminal_home: String,
+    /// Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
+    /// abläuft (`deck_settings.json` `auto_compact`, Standard an).
+    pub auto_compact: bool,
 }
 
 /// Inhalt des Dialogs „Ticket zuweisen“ (Kontextmenü einer Kachel). Ein Feld, die

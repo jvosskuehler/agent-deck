@@ -18,8 +18,8 @@
 //! `ts` sind Unix-Sekunden als Float. `ended` setzt die App beim geordneten Ende:
 //! `"exit"` (geschlossen, der Wächter lässt sie in Ruhe), `"restart"` (Selbst-Neustart),
 //! `"panic"` (unbehandelter Fehler, aus dem Panic-Hook). Fehlt `ended` bei totem Prozess,
-//! wurde sie von außen beendet oder ist hart abgestürzt. Eigene Dateinamen, damit die
-//! Python-Fassung (`panel.heartbeat`, `panel.lock`) während der Umstellung unberührt bleibt.
+//! wurde sie von außen beendet oder ist hart abgestürzt. Die Dateinamen weichen bewusst von
+//! denen der Python-Fassung ab (`panel.heartbeat`, `panel.lock`).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -94,11 +94,6 @@ pub fn mark_ended(app_dir: &Path, reason: EndReason, now: f64) {
     let _ = write(app_dir, &beat);
 }
 
-/// Frischer Herzschlag dieser PID, ohne vermerktes Ende?
-pub fn beats_for(beat: &Heartbeat, pid: u32, now: f64) -> bool {
-    beat.pid == pid && beat.ended.is_none() && now - beat.ts <= BEAT_FRESH_S
-}
-
 /// Für die Poll-Schleife der App: schreibt höchstens alle [`BEAT_EVERY_S`] Sekunden.
 #[derive(Debug, Default)]
 pub struct Beater {
@@ -119,15 +114,6 @@ impl Beater {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_a_fresh_beat_of_this_pid_without_end_counts() {
-        let b = Heartbeat { pid: 7, exe: "a.exe".into(), ts: 100.0, ended: None };
-        assert!(beats_for(&b, 7, 100.0 + BEAT_FRESH_S));
-        assert!(!beats_for(&b, 8, 100.0), "fremde PID");
-        assert!(!beats_for(&b, 7, 100.0 + BEAT_FRESH_S + 1.0), "zu alt");
-        assert!(!beats_for(&Heartbeat { ended: Some("exit".into()), ..b }, 7, 100.0), "beendet");
-    }
 
     #[test]
     fn the_beat_round_trips_and_names_its_own_process() {

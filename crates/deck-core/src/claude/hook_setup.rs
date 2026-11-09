@@ -9,12 +9,8 @@
 //! CHIRURGISCH: wir ergänzen die Datei, statt sie zu schreiben. Fremde Hooks bleiben;
 //! unsere werden am DATEINAMEN erkannt und ersetzt, ein zweiter Lauf ist ein
 //! Nulldurchgang, ein verschobener Programmordner wird repariert statt verdoppelt.
-//!
-//! Zwei Generationen sind „unsere“: die neuen Programme (`deck-report.exe`,
-//! `deck-statusline.exe`) und die Python-Skripte (`report.py`, `statusline.py`). Beim
-//! Umstellen erst den neuen Pfad beweisen, dann den alten entfernen: `merge` lässt die
-//! Python-Einträge darum auf Wunsch stehen (`keep_legacy`), `remove_legacy` nimmt sie
-//! später heraus.
+//! „Unsere“ sind die Programme `deck-report.exe` und `deck-statusline.exe`; die Skripte
+//! der Python-Fassung zählen als fremd und bleiben unangetastet.
 
 use std::sync::LazyLock;
 
@@ -34,6 +30,10 @@ pub const HOOKS: [(&str, &str, Option<&str>); 6] = [
 
 pub const REPORT_EXE: &str = "deck-report.exe";
 pub const STATUSLINE_EXE: &str = "deck-statusline.exe";
+/// Claude Code ruft die Statuszeile zusätzlich alle so viele Sekunden auf
+/// (`statusLine.refreshInterval`). Ohne den Takt stünde der Cache-Countdown genau dann
+/// still, wenn er zählt: wenn im Chat nichts passiert.
+pub const STATUSLINE_REFRESH_S: u64 = 15;
 
 /// Die äußere Schale: fehlt die Datei, kommt das Fangnetz IM Programm nicht zum Zug,
 /// dann urteilt die Shell, und ohne diesen Anhang gilt ihr Exit ≠ 0 als Veto.
@@ -42,31 +42,21 @@ pub const TAIL: &str = "|| exit 0";
 /// Wem ein Kommando gehört.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Owner {
-    /// Die neuen Programme dieser Fassung.
+    /// Die Programme dieser Fassung.
     Deck,
-    /// Die Python-Skripte der alten Fassung.
-    Legacy,
     Foreign,
 }
 
 static DECK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:^|[/"\s])(deck-report|deck-statusline)(?:\.exe)?(?:$|["\s])"#).expect("DECK_RE")
 });
-static LEGACY_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(?:^|[/"\s])(report\.py|statusline\.py)(?:$|["\s])"#).expect("LEGACY_RE"));
 
 /// Wem gehört ein Kommando? Erkannt am DATEINAMEN als eigenes Wegstück (mit Grenze
-/// davor und dahinter, ein fremdes `my_report.py` trägt nicht), nicht am ganzen Pfad:
+/// davor und dahinter, ein fremdes `my-deck-report.exe` trägt nicht), nicht am ganzen Pfad:
 /// so findet ein Lauf auch die Einträge eines verschobenen Ordners.
 pub fn owner(command: &str) -> Owner {
     let c = command.replace('\\', "/").to_lowercase();
-    if DECK_RE.is_match(&c) {
-        Owner::Deck
-    } else if LEGACY_RE.is_match(&c) {
-        Owner::Legacy
-    } else {
-        Owner::Foreign
-    }
+    if DECK_RE.is_match(&c) { Owner::Deck } else { Owner::Foreign }
 }
 
 fn with_slashes(dir: &str) -> String {
@@ -159,8 +149,6 @@ fn strip_where(groups: &[Value], strip: impl Fn(Owner) -> bool) -> (Vec<Value>, 
 pub struct MergeOptions {
     /// Auch eine FREMDE statusLine ersetzen.
     pub force_statusline: bool,
-    /// Python-Einträge stehen lassen (Umstellungsphase: erst den neuen Weg beweisen).
-    pub keep_legacy: bool,
 }
 
 /// Eine Meldung: (Grad, Text). Grad `info` = getan, `warn` = bewusst ausgelassen.
@@ -176,7 +164,7 @@ pub fn merge(settings: &Map<String, Value>, bin_dir: &str, opts: MergeOptions) -
     let mut out = settings.clone();
     let mut notes = Vec::new();
     let mut hooks = hooks_map(settings);
-    let strip = |o: Owner| o == Owner::Deck || (o == Owner::Legacy && !opts.keep_legacy);
+    let strip = |o: Owner| o == Owner::Deck;
     for (event, status, matcher) in HOOKS {
         let before: Vec<Value> = hooks.get(event).and_then(Value::as_array).cloned().unwrap_or_default();
         let (mut after, removed) = strip_where(&before, strip);
@@ -204,11 +192,20 @@ pub fn merge(settings: &Map<String, Value>, bin_dir: &str, opts: MergeOptions) -
     if cur_owner == Some(Owner::Foreign) && !opts.force_statusline {
         notes.push(("warn", "statusLine gehoert einem anderen Werkzeug und bleibt stehen — Modell, Effort und \
                             Kontext-% bleiben auf den Kacheln leer (mit --force ersetzen)".into()));
-    } else if cur_owner == Some(Owner::Legacy) && opts.keep_legacy {
-        notes.push(("warn", "statusLine bleibt bis zur Umstellung bei statusline.py".into()));
     } else if !points_here(cur, bin_dir, STATUSLINE_EXE) {
-        out.insert("statusLine".into(), json!({"type": "command", "command": statusline_command(bin_dir)}));
+        let sl = json!({"type": "command", "command": statusline_command(bin_dir), "refreshInterval": STATUSLINE_REFRESH_S});
+        out.insert("statusLine".into(), sl);
         notes.push(("info", format!("statusLine -> {STATUSLINE_EXE}")));
+    } else if let Some(sl) = settings.get("statusLine").and_then(Value::as_object)
+        && !sl.contains_key("refreshInterval")
+    {
+        // Ohne Takt zeichnet Claude Code die Zeile nur bei Ereignissen neu: der Cache-
+        // Countdown stünde im Leerlauf still, und `live.json` würde alt, sodass das Deck
+        // nie kompaktiert. Ein selbst gesetzter Wert bleibt.
+        let mut sl = sl.clone();
+        sl.insert("refreshInterval".into(), STATUSLINE_REFRESH_S.into());
+        out.insert("statusLine".into(), Value::Object(sl));
+        notes.push(("info", format!("statusLine: alle {STATUSLINE_REFRESH_S} s neu zeichnen")));
     }
     (out, notes)
 }
@@ -249,11 +246,6 @@ pub fn remove(settings: &Map<String, Value>) -> (Map<String, Value>, Vec<Note>) 
     remove_where(settings, Owner::Deck)
 }
 
-/// Die alten Python-Einträge herausnehmen (nachdem der neue Weg bewiesen ist).
-pub fn remove_legacy(settings: &Map<String, Value>) -> (Map<String, Value>, Vec<Note>) {
-    remove_where(settings, Owner::Legacy)
-}
-
 /// Kommandos eines Events, die `who` gehören.
 pub fn commands_of(settings: &Map<String, Value>, event: &str, who: Owner) -> Vec<String> {
     let Some(groups) = settings.get("hooks").and_then(|h| h.get(event)).and_then(Value::as_array) else {
@@ -269,23 +261,12 @@ pub fn commands_of(settings: &Map<String, Value>, event: &str, who: Owner) -> Ve
         .collect()
 }
 
-/// Stehen noch Einträge der Python-Fassung in der Datei (Hooks oder statusLine)?
-pub fn has_legacy(settings: &Map<String, Value>) -> bool {
-    HOOKS.iter().any(|(e, _, _)| !commands_of(settings, e, Owner::Legacy).is_empty())
-        || settings
-            .get("statusLine")
-            .and_then(|s| s.get("command"))
-            .and_then(Value::as_str)
-            .is_some_and(|c| owner(c) == Owner::Legacy)
-}
-
 /// Ein Urteil: (Grad, Text), Grad in `ok`, `warn`, `fail`.
 pub type Finding = (&'static str, String);
 
 /// Urteile über die Einträge. Rein bis auf zwei Dateisystem-Fragen, die als Funktionen
 /// hereinkommen: so ist jede Regel ohne Dateisystem prüfbar. Geprüft wird, was am
-/// Exit-Code NICHT auffällt: die drei Fallen, ein Pfad in einen anderen Ordner und
-/// Python-Einträge, die noch daneben melden.
+/// Exit-Code NICHT auffällt: die drei Fallen und ein Pfad in einen anderen Ordner.
 ///
 /// `resolve` löst Windows-Kurznamen auf (`C:\Users\JORRIT~1\…`): `norm_path` allein
 /// macht aus Kurz- und Langnamen nicht denselben Text.
@@ -300,9 +281,6 @@ pub fn audit(
     let want_dir = norm_path(&resolve(bin_dir));
     for (event, status, _) in HOOKS {
         let cmds = commands_of(settings, event, Owner::Deck);
-        if !commands_of(settings, event, Owner::Legacy).is_empty() {
-            out.push(("warn", format!("{event}: report.py steht noch daneben — zwei Melder schreiben gegeneinander")));
-        }
         let Some(cmd) = cmds.first() else {
             out.push(("fail", format!("{event}: kein Hook eingetragen — Kacheln melden kein '{status}'")));
             continue;
@@ -334,7 +312,6 @@ pub fn audit(
         None => out.push(("warn", "statusLine fehlt — Modell, Effort und Kontext-% bleiben auf den Kacheln leer".into())),
         Some(c) => match owner(c) {
             Owner::Foreign => out.push(("warn", "statusLine gehoert einem anderen Werkzeug — Modell, Effort und Kontext-% bleiben leer".into())),
-            Owner::Legacy => out.push(("warn", "statusLine zeigt noch auf statusline.py (Python-Fassung)".into())),
             Owner::Deck => {
                 if let Some(p) = command_path(c).filter(|p| !exists(p)) {
                     out.push(("fail", format!("statusLine: {p} gibt es nicht")));

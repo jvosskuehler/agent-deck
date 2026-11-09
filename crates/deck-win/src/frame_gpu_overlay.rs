@@ -5,15 +5,14 @@
 //!
 //! Das ist der Weg, den die Python-Referenz seit 2026-11-06 geht, und der empfohlene für
 //! die App: jeder Pixel auf der GPU im Takt des Monitors (`Present(1)` wartet auf den
-//! Bildwechsel und ist zugleich der Takt der Animation), die CPU sagt nur, was. Der
-//! Layered-Weg mit vier Streifen ([`crate::frame_overlay`]) bleibt als Rückfall.
+//! Bildwechsel und ist zugleich der Takt der Animation), die CPU sagt nur, was.
 //!
 //! Das Fenster trägt `WS_EX_NOREDIRECTIONBITMAP`: es hat keinen eigenen Bildpuffer, sein
 //! Inhalt ist allein der DirectComposition-Visual. Ohne `SetLayeredWindowAttributes`
 //! zeigt Windows ein Layered-Fenster gar nicht an.
 //!
-//! Wie [`crate::overlay::Overlay`] gehört es dem Thread, der es anlegt (nicht `Send`);
-//! dessen Schleife ruft [`crate::overlay::pump_messages`] und dann [`GpuFocusFrame::draw`].
+//! Es gehört dem Thread, der es anlegt (nicht `Send`); dessen Schleife ruft
+//! [`crate::frame_window::pump_messages`] und dann [`GpuFocusFrame::draw`].
 
 use std::marker::PhantomData;
 
@@ -44,7 +43,7 @@ use crate::frame_gpu::GpuPipeline;
 use crate::frame_layout::FrameLayout;
 use crate::guard;
 use crate::monitor::monitor_of_window;
-use crate::overlay::create_click_through;
+use crate::frame_window::create_click_through;
 use crate::types::{Error, Hwnd, Rect, Result};
 use crate::window::{is_minimized, is_window};
 

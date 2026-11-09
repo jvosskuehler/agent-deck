@@ -13,6 +13,8 @@ use serde_json::Value;
 use crate::guard;
 
 pub const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
+/// Wem ein Token gehört (`account.email_address`), siehe `account.rs`.
+pub const PROFILE_URL: &str = "https://api.anthropic.com/api/oauth/profile";
 
 /// Die Antwort des Servers, so weit sie hier zählt.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,9 +47,9 @@ impl Transport {
     }
 }
 
-/// Ein GET mit Bearer-Token.
+/// Ein GET mit Bearer-Token an einen der OAuth-Endpoints ([`USAGE_URL`], [`PROFILE_URL`]).
 pub trait UsageHttp: Send + Sync {
-    fn get(&self, token: &str) -> Result<HttpReply, Transport>;
+    fn get(&self, url: &str, token: &str) -> Result<HttpReply, Transport>;
 }
 
 /// Ergebnis eines gescheiterten Abrufs über alle Tokens.
@@ -69,7 +71,7 @@ pub fn fetch_usage(
 ) -> Result<(Value, usize), FetchError> {
     let mut last = None;
     for (i, tok) in tokens.iter().enumerate() {
-        let reply = http.get(tok).map_err(|t| FetchError::Other(t.name()))?;
+        let reply = http.get(USAGE_URL, tok).map_err(|t| FetchError::Other(t.name()))?;
         if reply.status == 200 {
             let data = serde_json::from_str(&reply.body).map_err(|_| FetchError::Other("JSONDecodeError".into()))?;
             return Ok((data, i));
@@ -116,11 +118,11 @@ impl Default for UreqHttp {
 }
 
 impl UsageHttp for UreqHttp {
-    fn get(&self, token: &str) -> Result<HttpReply, Transport> {
-        guard::check("Usage-Endpoint abfragen").map_err(|e| Transport::Other(e.to_string()))?;
+    fn get(&self, url: &str, token: &str) -> Result<HttpReply, Transport> {
+        guard::check("OAuth-Endpoint abfragen").map_err(|e| Transport::Other(e.to_string()))?;
         let resp = self
             .agent
-            .get(USAGE_URL)
+            .get(url)
             .header("Authorization", &format!("Bearer {token}"))
             .header("anthropic-beta", "oauth-2025-04-20")
             .header("Accept", "application/json")
@@ -150,7 +152,8 @@ mod tests {
     }
 
     impl UsageHttp for FakeHttp {
-        fn get(&self, token: &str) -> Result<HttpReply, Transport> {
+        fn get(&self, url: &str, token: &str) -> Result<HttpReply, Transport> {
+            assert_eq!(url, USAGE_URL);
             self.tried.lock().unwrap().push(token.into());
             let status = self.plan.iter().find(|(t, _)| *t == token).map_or(500, |(_, s)| *s);
             Ok(HttpReply { status, retry_after: None, body: format!("{{\"ok\": \"{token}\"}}") })
@@ -201,6 +204,7 @@ mod tests {
 
     #[test]
     fn the_real_client_refuses_to_call_out_in_tests() {
-        assert!(matches!(UreqHttp::new().get("x"), Err(Transport::Other(_))));
+        assert!(matches!(UreqHttp::new().get(USAGE_URL, "x"), Err(Transport::Other(_))));
+        assert!(matches!(UreqHttp::new().get(PROFILE_URL, "x"), Err(Transport::Other(_))));
     }
 }

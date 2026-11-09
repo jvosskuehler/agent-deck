@@ -4,13 +4,14 @@
 //! - `~/.claude/settings.json` für die Vorgaben neuer Agenten (Modus, Effort, Sprache);
 //!   die Sprache steuert zugleich die Oberfläche des Decks.
 //! - `deck_settings.json` für alles Deck-Eigene: Modell (dort mit `[1m]`, als
-//!   `--model` erzwungen), Ring, Jira-Präfix, Andockkante, Heimatordner.
+//!   `--model` erzwungen) und Andockkante. Jira-Präfix (`jira_prefix`) und Heimatordner
+//!   (`terminal_home`) werden dort weiter gelesen, aber nicht mehr im Fenster angeboten.
 
+use deck_core::auto_compact;
 use deck_core::claude::settings::{MODEL_CHOICES, WriteValues, effort_label, effort_spec, read_values, write_values};
-use deck_core::config::{JIRA_PROJECT_KEY, terminal_home};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
-use deck_core::pystr::{py_str, truthy};
+use deck_core::pystr::py_str;
 use deck_core::view::SettingsView;
 use serde_json::Value;
 
@@ -24,8 +25,6 @@ pub enum Effect {
     Language,
     /// Andockkante gewechselt.
     Edge(Edge),
-    /// Ring um den Chat an/aus.
-    Ring(bool),
 }
 
 impl Deck {
@@ -42,15 +41,8 @@ impl Deck {
             mode,
             effort,
             language: Lang::normalize(cur.language.as_ref()).setting_value().to_string(),
-            ring: self.store.settings.get("glow").is_some_and(truthy),
-            jira_prefix: self
-                .store
-                .settings
-                .get("jira_prefix")
-                .and_then(Value::as_str)
-                .map_or_else(|| JIRA_PROJECT_KEY.to_string(), String::from),
             dock_edge: self.dock_edge().as_str().to_string(),
-            terminal_home: self.setting_str("terminal_home").unwrap_or_else(|| terminal_home().to_string_lossy().into_owned()),
+            auto_compact: auto_compact::enabled(&self.store.settings),
         }
     }
 
@@ -84,24 +76,15 @@ impl Deck {
                 self.services.set_lang(lang);
                 Effect::Language
             }
-            "ring" => {
-                let on = value.as_bool().ok_or("ring: true/false erwartet")?;
-                self.put("glow", on.into());
-                Effect::Ring(on)
-            }
-            "jiraPrefix" => {
-                let p: String = text()?.to_uppercase().chars().filter(char::is_ascii_alphanumeric).take(10).collect();
-                self.put("jira_prefix", p.into());
-                Effect::None
-            }
             "dockEdge" => {
                 let edge = Edge::parse(Some(&text()?));
                 self.put("dock_edge", edge.as_str().into());
                 Effect::Edge(edge)
             }
-            "terminalHome" => {
-                // Gilt wie in Python ab dem nächsten Start (der Heimat-Block entsteht dort).
-                self.put("terminal_home", text()?.into());
+            "autoCompact" => {
+                // Wirkt sofort: `Deck::auto_compact` liest den Schalter in jedem Takt.
+                let on = value.as_bool().ok_or("autoCompact: true/false erwartet")?;
+                self.put(auto_compact::SETTING, on.into());
                 Effect::None
             }
             other => return Err(format!("unbekannte Einstellung: {other}")),

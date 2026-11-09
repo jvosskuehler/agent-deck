@@ -83,13 +83,6 @@ pub fn work_area(x: i32, y: i32) -> Option<Rect> {
     monitor_at(x, y).map(|m| m.work).filter(|r| !r.is_empty())
 }
 
-/// Arbeitsfläche der Hauptanzeige. Der Punkt (0, 0) ist keine Näherung: im virtuellen
-/// Bildschirmraum liegt die linke obere Ecke des Hauptmonitors per Definition dort
-/// (nachgemessen an drei Monitoren in der Python-Fassung).
-pub fn primary_work_area() -> Option<Rect> {
-    work_area(0, 0)
-}
-
 fn info(h: HMONITOR) -> Option<Monitor> {
     if h.0.is_null() {
         return None;

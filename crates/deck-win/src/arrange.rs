@@ -1,42 +1,17 @@
-//! Fremde Fenster verschieben, kacheln, auf einem Monitor maximieren, schließen, und
-//! Rechteck und Zustand lesen (aus `platform/arrange.py`).
+//! Fremde Fenster verschieben und kacheln, Rechtecke lesen (aus `platform/arrange.py`).
 //!
-//! WELCHE Fenster wohin gehören (Kachelraster, Spaltenzahl, Zielrechteck beim
-//! Einsammeln), rechnet der Fachkern; hier ist nur das Handwerk.
-//!
-//! **Ein maximiertes Fenster klebt an seinem Monitor** (gemessen 2026-08-19): ein
-//! einzelnes `SetWindowPlacement` mit `SW_SHOWMAXIMIZED` und einem Normalrechteck auf
-//! dem Zielmonitor meldet Erfolg, und das Fenster bleibt trotzdem, wo es war. Windows
-//! hält für ein maximiertes Fenster den Maximierungs-Monitor fest. Darum erst
-//! `SW_SHOWNORMAL` auf die Zielfläche (zieht wirklich um), dann maximieren.
+//! WELCHE Fenster wohin gehören (Kachelraster, Spaltenzahl), rechnet der Fachkern; hier
+//! ist nur das Handwerk.
 
-use windows::Win32::Foundation::{CloseHandle, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
-use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_STYLE, GetWindowLongW, GetWindowPlacement, GetWindowRect, PostMessageW, SW_SHOWMAXIMIZED,
-    SW_SHOWNOACTIVATE, SW_SHOWNORMAL, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPlacement,
-    SetWindowPos, ShowWindow, WINDOWPLACEMENT, WM_CLOSE,
+    GetWindowRect, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow,
 };
-use windows::core::PWSTR;
 
 use crate::guard;
-use crate::types::{Error, Hwnd, Rect, Result, from_wide};
-use crate::window::{class_of, is_maximized, is_minimized, pid_of, title_of, visible_top_level};
-
-/// Ein sichtbares Top-Level-Fenster mit Titel, so weit das Einsammeln es braucht.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TopWindow {
-    pub hwnd: Hwnd,
-    pub title: String,
-    /// Voller Pfad der Exe; `None` = nicht ermittelbar (Dienste, höher berechtigte
-    /// Programme). Der Fachkern fällt dann auf den Titel zurück.
-    pub exe: Option<String>,
-    /// Fensterstil-Bits (`GWL_STYLE`), vorzeichenlos.
-    pub style: u32,
-}
+use crate::types::{Error, Hwnd, Rect, Result};
+use crate::window::{class_of, is_maximized, is_minimized, title_of, visible_top_level};
 
 /// Ein Fenster einer bestimmten Klasse (Windows Terminal).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,24 +21,6 @@ pub struct ClassWindow {
     pub minimized: bool,
 }
 
-/// Anzeigezustand eines Fensters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ShowState {
-    Normal,
-    Minimized,
-    Maximized,
-}
-
-/// Lage und Zustand eines Fensters.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Placement {
-    pub state: ShowState,
-    /// Außenrechteck im aktuellen Zustand (samt unsichtbarem Greifrand).
-    pub rect: Rect,
-    /// Rechteck nach einem „Wiederherstellen“, auch während maximiert/minimiert.
-    pub normal: Rect,
-}
-
 /// Unsichtbarer Greifrand um ein Fenster (links, oben, rechts, unten).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Insets {
@@ -71,29 +28,6 @@ pub struct Insets {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
-}
-
-/// Alle sichtbaren Top-Level-Fenster mit Titel, samt Exe-Pfad und Stil. Minimierte sind
-/// dabei, die will man beim Einsammeln ja mitnehmen.
-pub fn visible_windows() -> Vec<TopWindow> {
-    visible_top_level()
-        .into_iter()
-        .filter_map(|hwnd| {
-            let title = title_of(hwnd);
-            if title.is_empty() {
-                return None;
-            }
-            // SAFETY: reine Abfrage. Als u32 gelesen, sonst käme ein gesetztes oberstes
-            // Bit als negative Zahl an.
-            let style = unsafe { GetWindowLongW(hwnd.h(), GWL_STYLE) } as u32;
-            Some(TopWindow {
-                hwnd,
-                title,
-                exe: exe_of(hwnd),
-                style,
-            })
-        })
-        .collect()
 }
 
 /// Sichtbare Fenster der Klasse `class` (auch minimierte).
@@ -107,22 +41,6 @@ pub fn class_windows(class: &str) -> Vec<ClassWindow> {
             minimized: is_minimized(hwnd),
         })
         .collect()
-}
-
-/// Voller Pfad der Exe hinter dem Fenster.
-pub fn exe_of(hwnd: Hwnd) -> Option<String> {
-    let pid = pid_of(hwnd)?;
-    // SAFETY: Handle wird geschlossen; Puffergröße wird mitgegeben.
-    unsafe {
-        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let mut buf = [0u16; 1024];
-        let mut size = buf.len() as u32;
-        let ok =
-            QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut size)
-                .is_ok();
-        let _ = CloseHandle(h);
-        ok.then(|| from_wide(&buf[..size as usize]))
-    }
 }
 
 /// Außenrechteck samt unsichtbarem Greifrand.
@@ -150,40 +68,6 @@ pub fn visible_rect(hwnd: Hwnd) -> Option<Rect> {
     }
     .ok()?;
     Some(r.into())
-}
-
-/// Zustand, Außenrechteck und Normalrechteck.
-pub fn placement(hwnd: Hwnd) -> Option<Placement> {
-    let wp = get_placement(hwnd)?;
-    let state = if is_minimized(hwnd) {
-        ShowState::Minimized
-    } else if is_maximized(hwnd) {
-        ShowState::Maximized
-    } else {
-        ShowState::Normal
-    };
-    Some(Placement {
-        state,
-        rect: window_rect(hwnd)?,
-        normal: wp.rcNormalPosition.into(),
-    })
-}
-
-/// Größe (Breite, Höhe) des NICHT maximierten Fensters, auch während es maximiert oder
-/// minimiert ist. `GetWindowRect` wäre hier die Größe des aktuellen Zustands.
-pub fn normal_size(hwnd: Hwnd) -> Option<(i32, i32)> {
-    let r: Rect = get_placement(hwnd)?.rcNormalPosition.into();
-    Some((r.width(), r.height()))
-}
-
-fn get_placement(hwnd: Hwnd) -> Option<WINDOWPLACEMENT> {
-    let mut wp = WINDOWPLACEMENT {
-        length: size_of::<WINDOWPLACEMENT>() as u32,
-        ..Default::default()
-    };
-    // SAFETY: length gesetzt, Zeiger auf lokale Variable.
-    unsafe { GetWindowPlacement(hwnd.h(), &mut wp) }.ok()?;
-    Some(wp)
 }
 
 /// Wie weit das Außenrechteck über den sichtbaren Rahmen hinausragt. Wer das nicht
@@ -257,34 +141,6 @@ pub fn restore_window(hwnd: Hwnd) -> Result<bool> {
     Ok(true)
 }
 
-/// Fenster auf `normal` legen und dort maximieren; `normal` bestimmt über seinen
-/// Monitor, WO maximiert wird. Arbeitet auch am minimierten Fenster und holt es nicht
-/// ungefragt nach vorn. Die zwei Schritte sind Pflicht, siehe Modulkopf.
-pub fn move_maximized(hwnd: Hwnd, normal: Rect) -> Result<()> {
-    guard::check("move_maximized")?;
-    let mut wp = get_placement(hwnd).ok_or_else(|| Error::last("GetWindowPlacement"))?;
-    wp.rcNormalPosition = normal.to_win();
-    // SAFETY: vollständig ausgefüllte Struktur aus GetWindowPlacement.
-    unsafe {
-        wp.showCmd = SW_SHOWNORMAL.0 as u32; // 1. entmaximieren: zieht wirklich um
-        SetWindowPlacement(hwnd.h(), &wp).map_err(|e| Error::win("SetWindowPlacement", e))?;
-        wp.showCmd = SW_SHOWMAXIMIZED.0 as u32; // 2. auf dem Zielmonitor maximieren
-        SetWindowPlacement(hwnd.h(), &wp).map_err(|e| Error::win("SetWindowPlacement", e))
-    }
-}
-
-/// Ein Fenster zum Schließen auffordern (`WM_CLOSE`, wie Alt+F4). Bewusst
-/// `PostMessage`: `SendMessage` wartet auf das fremde Fenster und hängt genau dann, wenn
-/// es hängt. Bewusst kein `TerminateProcess`: VS Code fragt so selbst nach
-/// ungespeicherten Dateien. `Ok` heißt darum nur „gefragt“; ob es zu ist, zeigt danach
-/// die Prozessliste.
-pub fn post_close(hwnd: Hwnd) -> Result<()> {
-    guard::check("post_close")?;
-    // SAFETY: Handle als Wert, Nachricht ohne Zeiger.
-    unsafe { PostMessageW(Some(hwnd.h()), WM_CLOSE, WPARAM(0), LPARAM(0)) }
-        .map_err(|e| Error::win("PostMessageW(WM_CLOSE)", e))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,19 +172,9 @@ mod tests {
     }
 
     #[test]
-    fn moving_and_closing_are_blocked_in_tests() {
+    fn moving_and_restoring_are_blocked_in_tests() {
         let r = Rect::new(0, 0, 10, 10);
         assert!(matches!(place_window(Hwnd(1), r), Err(Error::Forbidden(_))));
-        assert!(matches!(
-            move_maximized(Hwnd(1), r),
-            Err(Error::Forbidden(_))
-        ));
-        assert!(matches!(post_close(Hwnd(1)), Err(Error::Forbidden(_))));
-    }
-
-    #[test]
-    fn listing_visible_windows_only_returns_titled_ones() {
-        // Lesend gegen das echte System.
-        assert!(visible_windows().iter().all(|w| !w.title.is_empty()));
+        assert!(matches!(restore_window(Hwnd(1)), Err(Error::Forbidden(_))));
     }
 }

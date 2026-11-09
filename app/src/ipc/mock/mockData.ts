@@ -88,6 +88,7 @@ export function usage(lang: Lang): UsageView {
     ],
     extra: [{ label: de ? "Woche Opus" : "Week Opus", percent: 22, color: "#6ee7a8", resets: de ? "Mo 09:00" : "Mon 09:00" }],
     stale: false,
+    account: "jorrit@example.com",
     error: null,
     asOf: de ? "Stand: 23:41" : "As of: 23:41",
   };
@@ -99,10 +100,8 @@ export function initialSettings(): SettingsView {
     mode: "auto",
     effort: "xhigh",
     language: "german",
-    ring: true,
-    jiraPrefix: "ORPH",
     dockEdge: "top",
-    terminalHome: "C:\\Users\\Jorrit\\Repos",
+    autoCompact: true,
   };
 }
 

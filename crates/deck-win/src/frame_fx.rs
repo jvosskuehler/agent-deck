@@ -2,13 +2,13 @@
 //! `focus-frame/Designs.cs` der Python-Fassung, Stand 2026-11-06 23:19).
 //!
 //! Hier steht alles, was je Bild einmal gerechnet wird (Lage der Kometen, Lichtbögen,
-//! Funken), in Doppelgenauigkeit; die Pixel rechnet [`crate::frame_render`]. Maße sind
-//! Punkte mal Skalierung, Geschwindigkeiten Punkte je Sekunde: so wirkt ein Design auf
-//! einem großen Fenster genauso schnell wie auf der Tafel.
+//! Funken), in Doppelgenauigkeit; die Pixel rechnet der Shader `frame.hlsl` auf der
+//! Grafikkarte ([`crate::frame_gpu`]). Maße sind Punkte mal Skalierung,
+//! Geschwindigkeiten Punkte je Sekunde: so wirkt ein Design auf einem großen Fenster
+//! genauso schnell wie auf der Tafel.
 //!
-//! [`FrameParams`] hat bewusst genau den Aufbau des `cbuffer Params` aus `Frame.hlsl`
-//! (`#[repr(C)]`, 12 × float4). Sollte der Rahmen später doch auf die Grafikkarte
-//! wandern, gehen dieselben Parameter unverändert in denselben Shader.
+//! [`FrameParams`] hat bewusst genau den Aufbau des `cbuffer Params` aus `frame.hlsl`
+//! (`#[repr(C)]`, 12 × float4): die Parameter gehen unverändert in den Shader.
 
 /// Die Designs, Tafeln 03 bis 06 im Canvas „Fokus-Rahmen Varianten“ (2026-11-06).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -33,21 +33,6 @@ impl Design {
         Design::Lauflicht,
     ];
 
-    /// Name wie in der Python-Fassung (`domain/focus_frame.DESIGNS`).
-    pub const fn name(self) -> &'static str {
-        match self {
-            Design::Kometen => "kometen",
-            Design::Glut => "glut",
-            Design::Hochspannung => "hochspannung",
-            Design::Lauflicht => "lauflicht",
-        }
-    }
-
-    /// Unbekannte Namen ergeben `None` (das Hilfsprogramm nahm dann Kometen).
-    pub fn from_name(name: &str) -> Option<Design> {
-        Design::ALL.into_iter().find(|d| d.name() == name)
-    }
-
     /// Nummer im Shader (`misc.z`).
     pub const fn id(self) -> u32 {
         self as u32
@@ -69,8 +54,6 @@ impl Design {
 
 /// Wie weit der Hof über die Fensterkante hinausreicht, in Punkten.
 pub const MARGIN_PT: f64 = 36.0;
-/// Ab dieser Tiefe im Fenster (Punkte) leuchtet nichts mehr: dort bleibt das Bild leer.
-pub const INNER_PT: f64 = 24.0;
 
 /// Was der Renderer je Bild bekommt; Aufbau wie `cbuffer Params` in `Frame.hlsl`.
 #[repr(C)]
@@ -232,14 +215,6 @@ mod tests {
     #[test]
     fn params_have_the_exact_layout_of_the_shader_cbuffer() {
         assert_eq!(size_of::<FrameParams>(), 12 * 16);
-    }
-
-    #[test]
-    fn names_round_trip_and_unknown_names_are_none() {
-        for d in Design::ALL {
-            assert_eq!(Design::from_name(d.name()), Some(d));
-        }
-        assert_eq!(Design::from_name("disco"), None);
     }
 
     #[test]

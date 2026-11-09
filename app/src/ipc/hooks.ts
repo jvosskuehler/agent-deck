@@ -9,7 +9,6 @@ import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
-import type { ToolStatus } from "../bindings/ToolStatus";
 import type { TooltipView } from "../bindings/TooltipView";
 import type { EventName, EventPayloads } from "./contract";
 import { commands, getBackend } from "./index";
@@ -72,11 +71,6 @@ export function useTicket(): TicketView | null {
     return off;
   }, []);
   return ticket;
-}
-
-/** Rückmeldungen der Werkzeuge, die als Ereignis nachkommen (deck://tool). */
-export function useToolEvents(onStatus: (st: ToolStatus) => void): void {
-  useEffect(() => getBackend().listen("deck://tool", onStatus), [onStatus]);
 }
 
 /** Tooltip-Inhalt; `null`, sobald Rust ihn ausblendet. */

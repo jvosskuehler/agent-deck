@@ -5,7 +5,7 @@
 
 import { isTauri } from "@tauri-apps/api/core";
 import type { SettingsView } from "../bindings/SettingsView";
-import type { Backend, PanelDragMode, SettingKey, ToolName } from "./contract";
+import type { Backend, PanelDragMode, SettingKey } from "./contract";
 import { createMockBackend } from "./mock/mockBackend";
 import { createTauriBackend } from "./tauriBackend";
 
@@ -42,13 +42,11 @@ export const commands = {
   openUsagePage: () => fire(getBackend().invoke("open_usage_page", {}), "open_usage_page"),
   openSettings: () => fire(getBackend().invoke("open_settings", {}), "open_settings"),
   setSetting: <K extends SettingKey>(key: K, value: SettingsView[K]) => getBackend().invoke("set_setting", { key, value }),
-  runTool: (tool: ToolName) => getBackend().invoke("run_tool", { tool }),
+  restartPanel: () => getBackend().invoke("restart_panel", {}),
   focusBlock: (letter: string) => fire(getBackend().invoke("focus_block", { letter }), "focus_block"),
   tooltipContentSize: (width: number, height: number) =>
     fire(getBackend().invoke("tooltip_content_size", { width, height }), "tooltip_content_size"),
-  foreignVscodeWindows: () => getBackend().invoke("foreign_vscode_windows", {}),
   showBlockMenu: (letter: string) => fire(getBackend().invoke("show_block_menu", { letter }), "show_block_menu"),
-  confirmCloseBlock: (letter: string) => fire(getBackend().invoke("confirm_close_block", { letter }), "confirm_close_block"),
   panelHold: (hold: boolean) => fire(getBackend().invoke("panel_hold", { hold }), "panel_hold"),
   panelDrag: (mode: PanelDragMode, x: number, y: number) =>
     fire(getBackend().invoke("panel_drag", { mode, x, y }), "panel_drag"),

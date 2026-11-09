@@ -27,15 +27,9 @@ fn a_bare_number_becomes_a_key_of_the_configured_project() {
 }
 
 #[test]
-fn the_search_prompt_is_one_line_and_filled() {
-    let p = ticket_search_prompt(Path::new("C:/x/state"), "A1", "mach was");
-    assert_clean(&p, &["ticket/", "C:/x/state/A1.ticket", "C:/x/state/A1.worktree", "mach was", "Jira"]);
-}
-
-#[test]
 fn the_home_block_gets_the_all_repos_prompt_without_marker_file() {
     let p = hub_prompt("ORPH-4116", r"C:\Users\x\Repos", "mach was");
-    assert_clean(&p, &["ORPH-4116", "C:/Users/x/Repos/wt-4116-", "mach was", "Jira"]);
+    assert_clean(&p, &["ORPH-4116", "C:/Users/x/Repos/wt/4116-", "mach was", "Jira"]);
     assert!(!p.contains(".worktree") && !p.contains("git rev-parse"));
     let via_ticket = ticket_prompt(Path::new("C:/s"), "B1", "ORPH-4116", "mach was", "ORPH", Some(r"C:\Users\x\Repos"));
     assert_eq!(via_ticket, p);

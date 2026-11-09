@@ -197,16 +197,11 @@ pub fn random_unit() -> f64 {
     (random_u64() >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
 }
 
-/// Eine UUID der Version 4 als Text (Kennung des Glow-Patches, wie `uuid.uuid4()`).
-pub fn uuid4() -> String {
-    let (a, b) = (random_u64(), random_u64());
-    let mut bytes = [0u8; 16];
-    bytes[..8].copy_from_slice(&a.to_le_bytes());
-    bytes[8..].copy_from_slice(&b.to_le_bytes());
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..])
+/// Pfad ohne Windows-Präfix `\\?\`, Kurznamen aufgelöst; `None`, wenn es ihn nicht gibt.
+pub fn real_path(p: &Path) -> Option<PathBuf> {
+    let c = std::fs::canonicalize(p).ok()?;
+    let s = c.to_string_lossy();
+    Some(PathBuf::from(s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()))
 }
 
 #[cfg(test)]
@@ -229,14 +224,6 @@ mod tests {
         assert_eq!(basename(r"C:\a\b.wt\slug"), "slug");
         assert_eq!(dirname(r"C:\a\b.wt\slug"), r"C:\a\b.wt");
         assert_eq!(dirname("x"), "");
-    }
-
-    #[test]
-    fn uuid4_has_the_canonical_shape() {
-        let re = regex::Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$").unwrap();
-        let (a, b) = (uuid4(), uuid4());
-        assert!(re.is_match(&a), "{a}");
-        assert_ne!(a, b);
     }
 
     #[test]

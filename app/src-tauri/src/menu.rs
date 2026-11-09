@@ -4,9 +4,6 @@
 //!   darum ohne Rückfrage.
 //! - Kopf eines Blocks per Rechtsklick (`_forget_menu`): Bindung vergessen, mit einem
 //!   VS-Code-Fenster verbinden.
-//! - ✕ im Kopf (`_close_window_menu`): Rückfrage als Menü. Oben eine nicht wählbare
-//!   Kopfzeile direkt unter dem Zeiger: der zweite Klick eines gewohnheitsmäßigen
-//!   Doppelklicks landet dort, die eigentliche Aktion braucht einen bewussten Klick.
 //!
 //! Die Einträge tragen ihre Wirkung in der ID (`model|B3|opus[1m]`); `handle` führt sie
 //! aus, wenn Tauri das Menü-Ereignis meldet.
@@ -34,8 +31,6 @@ pub enum MenuAction {
     Forget(String),
     /// Kopf eines Blocks: „Mit Fenster verbinden“ beginnen bzw. abbrechen.
     Bind(String),
-    /// Bestätigtes ✕ im Kopf: das ganze Fenster schließen.
-    CloseWindow(String),
 }
 
 impl MenuAction {
@@ -49,7 +44,6 @@ impl MenuAction {
             MenuAction::Close(s) => format!("close|{s}"),
             MenuAction::Forget(w) => format!("forget|{w}"),
             MenuAction::Bind(w) => format!("bind|{w}"),
-            MenuAction::CloseWindow(w) => format!("closewin|{w}"),
         }
     }
 
@@ -66,7 +60,6 @@ impl MenuAction {
             ("close", None) => MenuAction::Close(slot),
             ("forget", None) => MenuAction::Forget(slot),
             ("bind", None) => MenuAction::Bind(slot),
-            ("closewin", None) => MenuAction::CloseWindow(slot),
             _ => return None,
         })
     }
@@ -145,25 +138,6 @@ fn build_block(app: &AppHandle, win: &str) -> tauri::Result<Option<Menu<Wry>>> {
     Ok(any.then_some(menu))
 }
 
-/// Rückfrage zum ✕ im Kopf: Kopfzeile (nicht wählbar), Trennlinie, die Aktion.
-fn build_close_window(app: &AppHandle, win: &str) -> tauri::Result<Menu<Wry>> {
-    let (name, lang, wt, _, _) = block_name(app, win);
-    let header = if lang.is_english() { format!("Close “{name}”?") } else { format!("„{name}“ schließen?") };
-    let action = if wt {
-        lang.l("Ja, alle Agenten im Terminal beenden", "Yes, end all agents in the terminal")
-    } else {
-        lang.l("Ja, VS-Code-Fenster schließen", "Yes, close the VS Code window")
-    };
-    Menu::with_items(
-        app,
-        &[
-            &MenuItem::with_id(app, "m-header", &header, false, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &item(app, action, MenuAction::CloseWindow(win.into()))?,
-        ],
-    )
-}
-
 /// Ein Menü an der Zeigerposition zeigen. Blockiert, bis es zu ist; solange bleibt
 /// das Panel offen (es klappte sonst unter dem Menü weg).
 fn popup(app: &AppHandle, what: &str, menu: tauri::Result<Option<Menu<Wry>>>) {
@@ -191,11 +165,6 @@ pub fn show_block(app: &AppHandle, win: &str) {
     popup(app, win, build_block(app, win));
 }
 
-/// Rückfrage zum ✕ im Kopf eines Blocks.
-pub fn confirm_close_window(app: &AppHandle, win: &str) {
-    popup(app, win, build_close_window(app, win).map(Some));
-}
-
 /// Ein Eintrag wurde gewählt.
 pub fn handle(app: &AppHandle, id: &str) {
     let Some(action) = MenuAction::parse(id) else { return };
@@ -213,7 +182,6 @@ pub fn handle(app: &AppHandle, id: &str) {
         MenuAction::Close(slot) => d.close_agent(&slot),
         MenuAction::Forget(win) => d.forget_window(&win),
         MenuAction::Bind(win) => d.start_bind(&win, crate::now()),
-        MenuAction::CloseWindow(win) => d.close_window(&win),
         MenuAction::AssignTicket(_) => {}
     }
     drop(d);
@@ -235,12 +203,10 @@ mod tests {
             MenuAction::Close("D4".into()),
             MenuAction::Forget("B".into()),
             MenuAction::Bind("C".into()),
-            MenuAction::CloseWindow("A".into()),
         ] {
             assert_eq!(MenuAction::parse(&a.id()), Some(a));
         }
         assert_eq!(MenuAction::parse("m-model"), None);
-        assert_eq!(MenuAction::parse("m-header"), None, "die Kopfzeile der Rückfrage tut nichts");
         assert_eq!(MenuAction::parse("close|A1|x"), None);
     }
 

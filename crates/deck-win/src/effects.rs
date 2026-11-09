@@ -8,10 +8,11 @@
 
 use std::path::PathBuf;
 
-use crate::arrange::{self, ClassWindow, Placement, TopWindow};
+use crate::arrange::{self, ClassWindow};
 use crate::console_input::{self, Step};
 use crate::dpi;
 use crate::focus::{self, Corners};
+use crate::idle;
 use crate::monitor::{self, Monitor};
 use crate::procs::{self, ProcessInfo};
 use crate::taskbar::{self, TaskbarGroup};
@@ -27,23 +28,24 @@ pub trait Desktop: Send + Sync {
     fn find_window(&self, needles: &[&str]) -> Option<Hwnd>;
     fn list_titles(&self, needles: &[&str]) -> Vec<String>;
     fn class_windows(&self, class: &str) -> Vec<ClassWindow>;
-    fn visible_windows(&self) -> Vec<TopWindow>;
     fn windows_of_pid(&self, pid: u32) -> Vec<Hwnd>;
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect>;
-    fn placement(&self, hwnd: Hwnd) -> Option<Placement>;
     fn monitors(&self) -> Vec<Monitor>;
     fn monitor_of_window(&self, hwnd: Hwnd) -> Option<Monitor>;
     fn work_area(&self, x: i32, y: i32) -> Option<Rect>;
     fn scale_of(&self, hwnd: Hwnd) -> f64;
     /// Lebt das Fenster noch und ist es sichtbar?
     fn is_alive(&self, hwnd: Hwnd) -> bool;
+    /// Sekunden seit der letzten Taste oder Mausbewegung. Ohne eigene Antwort 0, also
+    /// „gerade getippt“: wer es nicht weiß, stört lieber nicht.
+    fn input_idle_s(&self) -> f64 {
+        0.0
+    }
     // ── verändern ──
     fn focus(&self, hwnd: Hwnd) -> Result<bool>;
     fn place(&self, hwnd: Hwnd, visible: Rect) -> Result<()>;
     /// Minimiertes Fenster wiederherstellen, ohne es zu aktivieren.
     fn restore(&self, hwnd: Hwnd) -> Result<bool>;
-    fn move_maximized(&self, hwnd: Hwnd, normal: Rect) -> Result<()>;
-    fn post_close(&self, hwnd: Hwnd) -> Result<()>;
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool>;
     /// Fensterrand deckend in `rgb` (`0xRRGGBB`); `Ok(false)` = geht hier nicht.
     fn set_border(&self, _hwnd: Hwnd, _rgb: u32) -> Result<bool> {
@@ -63,11 +65,8 @@ pub trait Desktop: Send + Sync {
 pub trait Processes: Send + Sync {
     /// `None` = konnte nicht nachsehen (nie als „läuft nicht“ deuten).
     fn list(&self) -> Option<Vec<ProcessInfo>>;
-    /// `None` = konnte nicht nachsehen.
-    fn count_exe(&self, name: &str) -> Option<usize>;
     fn process_start(&self, pid: u32) -> Option<u64>;
     fn kill_tree(&self, pid: u32) -> Result<()>;
-    fn kill_by_name(&self, exe: &str) -> Result<()>;
 }
 
 /// Tasten in fremde Konsolen.
@@ -99,17 +98,11 @@ impl Desktop for Win32Desktop {
     fn class_windows(&self, class: &str) -> Vec<ClassWindow> {
         arrange::class_windows(class)
     }
-    fn visible_windows(&self) -> Vec<TopWindow> {
-        arrange::visible_windows()
-    }
     fn windows_of_pid(&self, pid: u32) -> Vec<Hwnd> {
         focus::windows_of_pid(pid)
     }
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         arrange::window_rect(hwnd)
-    }
-    fn placement(&self, hwnd: Hwnd) -> Option<Placement> {
-        arrange::placement(hwnd)
     }
     fn monitors(&self) -> Vec<Monitor> {
         monitor::monitors()
@@ -126,6 +119,9 @@ impl Desktop for Win32Desktop {
     fn is_alive(&self, hwnd: Hwnd) -> bool {
         window::is_window(hwnd) && window::is_visible(hwnd)
     }
+    fn input_idle_s(&self) -> f64 {
+        idle::input_idle_s()
+    }
     fn focus(&self, hwnd: Hwnd) -> Result<bool> {
         focus::focus_window(hwnd)
     }
@@ -134,12 +130,6 @@ impl Desktop for Win32Desktop {
     }
     fn restore(&self, hwnd: Hwnd) -> Result<bool> {
         arrange::restore_window(hwnd)
-    }
-    fn move_maximized(&self, hwnd: Hwnd, normal: Rect) -> Result<()> {
-        arrange::move_maximized(hwnd, normal)
-    }
-    fn post_close(&self, hwnd: Hwnd) -> Result<()> {
-        arrange::post_close(hwnd)
     }
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool> {
         focus::set_corners(hwnd, corners)
@@ -163,17 +153,11 @@ impl Processes for Win32Processes {
     fn list(&self) -> Option<Vec<ProcessInfo>> {
         procs::processes()
     }
-    fn count_exe(&self, name: &str) -> Option<usize> {
-        procs::count_exe(name)
-    }
     fn process_start(&self, pid: u32) -> Option<u64> {
         procs::process_start(pid)
     }
     fn kill_tree(&self, pid: u32) -> Result<()> {
         procs::kill_tree(pid)
-    }
-    fn kill_by_name(&self, exe: &str) -> Result<()> {
-        procs::kill_by_name(exe)
     }
 }
 
@@ -219,18 +203,11 @@ mod tests {
         fn list(&self) -> Option<Vec<ProcessInfo>> {
             None
         }
-        fn count_exe(&self, _: &str) -> Option<usize> {
-            None
-        }
         fn process_start(&self, _: u32) -> Option<u64> {
             None
         }
         fn kill_tree(&self, pid: u32) -> Result<()> {
             self.0.lock().unwrap().push(format!("kill_tree {pid}"));
-            Ok(())
-        }
-        fn kill_by_name(&self, exe: &str) -> Result<()> {
-            self.0.lock().unwrap().push(format!("kill_by_name {exe}"));
             Ok(())
         }
     }
@@ -240,10 +217,10 @@ mod tests {
         let fake = Arc::new(Recorder::default());
         let procs: Arc<dyn Processes> = fake.clone();
         // „Weiß nicht“ darf die Logik nicht als „läuft nicht“ lesen.
-        if procs.count_exe("Code.exe").is_none() {
-            procs.kill_by_name("Code.exe").unwrap();
+        if procs.list().is_none() {
+            procs.kill_tree(42).unwrap();
         }
-        assert_eq!(*fake.0.lock().unwrap(), vec!["kill_by_name Code.exe"]);
+        assert_eq!(*fake.0.lock().unwrap(), vec!["kill_tree 42"]);
     }
 
     #[test]
@@ -253,7 +230,7 @@ mod tests {
             Err(Error::Forbidden(_))
         ));
         assert!(matches!(
-            Win32Desktop.post_close(Hwnd(1)),
+            Win32Desktop.place(Hwnd(1), Rect::new(0, 0, 10, 10)),
             Err(Error::Forbidden(_))
         ));
         assert!(matches!(

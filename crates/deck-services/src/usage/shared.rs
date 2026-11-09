@@ -15,6 +15,12 @@
 //! Diese Fassung ist damit ein gleichberechtigter Teilnehmer des gemeinsamen Pollers;
 //! sie schreibt dasselbe Format und dasselbe Protokoll (`poller.log`, von `doctor.py`
 //! nach Stunde ausgewertet).
+//!
+//! **Der Cache trägt sein Konto** (`account`, E-Mail klein, seit 2026-11-08). Ein Cache,
+//! dessen Konto nicht das aktuelle ist, gilt als nicht vorhanden: seine Zahl gehört
+//! jemand anderem. Darum schreibt JEDER Schreibweg `account` mit; fehlte es, verwürfe
+//! der Tray (Python) den Cache bei jedem Blick als fremd und fragte selbst nach, und
+//! das Budget des Endpoints wäre schnell weg.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -48,6 +54,8 @@ pub struct SharedView {
     pub error: Option<String>,
     /// Zeit der Daten, nicht des Lesens.
     pub data_ts: Option<f64>,
+    /// Konto, zu dem `data` gehört (E-Mail, klein); `None` = unbekannt.
+    pub account: Option<String>,
 }
 
 /// Prozessübergreifende Ein-Schreiber-Sperre.
@@ -126,8 +134,18 @@ fn view(c: &Value) -> SharedView {
         data: c.get("data").filter(|v| !v.is_null()).cloned(),
         error: c.get("error").and_then(Value::as_str).map(String::from),
         data_ts: f(c, "data_ts"),
+        account: account_of(c).map(String::from),
     }
 }
+
+/// Konto eines Cache-Stands; fehlt oder `null` = unbekannt (Pythons `c.get("account")`).
+fn account_of(c: &Value) -> Option<&str> {
+    c.get("account").and_then(Value::as_str)
+}
+
+/// Text, wenn nach einem Kontowechsel noch keine eigene Zahl da ist. Wörtlich wie im
+/// gemeinsamen Poller; `apply_view` übersetzt ihn für die Oberfläche.
+pub const SWITCH_ERROR: &str = "Kontowechsel – lade neu…";
 
 impl SharedPoller {
     pub fn new(
@@ -162,22 +180,47 @@ impl SharedPoller {
     /// Token werden übergangen, und auf den Mutex wird kurz gewartet.
     pub fn get_usage(&self, force: bool) -> SharedView {
         let now = (self.clock)();
+        let acc = self.tokens.current_account(); // Kontowechsel? (im Normalfall ein stat)
         let c = self.read_cache();
-        if !force && let Some(c) = &c
+        let same = c.as_ref().filter(|c| account_of(c) == acc.as_deref());
+        if !force && let Some(c) = same
             && now < f(c, "next_ts").unwrap_or(0.0)
         {
             return view(c);
         }
         let Some(_guard) = self.lock.try_lock(if force { FORCE_WAIT_MS } else { 0 }) else {
-            // Ein anderer Prozess pollt gerade: letzten Wert liefern, er aktualisiert gleich.
-            return view(&c.unwrap_or_else(empty));
+            // Ein anderer Prozess pollt gerade: letzten Wert liefern, er aktualisiert
+            // gleich. Aber nur, wenn er zum selben Konto gehört; sonst lieber keine Zahl
+            // als eine fremde.
+            return match same {
+                Some(c) => view(c),
+                None => SharedView { error: Some(SWITCH_ERROR.into()), account: acc, ..Default::default() },
+            };
         };
-        let c = self.read_cache().unwrap_or_else(empty);
+        let mut c = self.read_cache().unwrap_or_else(empty);
         let now = (self.clock)();
-        if !force && now < f(&c, "next_ts").unwrap_or(0.0) {
+        if account_of(&c) != acc.as_deref() {
+            // Zahl und Sperrzähler gehörten zum alten Konto bzw. dessen Token. Nur der
+            // gelernte Takt bleibt: er beschreibt den Endpoint, kein Konto.
+            if !c.get("data").is_none_or(Value::is_null) {
+                let name = |a: Option<&str>| a.unwrap_or("unbekannt").to_string();
+                self.log.note(&format!("Kontowechsel {} -> {}: Cache verworfen", name(account_of(&c)), name(acc.as_deref())));
+            }
+            let interval = c.get("interval").filter(|v| deck_core::pystr::truthy(v)).cloned();
+            let mut fresh = empty();
+            if let Some(iv) = interval {
+                fresh["interval"] = iv;
+            }
+            fresh["account"] = acc.clone().map_or(Value::Null, Value::from);
+            c = fresh;
+        } else if !force && now < f(&c, "next_ts").unwrap_or(0.0) {
             return view(&c); // unter der Sperre schon aktualisiert
         }
-        let next = self.poll(&c, now, force);
+        let mut next = self.poll(&c, now, force);
+        // Das Konto der Tokens, mit denen eben abgefragt wurde, nicht `acc`: bei einem
+        // 401 liest `fetch_raw` die Tokens neu, das Konto kann sich dabei noch einmal
+        // geändert haben. Steht in JEDEM Schreibweg (Erfolg, 401, 429, Netzfehler).
+        next["account"] = self.tokens.account().map_or(Value::Null, Value::from);
         self.write_cache(&next);
         view(&next)
     }

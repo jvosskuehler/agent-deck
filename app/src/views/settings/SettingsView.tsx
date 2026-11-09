@@ -1,11 +1,7 @@
 // Ansicht `#/settings`: eigenes Fenster im Papier-Look. Zwei Bereiche: Neue Agenten und
 // Deck. Kein Speichern-Knopf: jede Änderung geht sofort per set_setting an Rust, ein
-// kurzes „Gespeichert“ bestätigt.
-//
-// Am 09.11.2026 herausgeflogen, weil Jorrit nur noch in Windows Terminal arbeitet: der
-// Hinweis unter „Bypass“, Ring um den Chat, Jira-Präfix, Heimatordner und die Werkzeuge
-// für VS Code und „Repo öffnen“. Ihre Werte bleiben in der Datei und wirken wie zuletzt
-// gesetzt; Rust kennt die Schlüssel weiter.
+// kurzes „Gespeichert“ bestätigt. Was bewusst fehlt, steht in docs/DESIGN.md („Bewusst
+// nicht“).
 
 import { useEffect, useRef, useState } from "react";
 import type { SettingsView as Settings } from "../../bindings/SettingsView";
@@ -20,6 +16,7 @@ import {
   matchOption,
   modelOptions,
   modeOptions,
+  onOffOptions,
 } from "../../logic/settingsOptions";
 import { Segmented } from "./controls";
 import "../../styles/settings.css";
@@ -60,12 +57,7 @@ export function SettingsView() {
   };
 
   const restartPanel = () => {
-    commands
-      .runTool("restartPanel")
-      .then((st) => {
-        if (st?.tone === "error") setError(st.text);
-      })
-      .catch((err: unknown) => setError(String(err)));
+    commands.restartPanel().catch((err: unknown) => setError(String(err)));
   };
 
   const body = (
@@ -128,6 +120,12 @@ export function SettingsView() {
           options={edgeOptions(lang)}
           value={matchOption(edgeOptions(lang), settings.dockEdge)}
           onChange={(v) => save("dockEdge", v)}
+        />
+        <Segmented
+          label={t(lang, "autoCompact")}
+          options={onOffOptions(lang)}
+          value={settings.autoCompact ? "on" : "off"}
+          onChange={(v) => save("autoCompact", v === "on")}
         />
       </section>
     </div>

@@ -1,18 +1,15 @@
 //! Die App des Agent Decks: Fenster, Andocken, Broker zur VS-Code-Extension,
 //! Windows-Terminal-Host, Poll-Takt, Befehle der Oberfläche.
 //!
-//! Verhalten wie das Python-Deck (`deck/ui/panel.py` und Nachbarn), Rechnung in
-//! `deck-core`, Win32 in `deck-win`, Hintergrunddienste in `deck-services`
+//! Rechnung in `deck-core`, Win32 in `deck-win`, Hintergrunddienste in `deck-services`
 //! (Einbaustellen in `services.rs`).
 //!
-//! Probebetrieb neben dem laufenden Python-Deck: `DECK_NO_BROKER=1` (kein Broker) oder
-//! `DECK_BROKER_PORT=<port>`, dazu `DECK_DOCK_EDGE=off|left|…` für eine Kante nur in
-//! diesem Lauf. Ohne eigenen Broker auf 8765 räumt das Deck nichts ab
-//! (keine Bindungen vergessen, keine worktrees löschen), kachelt keine Terminal-Fenster,
-//! belegt nicht die Sprung-Taste und zeichnet keinen Fokus-Rahmen: das tut noch das
-//! Python-Deck.
+//! Der Start schaltet immer alles ein. Ist der Broker-Port belegt (etwa kurz nach
+//! „Panel neu starten“, solange die alte Instanz ihn noch hält), fehlt nur die
+//! VS-Code-Seite; Tastenkürzel, Fokus-Rahmen, Kacheln und Aufräumen laufen trotzdem.
 
 pub mod actions;
+pub mod auto_compact;
 pub mod app_paths;
 pub mod applog;
 pub mod block_head;
@@ -33,7 +30,6 @@ pub mod settings;
 pub mod state;
 pub mod ticket;
 pub mod ticket_dialog;
-pub mod tools;
 pub mod tooltip;
 pub mod ui_windows;
 pub mod window_sync;
@@ -45,6 +41,8 @@ pub mod wt_tiles;
 mod testing;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_compact;
 #[cfg(test)]
 mod tests_head;
 
@@ -73,18 +71,6 @@ pub fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
-/// Broker nach Umgebung: aus, anderer Port oder der echte auf 8765.
-fn broker_from_env() -> (Arc<Broker>, bool) {
-    if std::env::var("DECK_NO_BROKER").is_ok_and(|v| v.trim() == "1") {
-        note("DECK_NO_BROKER=1: ohne Broker (Probebetrieb)");
-        return (Arc::new(Broker::offline()), true);
-    }
-    let port = std::env::var("DECK_BROKER_PORT").ok().and_then(|p| p.trim().parse::<u16>().ok()).unwrap_or(BROKER_PORT);
-    let broker = Broker::start(BROKER_HOST, port);
-    let trial = port != BROKER_PORT || !broker.listening();
-    (broker, trial)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let paths = Paths::from_env();
@@ -98,19 +84,19 @@ pub fn run() {
         prev(info);
     }));
     note(format!("--- Start agent-deck {} (pid {}), Log {} ---", env!("CARGO_PKG_VERSION"), std::process::id(), log.display()));
-    let (broker, trial) = broker_from_env();
-    app_paths::prepare(&paths, &app_paths::legacy_roots(), !trial);
+    // Belegt → nur die VS-Code-Seite bleibt aus (Logzeile kommt aus `Broker::start`).
+    let broker = Broker::start(BROKER_HOST, BROKER_PORT);
+    app_paths::prepare(&paths);
     let desktop: Arc<dyn Desktop> = Arc::new(Win32Desktop);
     let procs: Arc<dyn Processes> = Arc::new(Win32Processes);
     let fx = WtEffects {
         desktop: desktop.clone(),
-        procs: procs.clone(),
+        procs,
         console: Arc::new(HelperConsole::beside_exe()),
         launcher: Arc::new(launcher::ProcessLauncher),
     };
     let setup = wt_host::real_setup(&paths.app_dir, &paths.state_dir, paths.wt_agent_script());
-    let mut wt = WtHost::new(setup, fx, Worker::spawn("wt-host"), now);
-    wt.retile = !trial;
+    let wt = WtHost::new(setup, fx, Worker::spawn("wt-host"), now);
     let host_map = wt.host_map();
     let agent_group = deck_win::taskbar::TaskbarGroup {
         app_id: deck_core::wt::TASKBAR_APP_ID.into(),
@@ -119,20 +105,10 @@ pub fn run() {
     };
     let hosts = Hosts { vscode: broker.clone(), wt };
     let lang = deck_core::i18n::Lang::from_settings(&paths.claude_settings);
-    let services = Services::system(&paths, broker.clone(), desktop.clone(), procs, lang, trial, Arc::new(poll::wake));
+    let services = Services::system(&paths, lang, Arc::new(poll::wake));
     let mut deck = Deck::new(paths.clone(), hosts, desktop.clone(), services);
-    deck.cleanup_allowed = !trial;
-    if trial {
-        note("Probebetrieb: kein Abräumen, kein Kacheln, keine Sprung-Taste, kein Fokus-Rahmen");
-    }
     deck.ensure_home_terminal();
-    let glow = deck.store.settings.get("glow").is_some_and(deck_core::pystr::truthy);
-    deck.services.glow_self_heal(glow, deck.lang);
-    // Probebetrieb: Kante nur für diesen Lauf, ohne die Einstellung zu ändern.
-    let edge = match std::env::var("DECK_DOCK_EDGE") {
-        Ok(e) if !e.trim().is_empty() => deck_core::dock::Edge::parse(Some(e.trim())),
-        _ => deck.dock_edge(),
-    };
+    let edge = deck.dock_edge();
     let along = dock::saved_along(&deck.store.settings);
     let mut dock_ctl = DockCtl::new(edge, along);
     dock_ctl.free = dock::saved_free(&deck.store.settings);
@@ -163,7 +139,6 @@ pub fn run() {
             std::thread::spawn(move || dock::reveal_for_request(&app));
         }))
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .on_menu_event(|app, event| {
             // Läuft auf dem Hauptthread: der darf nicht auf das Deck warten.
@@ -186,26 +161,22 @@ pub fn run() {
             commands::open_usage_page,
             commands::open_settings,
             commands::set_setting,
-            commands::run_tool,
+            commands::restart_panel,
             commands::focus_block,
             commands::get_ticket,
             commands::submit_ticket,
             commands::show_block_menu,
-            commands::confirm_close_block,
             commands::panel_hold,
             commands::panel_drag,
-            commands::foreign_vscode_windows,
         ])
         .setup(move |app| {
             let handle = app.handle();
             ui_windows::create_all(handle, english)?;
             dock::start(handle);
             poll::start(handle);
-            if !trial {
-                hotkey::start(handle, combo);
-                hotkey::start_front(handle, front_combos);
-                focus_frame::start(desktop, host_map, Some(agent_group));
-            }
+            hotkey::start(handle, combo);
+            hotkey::start_front(handle, front_combos);
+            focus_frame::start(desktop, host_map, Some(agent_group));
             Ok(())
         })
         .build(tauri::generate_context!());

@@ -11,6 +11,7 @@
 //!   Daten stehen (2026-08-05: stundenalte 48 % als frisch und grün gezeigt).
 //! * Ein Limit hinter seinem Reset ist keine Zahl mehr (`expire_limits` in `deck-core`).
 
+pub mod account;
 pub mod fetch;
 pub mod policy;
 pub mod shared;
@@ -20,7 +21,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use deck_core::claude::usage::{UsageSnapshot, apply, fail, usage_view};
+use deck_core::claude::usage::{UsageSnapshot, apply, fail, note_account, usage_view};
 use deck_core::i18n::Lang;
 use deck_core::view::UsageView;
 
@@ -32,8 +33,10 @@ pub type UsageCallback = Box<dyn Fn(&UsageSnapshot) + Send + Sync>;
 
 /// Gemeinsamen Stand in den Snapshot übernehmen (Python `poll_once`, Zweig mit
 /// gemeinsamem Poller). Ohne Daten entscheidet der Fehlertext, ob die Zahl verschwindet
-/// (Token weg: hart) oder stehen bleibt (Rate-Limit, Netz: weich).
+/// (Token weg: hart) oder stehen bleibt (Rate-Limit, Netz: weich). Vorher zählt das
+/// Konto: gehört der Stand einem anderen als bisher, fallen die alten Zahlen weg.
 pub fn apply_view(snap: &mut UsageSnapshot, v: &SharedView, now: f64, lang: Lang) {
+    note_account(snap, v.account.as_deref());
     let Some(data) = &v.data else {
         let err = v.error.clone().unwrap_or_default();
         let low = err.to_lowercase();
@@ -43,6 +46,8 @@ pub fn apply_view(snap: &mut UsageSnapshot, v: &SharedView, now: f64, lang: Lang
             // Weder CLI noch Desktop haben ein Token. Der Hinweis zeigt auf die CLI:
             // die hat jeder Deck-Nutzer, ein Login dort ist der kürzere Weg.
             fail(snap, lang.l("Nicht angemeldet, bitte 'claude auth login'", "Not signed in, run 'claude auth login'"), true);
+        } else if low.contains("kontowechsel") {
+            fail(snap, lang.l("Kontowechsel, lade neu…", "Account switched, reloading…"), false);
         } else if low.contains("rate") {
             fail(snap, lang.l("Rate-Limit, kurz warten", "Rate limit, wait a moment"), false);
         } else if err.is_empty() {
@@ -111,13 +116,15 @@ impl UsageService {
     }
 
     /// Die echte Fassung: gemeinsamer Cache unter `%LOCALAPPDATA%\claude-usage`,
-    /// Named-Mutex, Tokens von CLI und Claude Desktop, HTTPS über Schannel.
+    /// Named-Mutex, Tokens von CLI und Claude Desktop (Konto je Token über dasselbe
+    /// HTTP), HTTPS über Schannel.
     pub fn system(lang: Lang) -> UsageService {
+        let http: Arc<dyn fetch::UsageHttp> = Arc::new(fetch::UreqHttp::new());
         let poller = SharedPoller::new(
             shared::default_dir(),
             Arc::new(NamedMutex),
-            Arc::new(token::DiskTokens::system()),
-            Arc::new(fetch::UreqHttp::new()),
+            Arc::new(token::DiskTokens::system(http.clone())),
+            http,
             Arc::new(now_unix),
             Arc::new(random_unit),
         );

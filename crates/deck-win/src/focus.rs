@@ -112,11 +112,6 @@ pub fn windows_of_pid(pid: u32) -> Vec<Hwnd> {
     out
 }
 
-/// Hat der Prozess mindestens ein sichtbares Fenster?
-pub fn has_window(pid: u32) -> bool {
-    !windows_of_pid(pid).is_empty()
-}
-
 /// Holt `hwnd` zuverlässig nach vorn. `Ok(true)`, wenn es danach das aktive Fenster ist.
 ///
 /// Windows verhindert normalerweise, dass ein Hintergrundprozess den Vordergrund an
@@ -198,11 +193,6 @@ pub fn set_corners(hwnd: Hwnd, corners: Corners) -> Result<bool> {
         DWMWA_WINDOW_CORNER_PREFERENCE,
         corners.dwm().0 as u32,
     ))
-}
-
-/// Kurzform für [`Corners::Square`].
-pub fn square_corners(hwnd: Hwnd) -> Result<bool> {
-    set_corners(hwnd, Corners::Square)
 }
 
 /// Den Fensterrand deckend in `rgb` (`0xRRGGBB`) malen. Der Win11-Rand ist sonst
@@ -290,15 +280,6 @@ pub const fn rgb_to_colorref(rgb: u32) -> u32 {
     r | (g << 8) | (b << 16)
 }
 
-/// `"#RRGGBB"` (Raute optional) → `0xRRGGBB`; alles andere → `None`.
-pub fn parse_hex_color(s: &str) -> Option<u32> {
-    let h = s.strip_prefix('#').unwrap_or(s);
-    if h.len() != 6 || !h.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return None;
-    }
-    u32::from_str_radix(h, 16).ok()
-}
-
 /// Ein DWORD-Attribut setzen; `false`, wenn DWM es nicht kennt oder ablehnt.
 fn dwm_set(hwnd: HWND, attr: DWMWINDOWATTRIBUTE, value: u32) -> bool {
     if hwnd.0.is_null() {
@@ -328,18 +309,10 @@ mod tests {
     }
 
     #[test]
-    fn hex_colors_need_six_hex_digits() {
-        assert_eq!(parse_hex_color("#7ecbff"), Some(0x7ECBFF));
-        assert_eq!(parse_hex_color("D97757"), Some(0xD97757));
-        assert_eq!(parse_hex_color("#fff"), None);
-        assert_eq!(parse_hex_color("#gg0000"), None);
-    }
-
-    #[test]
     fn focusing_and_restyling_are_blocked_in_tests() {
         assert!(matches!(focus_window(Hwnd(1)), Err(Error::Forbidden(_))));
         assert!(matches!(focus_pid(1), Err(Error::Forbidden(_))));
-        assert!(matches!(square_corners(Hwnd(1)), Err(Error::Forbidden(_))));
+        assert!(matches!(set_corners(Hwnd(1), Corners::Square), Err(Error::Forbidden(_))));
         assert!(matches!(
             style_titlebar(Hwnd(1), &TitlebarStyle::default()),
             Err(Error::Forbidden(_))
@@ -349,6 +322,6 @@ mod tests {
     #[test]
     fn a_process_without_windows_has_none() {
         // PID 0 ist der Leerlaufprozess, er besitzt kein Fenster.
-        assert!(!has_window(0));
+        assert!(windows_of_pid(0).is_empty());
     }
 }

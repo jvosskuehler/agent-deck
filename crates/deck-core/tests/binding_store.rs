@@ -106,19 +106,6 @@ fn saved_runtime_files_survive_a_reload() {
 }
 
 #[test]
-fn legacy_runtime_files_are_adopted_once_and_never_overwrite() {
-    let legacy = tempfile::tempdir().unwrap();
-    let app = tempfile::tempdir().unwrap();
-    std::fs::write(legacy.path().join("bindings.json"), r#"{"A": "alt"}"#).unwrap();
-    std::fs::write(legacy.path().join("tickets.json"), r#"{"A1": "X-1"}"#).unwrap();
-    std::fs::write(app.path().join("tickets.json"), r#"{"A1": "NEU-1"}"#).unwrap();
-    let adopted = paths::adopt_legacy_files(legacy.path(), app.path()).unwrap();
-    assert_eq!(adopted, ["bindings.json"]);
-    assert_eq!(load_json(&app.path().join("tickets.json")), Some(json!({"A1": "NEU-1"})));
-    assert!(paths::adopt_legacy_files(legacy.path(), app.path()).unwrap().is_empty());
-}
-
-#[test]
 fn write_state_keeps_extra_fields_and_flips_only_status_and_time() {
     let dir = tempfile::tempdir().unwrap();
     save_json(&paths::state_path(dir.path(), "A1"), &json!({"slot": "A1", "status": "done", "ts": 1.0, "prompt": "Hallo"})).unwrap();

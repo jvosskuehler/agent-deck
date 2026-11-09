@@ -1,6 +1,7 @@
 // Welche Prozesse duerfen zum Abschiessen angeboten werden? - reine Auswahl-Logik
-// OHNE vscode/child_process, damit sie sich mit Node allein pruefen laesst
-// (tests/test_extension_killable.py fuettert sie ueber node).
+// OHNE vscode/child_process, damit sie sich mit Node allein pruefen laesst. Die
+// Tests dazu gab es nur in der Python-Fassung
+// (`git show 2856494:tests/test_extension_killable.py`).
 //
 // Der Zuschnitt ist bewusst eng. Unter EINEM VS-Code-Fenster haengen schnell 100
 // Prozesse; angeboten wird davon nur, was tatsaechlich einen TCP-Port haelt - denn
@@ -56,10 +57,11 @@ const KEEP = [
   [/^(pwsh|powershell|cmd|bash|sh|zsh|wsl|ssh)\.exe$/i, "Shell eines Terminals"],
 ];
 
-// Kommandozeilen, die auf das Deck selbst zeigen (Panel, Watchdog, Hooks). Die
-// laufen zwar meist ausserhalb von VS Code, koennen aber aus einem Terminal
-// gestartet worden sein - dann haengen sie mit im Baum.
-const DECK_CMD = /agent[-_]deck|agent_deck\.py|watchdog\.py|statusline\.py|report\.py/i;
+// Kommandozeilen, die auf das Deck selbst zeigen: agent-deck.exe, der Waechter, die
+// Hooks und der Konsolen-Helfer, dazu alles aus dem Programmordner
+// %LOCALAPPDATA%\claude-agent-deck. Die laufen zwar meist ausserhalb von VS Code,
+// koennen aber aus einem Terminal gestartet worden sein - dann haengen sie mit im Baum.
+const DECK_CMD = /agent-deck|claude-agent-deck|deck-(?:watchdog|report|statusline|console)/i;
 
 // Claude Code laeuft nicht immer als claude.exe: je nach Installation ist es ein
 // node-Prozess auf `...\claude\cli.js`. detect.isClaudeProc sieht das nicht (es

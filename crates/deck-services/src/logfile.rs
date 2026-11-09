@@ -97,8 +97,15 @@ mod tests {
         let log = LogFile::new(d.path().join("x.log"), 1000, Rotate::Truncate).with_prefix("  pid=7  ");
         log.note("OK");
         let text = fs::read_to_string(log.path()).unwrap();
-        let re = regex::Regex::new(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d  pid=7  OK\n$").unwrap();
-        assert!(re.is_match(&text), "{text:?}");
+        // `JJJJ-MM-TT hh:mm:ss`, dann Präfix und Text.
+        let (stamp, rest) = text.split_at_checked(19).expect("Zeitstempel");
+        let shape_ok = stamp.char_indices().all(|(i, c)| match i {
+            4 | 7 => c == '-',
+            10 => c == ' ',
+            13 | 16 => c == ':',
+            _ => c.is_ascii_digit(),
+        });
+        assert!(shape_ok && rest == "  pid=7  OK\n", "{text:?}");
     }
 
     #[test]

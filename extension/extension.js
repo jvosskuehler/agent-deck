@@ -54,9 +54,9 @@ const slotPid = new Map();     // slotName -> Claude-PID (fuer die pidmap; Statu
 const claudeByExec = new Set(); // Terminals, in denen "claude" gestartet wurde
 const procChecked = new Set();  // per Prozess-Scan geprueft + (noch) kein claude -> nicht dauernd neu scannen
 
-// Ordner, in den auch die Hooks (report.py) schreiben. Hierhin legen wir die
-// pidmap-<Fenster>.json, damit report.py selbst gestartete Sessions einem Slot
-// zuordnen kann (siehe report.py / deck_common.py).
+// Ordner, in den auch die Hooks (deck-report) schreiben. Hierhin legen wir die
+// pidmap-<Fenster>.json, damit deck-report selbst gestartete Sessions einem Slot
+// zuordnen kann (siehe crates/deck-hooks/src/env.rs).
 function stateDir() {
   return path.join(process.env.LOCALAPPDATA || os.homedir(), "claude-agent-deck", "state");
 }
@@ -64,7 +64,7 @@ function stateDir() {
 // pidmap dieses Fensters atomar schreiben: { "<claudePid>": "A1", ... }.
 //
 // In einem REMOTE-Fenster gar nicht: die PIDs kaemen von der Gegenstelle, die
-// Datei liegt aber im LOCALAPPDATA dieses Rechners, und report.py liest sie hier.
+// Datei liegt aber im LOCALAPPDATA dieses Rechners, und deck-report liest sie hier.
 // Eine Remote-PID darin ist keine harmlose Nullnummer, sondern eine Verwechslung
 // mit Ansage - dieselbe Zahl gehoert hier zu einem beliebigen Windows-Prozess, und
 // ein LOKALER Hook, dessen Ahnenreihe zufaellig darueber laeuft, meldete seinen
@@ -166,14 +166,15 @@ function workspaceFolder() {
   // Eine .code-workspace-Datei auf der GEGENSTELLE bleibt bewusst aussen vor: zu
   // --folder-uri gibt es kein Workspace-Gegenstueck, und stattdessen ihren ersten
   // Ordner zu oeffnen waere ein ANDERES Fenster als das, das der Neustart zumacht.
-  // Lieber ehrlich als uebersprungen gemeldet werden (restart_plan: skipped).
+  // Lieber ehrlich als uebersprungen gemeldet werden. (Den VS-Code-Neustart gibt es
+  // nur noch in der Historie: `git show 2856494:deck/domain/restart_plan.py`.)
   if (wf && wf.scheme === "vscode-remote") return null;
   const f = vscode.workspace.workspaceFolders;
   const u = (f && f.length) ? f[0].uri : null;
   if (u && u.scheme === "file") return u.fsPath;
   // Remote: kein Pfad, den DIESER Rechner kennt - aber eine Adresse, unter der VS
   // Code das Fenster wieder aufmacht (`code --folder-uri vscode-remote://…`). Das
-  // Panel unterscheidet Pfad und Adresse am Schema (domain/restart_plan.open_args).
+  // Panel unterschied Pfad und Adresse am Schema (`restart_plan.open_args`, s. o.).
   if (u && u.scheme === "vscode-remote") return u.toString();
   return null;
 }
@@ -402,7 +403,7 @@ function preferredName(term) {
 }
 
 // ── Terminals anlegen ─────────────────────────────────────
-// opts: { model, args, cwd, slot } - siehe protocol.py (CMD_CREATE_AGENT). Nimmt auch
+// opts: { model, args, cwd, slot } - siehe crates/deck-core/src/protocol.rs (CMD_CREATE_AGENT). Nimmt auch
 // noch einen nackten Modell-String an: so wurde die Funktion vorher gerufen, und die
 // Kommando-Registrierung reicht bei Aufruf ueber die Palette `undefined` durch.
 async function createAgent(opts) {
@@ -436,7 +437,7 @@ async function createAgent(opts) {
   if (autostart) {
     await new Promise((r) => setTimeout(r, 600)); // pty kurz Zeit geben
     // Split-Kommando kann kein env uebergeben -> AGENT_SLOT in der Shell setzen,
-    // damit die Hooks (report.py) den Status dieser Kachel melden koennen.
+    // damit die Hooks (deck-report) den Status dieser Kachel melden koennen.
     if (viaSplit) {
       term.sendText(slotEnvCommand(slot));
       // ... und aus demselben Grund auch kein cwd: ein Split erbt das Verzeichnis
@@ -445,8 +446,8 @@ async function createAgent(opts) {
       // lief im git worktree, nicht in der Repo-Wurzel.
       if (o.cwd) term.sendText(`cd "${o.cwd}"`);
     }
-    // Fertige Flag-Zeile vom Panel (Neustart: `--resume "<id>" --model "…"`, gebaut und
-    // geprueft in domain/restart_plan.flags) hat Vorrang. Sonst wie bisher das
+    // Fertige Flag-Zeile vom Panel (`--model "…" --effort …`, gebaut und geprueft in
+    // crates/deck-core/src/agent_flags.rs) hat Vorrang. Sonst wie bisher das
     // Wunsch-Modell per CLI-Flag ERZWINGEN: das Flag hat hoechste Prioritaet und
     // schlaegt das zuletzt per /model gewaehlte, in ~/.claude.json gemerkte Modell.
     // Anfuehrungszeichen halten das '[1m]'-Suffix in PowerShell/bash literal.

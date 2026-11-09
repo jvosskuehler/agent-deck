@@ -1,13 +1,11 @@
-//! Was der Kopf eines Blocks über das ganze Fenster kann (`deck/ui/connect.py`,
-//! `actions.py: close_window`): das Fenster schließen, seine Bindung vergessen und ein
-//! VS-Code-Fenster per Klick an den Buchstaben binden.
+//! Was der Kopf eines Blocks über das ganze Fenster kann (`deck/ui/connect.py`): seine
+//! Bindung vergessen und ein VS-Code-Fenster per Klick an den Buchstaben binden.
 //!
 //! Fenster werden über den Workspace-NAMEN gebunden, nicht über ein Handle: ein Handle
 //! überlebt das Neuladen des Fensters nicht.
 
 use deck_core::binding::{is_placeholder_ws, repo_from_title, window_from_title};
 use deck_core::config::VSCODE_MARKER;
-use deck_core::protocol::Command;
 
 use crate::deck::Deck;
 
@@ -22,32 +20,6 @@ pub struct BindRequest {
 }
 
 impl Deck {
-    /// Das ganze Fenster schließen, samt aller Agenten darin (✕ im Kopf, nach Rückfrage).
-    /// Die Extension trennt sich danach; sobald auch das native Fenster zu ist, räumt
-    /// `cleanup_closed_windows` die Bindung ab. Die worktrees der Agenten gehen mit,
-    /// wie beim Schließen eines einzelnen.
-    pub fn close_window(&mut self, win: &str) {
-        if !self.hosts.connected(win) {
-            return;
-        }
-        if !self.hosts.send(win, &Command::CloseWindow) {
-            return;
-        }
-        let mut changed = false;
-        for slot in self.slots_for_window(win) {
-            self.cleanup_worktrees(&slot);
-            changed |= self.store.tickets.remove(&slot).is_some();
-            self.clear_found_ticket(&slot);
-            self.forget_slot(&slot);
-        }
-        if changed {
-            self.store.save_tickets();
-        }
-        if self.active_slot.as_ref().is_some_and(|a| Deck::letter(a) == win) {
-            self.active_slot = None;
-        }
-    }
-
     /// „Mit Fenster verbinden“: der nächste Klick in ein VS-Code-Fenster (binnen 20 s)
     /// bindet es an diesen Buchstaben. Ein zweiter Aufruf für denselben Block bricht ab.
     pub fn start_bind(&mut self, win: &str, now: f64) {

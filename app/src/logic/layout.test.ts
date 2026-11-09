@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockWidth, cardHeight, columnsFor, gridWidth } from "./layout";
+import { blockWidth, cardHeight, columnsFor } from "./layout";
 
 describe("Raster des Panels", () => {
   it("ist so breit wie der breiteste Block samt ＋-Karte", () => {
@@ -14,11 +14,6 @@ describe("Raster des Panels", () => {
 
   it("hat ohne Blöcke eine Spalte", () => {
     expect(columnsFor([])).toBe(1);
-  });
-
-  it("misst vier Karten mit Abstand 10", () => {
-    expect(gridWidth(4)).toBe(818);
-    expect(gridWidth(1)).toBe(197);
   });
 
   it("macht Terminal-Karten hoch und VS-Code-Karten flach", () => {

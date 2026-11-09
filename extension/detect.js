@@ -1,9 +1,9 @@
 // Reine Erkennungs-Helfer fuer Claude-Terminals - OHNE vscode/child_process,
-// damit sie sich mit Node allein testen lassen (siehe detect.test.js).
+// damit sie sich mit Node allein pruefen lassen.
 
 // Ist der invozierte Befehl "claude"? Nimmt "claude" als eigenstaendiges Token
 // (optional mit Pfad-Prefix und .cmd/.exe/.ps1). "claude-foo" oder "claudette"
-// zaehlen NICHT (Wortgrenze), ein Pfad wie ...\claude-agent-deck\x.py auch nicht.
+// zaehlen NICHT (Wortgrenze), ein Pfad wie ...\claude-agent-deck\deck-report.exe auch nicht.
 function isClaudeCommand(cmd) {
   if (!cmd) return false;
   return /(^|[\s|;&(])(?:[^\s|;&"']*[\\/])?claude(?:\.cmd|\.exe|\.ps1)?(?=$|\s|["'])/i
@@ -52,7 +52,8 @@ function hasClaudeDescendant(rootPid, procs) {
 
 // Wie hasClaudeDescendant, gibt aber die PID des naechstgelegenen Claude-Prozesses
 // UNTER rootPid zurueck (Breitensuche = die Session direkt unter der Shell), sonst
-// null. Diese PID ist zugleich ein Vorfahre der Hook-Prozesse -> Bruecke zu report.py.
+// null. Diese PID ist zugleich ein Vorfahre der Hook-Prozesse -> Bruecke zu deck-report
+// (crates/deck-hooks).
 function claudeDescendantPid(rootPid, procs) {
   if (!rootPid || !Array.isArray(procs) || !procs.length) return null;
   const kids = new Map(); // ppid -> [proc]

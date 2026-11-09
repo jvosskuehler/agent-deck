@@ -1,8 +1,7 @@
 //! Das Deck ohne Fenster: Zustand, Poll-Takt und Anzeigemodell.
 //!
 //! Was `deck/ui/panel.py` und `refresh.py` je Takt tun, in der Reihenfolge von dort:
-//! Bindungen nachziehen, geschlossene Fenster abräumen (nie während eines Neustarts),
-//! neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen, worktrees fegen,
+//! Bindungen nachziehen, geschlossene Fenster abräumen, neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen, worktrees fegen,
 //! Hook-Modi übernehmen, Startmodus antreiben, Ansicht bauen. Die Themen stehen in
 //! eigenen Dateien (`window_sync.rs`, `actions.rs`, `ticket.rs`) als `impl Deck`.
 //!
@@ -12,6 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deck_core::auto_compact::CompactMemo;
 use deck_core::auto_mode::PendingAuto;
 use deck_core::bind_store::BindStore;
 use deck_core::claude::refs::Refs;
@@ -62,9 +62,6 @@ pub struct Deck {
     pub home_win: Option<String>,
     /// Ein Dialog des Decks hat den Fokus: Auto-Fokus auslassen (er klaute ihn sonst).
     pub modal: bool,
-    /// Darf das Deck abräumen (Bindungen vergessen, worktrees löschen)? Im Probebetrieb
-    /// ohne eigenen Broker nicht: dort sähe jeder VS-Code-Agent tot aus.
-    pub cleanup_allowed: bool,
     pub states: HashMap<String, SlotState>,
     pub live: HashMap<String, SlotState>,
     pub found: HashMap<String, String>,
@@ -75,6 +72,8 @@ pub struct Deck {
     pub shown_slots: Vec<String>,
     /// Taste „alle nach vorn“: das Fenster, aus dem man kam.
     pub front_toggle: BackToggle,
+    /// Automatisches `/compact`: für welchen Cache-Stand je Slot schon gesendet wurde.
+    pub compact_memo: CompactMemo,
     last_cycle: Option<Vec<String>>,
     memory: StatusMemory,
     mode_cache: DefaultModeCache,
@@ -100,7 +99,6 @@ impl Deck {
             gone_since: HashMap::new(),
             home_win: None,
             modal: false,
-            cleanup_allowed: true,
             states: HashMap::new(),
             live: HashMap::new(),
             found: HashMap::new(),
@@ -108,6 +106,7 @@ impl Deck {
             detected_refs: HashMap::new(),
             shown_slots: Vec::new(),
             front_toggle: BackToggle::default(),
+            compact_memo: CompactMemo::default(),
             last_cycle: None,
             memory: StatusMemory::default(),
             mode_cache: DefaultModeCache::new(),
@@ -116,36 +115,29 @@ impl Deck {
 
     /// Ein Takt des Polls (alle 400 ms). Liefert die neue Ansicht.
     pub fn tick(&mut self, now: f64) -> DeckView {
-        let restarting = self.services.restart_step();
         self.sync_bindings();
         self.poll_bind(now);
-        // Während eines Neustarts sind die Fenster absichtlich weg: wer jetzt abräumt,
-        // vergibt danach andere Buchstaben, und die Chats landen auf fremden Kacheln.
-        if !restarting && self.cleanup_allowed {
-            self.cleanup_closed_windows(now);
-        }
+        self.cleanup_closed_windows(now);
         self.autofocus_new(now);
         self.mark_seen_read(now);
         self.read_files();
         let cycle = self.mode_cycle();
-        if self.cleanup_allowed {
-            // Mit höherem Preis: während eines Neustarts lebt zu keinem Slot ein Agent,
-            // der Sweep hielte jeden Ticket-worktree für verwaist (`paused`).
-            let view = self.sweep_view(now);
-            let orphans = self.services.sweep(&view, restarting);
-            let mut changed = false;
-            for slot in &orphans {
-                changed |= self.store.tickets.remove(slot).is_some();
-            }
-            if changed {
-                self.store.save_tickets();
-            }
+        let view = self.sweep_view(now);
+        let orphans = self.services.sweep(&view);
+        let mut changed = false;
+        for slot in &orphans {
+            changed |= self.store.tickets.remove(slot).is_some();
+        }
+        if changed {
+            self.store.save_tickets();
         }
         self.adopt_hook_modes(&cycle);
         self.apply_pending_auto(now, &cycle);
         let sessions = self.sessions();
         self.detected_refs = self.services.detected_refs(&sessions);
         let view = self.view(now);
+        // Kurz bevor der Prompt-Cache eines wartenden Agenten abläuft: /compact.
+        self.auto_compact(now);
         // Ticket/PR und Zusammenfassung offener Agenten im Hintergrund vorwärmen.
         let sessions = self.sessions();
         self.services.prefetch(now, &sessions, self.lang);

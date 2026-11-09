@@ -7,7 +7,6 @@ import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
-import type { ToolStatus } from "../bindings/ToolStatus";
 import type { TooltipView } from "../bindings/TooltipView";
 
 /** Ereignisse Rust → Oberfläche. */
@@ -18,8 +17,6 @@ export interface EventPayloads {
   "deck://tooltip-hide": null;
   "deck://settings": SettingsView;
   "deck://ticket": TicketView;
-  /** Rückmeldung eines Werkzeugs, die später kommt (Neustart-Fortschritt, Ring). */
-  "deck://tool": ToolStatus;
 }
 
 export type EventName = keyof EventPayloads;
@@ -31,8 +28,6 @@ export interface ScreenRect {
   width: number;
   height: number;
 }
-
-export type ToolName = "openRepo" | "gatherWindows" | "restartVscode" | "restartPanel";
 
 /** Was das freie Panel beim Ziehen tut: verschieben oder an der Ecke zoomen. */
 export type PanelDragMode = "move" | "zoom";
@@ -55,14 +50,10 @@ export interface Commands {
   open_usage_page: { args: Record<string, never>; ret: void };
   open_settings: { args: Record<string, never>; ret: void };
   set_setting: { args: { key: SettingKey; value: SettingsView[SettingKey] }; ret: SettingsView };
-  /** Rückmeldung für die Statuszeile; null, wenn nichts zu melden ist oder sie als deck://tool nachkommt. */
-  run_tool: { args: { tool: ToolName }; ret: ToolStatus | null };
-  /** Offene VS-Code-Fenster ohne Deck-Verbindung (für die Rückfrage vor dem Neustart). */
-  foreign_vscode_windows: { args: Record<string, never>; ret: string[] };
+  /** „Panel neu starten“: frische Instanz, diese endet. */
+  restart_panel: { args: Record<string, never>; ret: void };
   /** Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen, verbinden). */
   show_block_menu: { args: { letter: string }; ret: void };
-  /** ✕ im Kopf eines Blocks: native Rückfrage, dann das ganze Fenster schließen. */
-  confirm_close_block: { args: { letter: string }; ret: void };
   /** Karte oder Block wird gezogen: Panel offen halten, auch wenn der Zeiger es verlässt. */
   panel_hold: { args: { hold: boolean }; ret: void };
   /** Freies Panel: Rust folgt dem Zeiger, bis die Taste los ist (verschieben bzw. zoomen). */

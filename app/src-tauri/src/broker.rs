@@ -22,7 +22,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use deck_core::protocol::{Command, TYPE_HELLO, TYPE_SEEN, TYPE_TERMINALS};
-use deck_core::restart_plan::ClientInfo;
 use serde_json::Value;
 
 use crate::applog::note;
@@ -57,7 +56,7 @@ fn text(v: Option<&Value>) -> Option<String> {
 }
 
 impl Broker {
-    /// Broker ohne Socket (Probebetrieb mit `DECK_NO_BROKER=1`, Tests).
+    /// Broker ohne Socket: Ausgangszustand von [`Broker::start`], bleibt so, wenn der Port belegt ist.
     pub fn offline() -> Broker {
         Broker {
             inner: Arc::default(),
@@ -237,18 +236,6 @@ impl VsCodeHost for Broker {
             .unwrap_or_default()
     }
 
-    fn client_info(&self) -> Vec<ClientInfo> {
-        self.lock()
-            .clients
-            .iter()
-            .map(|c| ClientInfo {
-                window: c.window.clone(),
-                workspace: c.workspace.clone(),
-                folder: c.folder.clone(),
-                slots: c.slots.clone(),
-            })
-            .collect()
-    }
 }
 
 #[cfg(test)]

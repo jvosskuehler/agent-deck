@@ -1,5 +1,5 @@
-// Die wenigen Symbole der Oberfläche als Inline-SVG (Pfade aus Lucide, ISC-Lizenz).
-// Eine Icon-Bibliothek wäre für drei Symbole Ballast.
+// Das Zahnrad der Oberfläche als Inline-SVG (Pfad aus Lucide, ISC-Lizenz). Eine
+// Icon-Bibliothek wäre für ein Symbol Ballast.
 
 interface IconProps {
   size?: number;

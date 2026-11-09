@@ -9,7 +9,6 @@
 use std::collections::BTreeSet;
 
 use deck_core::protocol::Command;
-use deck_core::restart_plan::ClientInfo;
 
 use crate::wt_host::WtHost;
 
@@ -26,7 +25,6 @@ pub trait VsCodeHost: Send + Sync {
     fn drain_seen(&self) -> BTreeSet<String>;
     fn workspaces(&self) -> Vec<String>;
     fn workspace_slots(&self, workspace: &str) -> Vec<String>;
-    fn client_info(&self) -> Vec<ClientInfo>;
 }
 
 /// Der Verteiler.
@@ -79,16 +77,12 @@ impl Hosts {
         out
     }
 
-    // Nur VS Code: Auto-Binden neu verbundener Extensions und der Neustart-Plan.
+    // Nur VS Code: Auto-Binden neu verbundener Extensions.
     pub fn workspaces(&self) -> Vec<String> {
         self.vscode.workspaces()
     }
 
     pub fn workspace_slots(&self, workspace: &str) -> Vec<String> {
         self.vscode.workspace_slots(workspace)
-    }
-
-    pub fn client_info(&self) -> Vec<ClientInfo> {
-        self.vscode.client_info()
     }
 }

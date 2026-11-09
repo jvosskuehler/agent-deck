@@ -24,6 +24,8 @@ pub struct HookEnv {
     pub state_dir: PathBuf,
     /// `%LOCALAPPDATA%\claude-agent-deck` (tickets.json für die Statuszeile).
     pub app_dir: PathBuf,
+    /// `~/.claude/settings.json`: die Sprache der Statuszeile („kalt“/„cold“).
+    pub claude_settings: PathBuf,
     pub agent_slot: Option<String>,
     /// Arbeitsverzeichnis des Hooks = das des Agenten.
     pub cwd: Option<String>,
@@ -38,9 +40,10 @@ impl HookEnv {
         HookEnv {
             state_dir: paths::state_dir(),
             app_dir: paths::app_dir(),
+            claude_settings: deck_core::claude::settings::settings_path(),
             agent_slot: std::env::var("AGENT_SLOT").ok().filter(|s| !s.is_empty()),
             cwd: std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()).filter(|s| !s.is_empty()),
-            now: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0),
+            now: unix_now(),
             ancestors: Box::new(crate::procs::ancestor_pids),
         }
     }
@@ -52,6 +55,11 @@ impl HookEnv {
         }
         slot_from_procs(&self.state_dir, &*self.ancestors)
     }
+}
+
+/// Jetzt, in Unix-Sekunden.
+pub fn unix_now() -> f64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
 /// `int(k)` für einen pidmap-Schlüssel.

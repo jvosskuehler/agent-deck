@@ -125,7 +125,7 @@ pub fn wanted_or_next<S: AsRef<str>>(win: &str, wanted: Option<&str>, taken: &[S
 }
 
 /// Argumente für `claude`. `args` ist eine fertige Flag-Zeile aus
-/// `restart_plan::flags` und hat Vorrang; sonst nur `--model <model>`. Zerlegt wie von
+/// `agent_flags::flags` und hat Vorrang; sonst nur `--model <model>`. Zerlegt wie von
 /// einer POSIX-Shell, damit die Anführungszeichen wirken. Fehler: offenes Zitat.
 pub fn claude_argv(model: Option<&str>, args: Option<&str>) -> Result<Vec<String>, String> {
     if let Some(a) = args.filter(|a| !crate::pystr::strip(a).is_empty()) {

@@ -157,12 +157,6 @@ export function createMockBackend(): Backend {
         relabel();
         pushView();
       }
-      if (key === "ring") {
-        const text = lang === "en"
-          ? `Ring ${value ? "enabled" : "removed"} (1/1). Reload the window in VS Code.`
-          : `Ring ${value ? "aktiviert" : "entfernt"} (1/1). In VS Code das Fenster neu laden.`;
-        window.setTimeout(() => emit("deck://tool", { text, tone: value ? "ok" : "info" }), 300);
-      }
       if (key === "dockEdge") {
         dock = { ...dock, edge: String(value) };
         emit("deck://dock", { ...dock });
@@ -170,30 +164,8 @@ export function createMockBackend(): Backend {
       emit("deck://settings", { ...settings });
       return { ...settings };
     },
-    run_tool: ({ tool }) => {
-      const en = lang === "en";
-      switch (tool) {
-        case "openRepo":
-          return { text: en ? "“agent-deck” opens in Windows Terminal." : "„agent-deck“ öffnet sich in Windows Terminal.", tone: "ok" };
-        case "gatherWindows":
-          return { text: en ? "Moved 3 VS Code window(s) to the primary monitor." : "3 VS-Code-Fenster auf den Hauptmonitor geholt.", tone: "ok" };
-        case "restartVscode": {
-          const steps = en
-            ? ["Saving all windows …", "Closing VS Code …", "Reopening 2 windows …", "Done: 5 chats resumed."]
-            : ["Alle Fenster speichern …", "VS Code wird geschlossen …", "2 Fenster werden geöffnet …", "Fertig: 5 Chats wieder aufgenommen."];
-          steps.forEach((text, i) =>
-            window.setTimeout(() => emit("deck://tool", { text, tone: i === steps.length - 1 ? "ok" : "info" }), 400 * (i + 1)),
-          );
-          return null;
-        }
-        case "restartPanel":
-          console.info("[mock] Panel neu starten");
-          return null;
-      }
-    },
-    foreign_vscode_windows: () => (params.get("foreign") === "0" ? [] : ["kunden-portal", "notizen", "billing-portal", "idm-homepage", "helm-charts"]),
+    restart_panel: () => console.info("[mock] Panel neu starten"),
     show_block_menu: ({ letter }) => console.info("[mock] Kontextmenü des Kopfes", letter),
-    confirm_close_block: ({ letter }) => console.info("[mock] Rückfrage: Fenster schließen", letter),
     panel_hold: () => undefined,
     panel_drag: ({ mode }) => console.info("[mock] Panel ziehen", mode),
     focus_block: ({ letter }) => console.info("[mock] Fenster nach vorn", letter),

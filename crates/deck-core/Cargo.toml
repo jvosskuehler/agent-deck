@@ -11,7 +11,6 @@ serde = { version = "1.0.229", features = ["derive"] }
 # preserve_order: ~/.claude/settings.json wird von Hand gepflegt. Ein Zurückschreiben
 # mit sortierten Schlüsseln würde die Datei des Nutzers bei jeder Änderung umsortieren.
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
-thiserror = "2.0.21"
 ts-rs = { version = "12.0.1", features = ["serde-compat"] }
 
 [dev-dependencies]

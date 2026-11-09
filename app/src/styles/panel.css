@@ -190,52 +190,6 @@
   animation: breathe 1.4s ease-in-out infinite;
 }
 
-/* ✕ im Kopf: schließt das ganze Fenster (nach nativer Rückfrage). Wie das ✕ der Karte
- * erst beim Hover über den Kopf zu sehen. */
-.block-close {
-  align-self: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin-left: -2px;
-  border: 1px solid var(--hl-high);
-  border-radius: 50%;
-  background: var(--card);
-  color: var(--dim);
-  opacity: 0;
-  transform: scale(0.85);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease,
-    background-color 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-}
-
-.block-head:not(:hover) .block-close {
-  pointer-events: none;
-}
-
-.block-head:hover .block-close {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.block-close:hover {
-  border-color: var(--err-pig);
-  background: var(--err-pig);
-  color: var(--on-err);
-}
-
-.panel[data-block-drag] .block-close,
-.block[data-tile-drag] .block-close {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .block-grid {
   display: grid;
   gap: 10px;
@@ -388,6 +342,13 @@
 .usage-tip-head {
   margin-bottom: 6px;
   font-weight: 600;
+}
+
+/* Wessen Zahl das ist (seit es zwei Konten gibt); nur mit bekanntem Konto. */
+.usage-tip-account {
+  margin: -3px 0 6px;
+  font-size: 11px;
+  color: var(--subtle);
 }
 
 .usage-tip-row {

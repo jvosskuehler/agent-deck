@@ -10,9 +10,7 @@
 //!
 //! Beide schützen fremde Slots: ein worktree, den ein anderer lebender Agent beansprucht
 //! (per Marker oder per Ticket-Slug als Ordnername), wird nie angefasst. Ein gebundenes,
-//! aber gerade getrenntes Fenster (Reload, kurzer Abriss) gilt nicht als tot. Und
-//! solange der VS-Code-Neustart läuft (`Restarter::busy`), ruht alles: dann lebt zu
-//! keinem Slot ein Agent, und jeder Ticket-worktree sähe verwaist aus.
+//! aber gerade getrenntes Fenster (Reload, kurzer Abriss) gilt nicht als tot.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -328,12 +326,8 @@ impl WorktreeSweeper {
 
     /// Im Poll: Marker-Sweep, dann Platten-Sweep. Rückgabe: die verwaisten Slots, deren
     /// Ticket-Zuweisung die App jetzt vergisst (die Tickets gehören ihr). Marker und
-    /// gefundene Ticket-ID dieser Slots sind dann schon gelöscht. `paused` = der
-    /// VS-Code-Neustart läuft: dann geschieht nichts.
-    pub fn tick(&mut self, view: &SweepView, paused: bool) -> Vec<String> {
-        if paused {
-            return Vec::new();
-        }
+    /// gefundene Ticket-ID dieser Slots sind dann schon gelöscht.
+    pub fn tick(&mut self, view: &SweepView) -> Vec<String> {
         let orphans = self.marker.orphans(view);
         for slot in &orphans {
             self.cleanup_slot(slot, view.tickets.get(slot).map(String::as_str));
@@ -358,11 +352,6 @@ impl WorktreeSweeper {
             }
         }
         orphans
-    }
-
-    /// Läuft gerade ein Platten-Durchgang?
-    pub fn disk_busy(&self) -> bool {
-        self.disk.busy()
     }
 }
 

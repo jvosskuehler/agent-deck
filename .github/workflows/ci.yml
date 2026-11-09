@@ -7,52 +7,61 @@ on:
   workflow_dispatch:
 
 jobs:
-  python:
+  check:
     name: Prüfen und Testen
-    # Muss Windows sein: die Testsuite fasst Win32 an (Arbeitsbereich des Monitors,
-    # Prozesskette) und importiert tkinter.
+    # Muss Windows sein: das Deck ist Windows-only (Win32, Tauri mit WebView2), und
+    # einige Tests lesen lesend gegen das echte System (Monitore, Prozessliste).
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: pnpm/action-setup@v4
         with:
-          python-version: '3.12'
-          cache: pip
+          # Wie lokal (app/package.json hat kein packageManager-Feld).
+          version: 10
 
-      - name: Abhängigkeiten (Laufzeit + Werkzeuge)
-        # -e . macht `deck` importierbar, ohne am sys.path zu schrauben.
-        run: pip install -e ".[dev]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
 
-      - name: Kompilieren aller Module (Syntaxprüfung)
-        run: python -m compileall -q .
+      - name: Oberfläche installieren
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Oberfläche bauen (Typprüfung + Vite)
+        # Vor cargo: `tauri::generate_context!` bettet app/dist beim Übersetzen ein.
+        working-directory: app
+        run: pnpm build
+
+      - name: Oberflächen-Tests
+        working-directory: app
+        run: pnpm test
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Rust-Tests
+        run: cargo test --workspace
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: PowerShell-Skripte parsen
-        # Die .ps1-Dateien sind der einzige Weg in das Projekt hinein (install.ps1) und
-        # der Wächter-Installer. Ein Tippfehler darin fällt sonst erst dem auf, der das
-        # Repo gerade zum ersten Mal klont - also genau dem falschen.
+        # tools/install.ps1 ist der Weg auf den Rechner. Ein Tippfehler darin fällt sonst
+        # erst beim nächsten Installieren auf.
         shell: pwsh
         run: |
+          $files = Get-ChildItem -Recurse -Filter *.ps1 -Path tools, resources
           $fehler = @()
-          foreach ($f in Get-ChildItem -Filter *.ps1) {
+          foreach ($f in $files) {
             $t = $null; $e = $null
             [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$t, [ref]$e) | Out-Null
             if ($e) { $fehler += "$($f.Name): $($e -join '; ')" }
           }
           if ($fehler) { $fehler | ForEach-Object { Write-Host $_ }; exit 1 }
-          Write-Host "ok - $((Get-ChildItem -Filter *.ps1).Count) Skript(e) parsen fehlerfrei"
-
-      - name: Linter
-        run: python -m ruff check .
-
-      - name: Typprüfung
-        # Nur die anzeigefreien Schichten - siehe [tool.mypy] in pyproject.toml.
-        run: python -m mypy
-
-      - name: Unit-Tests
-        run: python -m pytest tests/ -q
-
-      - name: Testlauf ohne pytest
-        # Der eigene Runner ist der Weg, den das Repo ohne Test-Abhängigkeit anbietet -
-        # er muss darum genauso grün sein wie der pytest-Lauf.
-        run: python tests/run.py
+          Write-Host "ok: $($files.Count) Skript(e) parsen fehlerfrei"
