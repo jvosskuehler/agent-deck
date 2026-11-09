@@ -13,8 +13,6 @@ pub enum MenuAction {
     Close(String),
     /// Kopf eines Blocks: Bindung des Buchstabens vergessen.
     Forget(String),
-    /// Kopf eines Blocks: „Mit Fenster verbinden“ beginnen bzw. abbrechen.
-    Bind(String),
 }
 
 impl MenuAction {
@@ -27,7 +25,6 @@ impl MenuAction {
             MenuAction::Mode(s, v) => format!("mode|{s}|{v}"),
             MenuAction::Close(s) => format!("close|{s}"),
             MenuAction::Forget(w) => format!("forget|{w}"),
-            MenuAction::Bind(w) => format!("bind|{w}"),
         }
     }
 
@@ -45,7 +42,6 @@ impl MenuAction {
             ("mode", Some(v)) => MenuAction::Mode(slot, v),
             ("close", None) => MenuAction::Close(slot),
             ("forget", None) => MenuAction::Forget(slot),
-            ("bind", None) => MenuAction::Bind(slot),
             _ => return None,
         })
     }
@@ -72,7 +68,6 @@ mod tests {
             MenuAction::Mode("C2".into(), "bypass".into()),
             MenuAction::Close("D4".into()),
             MenuAction::Forget("B".into()),
-            MenuAction::Bind("C".into()),
         ] {
             assert_eq!(MenuAction::parse(&a.id()), Some(a));
         }

@@ -34,7 +34,7 @@ pub fn write_state(dir: &Path, slot: &str, status: &str, now: f64) -> std::io::R
 }
 
 /// Zustandsdatei eines Slots entfernen (beim Schließen eines Agenten). Sonst erbt ein
-/// später wiederverwendeter Slot-Name (die Extension vergibt `<Fenster><max+1>`, recycelt
+/// später wiederverwendeter Slot-Name (das Deck vergibt `<Fenster><max+1>`, recycelt
 /// also den Namen des geschlossenen höchsten Agenten) Status und Modus der alten Datei.
 /// Fehlt sie schon: still ok.
 pub fn clear_state(dir: &Path, slot: &str) {
@@ -52,12 +52,11 @@ fn file_names(dir: &Path) -> Vec<String> {
     names
 }
 
-/// `{slot: zustand}` aus allen `<slot>.json`; `.live.json` und `pidmap-*.json` zählen
-/// nicht. Halb geschriebene oder kaputte Dateien werden übersprungen.
+/// `{slot: zustand}` aus allen `<slot>.json`; `.live.json` zählt nicht. Halb geschriebene oder kaputte Dateien werden übersprungen.
 pub fn read_all(dir: &Path) -> HashMap<String, SlotState> {
     let mut out = HashMap::new();
     for name in file_names(dir) {
-        if !name.ends_with(".json") || name.ends_with(".live.json") || name.starts_with("pidmap-") {
+        if !name.ends_with(".json") || name.ends_with(".live.json") {
             continue;
         }
         if let Some(Value::Object(d)) = load_json(&dir.join(&name)) {

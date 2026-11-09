@@ -1,25 +1,18 @@
-//! Die App des Agent Decks: Fenster, Andocken, Broker zur VS-Code-Extension,
-//! Windows-Terminal-Host, Poll-Takt, Befehle der Oberfläche.
+//! Die App des Agent Decks: Fenster, Andocken, Windows-Terminal-Host, Poll-Takt,
+//! Befehle der Oberfläche.
 //!
 //! Rechnung in `deck-core`, Win32 in `deck-win`, Hintergrunddienste in `deck-services`
 //! (Einbaustellen in `services.rs`).
-//!
-//! Der Start schaltet immer alles ein. Ist der Broker-Port belegt (etwa kurz nach
-//! „Panel neu starten“, solange die alte Instanz ihn noch hält), fehlt nur die
-//! VS-Code-Seite; Tastenkürzel, Fokus-Rahmen, Kacheln und Aufräumen laufen trotzdem.
 
 pub mod actions;
 pub mod auto_compact;
 pub mod app_paths;
 pub mod applog;
-pub mod block_head;
-pub mod broker;
 pub mod commands;
 pub mod deck;
 pub mod dock;
 pub mod dock_drag;
 pub mod focus_frame;
-pub mod hosts;
 pub mod hotkey;
 pub mod launcher;
 pub mod menu;
@@ -51,17 +44,15 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use deck_core::config::{BROKER_HOST, BROKER_PORT, FRONT_HOTKEYS, JUMP_HOTKEY};
+use deck_core::config::{FRONT_HOTKEYS, JUMP_HOTKEY};
 use deck_services::heartbeat::{EndReason, mark_ended};
 use deck_win::effects::{Desktop, HelperConsole, Processes, Win32Desktop, Win32Processes};
 use tauri::{Manager, RunEvent};
 
 use crate::app_paths::Paths;
 use crate::applog::note;
-use crate::broker::Broker;
 use crate::deck::Deck;
 use crate::dock::DockCtl;
-use crate::hosts::Hosts;
 use crate::services::Services;
 use crate::state::AppState;
 use crate::worker::Worker;
@@ -86,8 +77,6 @@ pub fn run() {
         prev(info);
     }));
     note(format!("--- Start agent-deck {} (pid {}), Log {} ---", env!("CARGO_PKG_VERSION"), std::process::id(), log.display()));
-    // Belegt → nur die VS-Code-Seite bleibt aus (Logzeile kommt aus `Broker::start`).
-    let broker = Broker::start(BROKER_HOST, BROKER_PORT);
     app_paths::prepare(&paths);
     let desktop: Arc<dyn Desktop> = Arc::new(Win32Desktop);
     let procs: Arc<dyn Processes> = Arc::new(Win32Processes);
@@ -105,10 +94,9 @@ pub fn run() {
         icon: paths.agent_icon(),
         name: deck_core::wt::TASKBAR_NAME.into(),
     };
-    let hosts = Hosts { vscode: broker.clone(), wt };
     let lang = deck_core::i18n::Lang::from_settings(&paths.claude_settings);
     let services = Services::system(&paths, lang, Arc::new(poll::wake));
-    let mut deck = Deck::new(paths.clone(), hosts, desktop.clone(), services);
+    let mut deck = Deck::new(paths.clone(), wt, desktop.clone(), services);
     deck.ensure_home_terminal();
     let edge = deck.dock_edge();
     let along = deck_core::dock::saved_along(&deck.store.settings);
@@ -131,7 +119,6 @@ pub fn run() {
         restarting: AtomicBool::new(false),
         ticket_slot: Mutex::new(None),
         desktop: desktop.clone(),
-        broker: broker.clone(),
     });
 
     let app = tauri::Builder::default()
@@ -193,8 +180,6 @@ pub fn run() {
     app.run(move |handle, event| {
         if let RunEvent::Exit = event {
             let s = handle.state::<state::Shared>();
-            // Port sofort freigeben: ein Neustart soll ihn wieder binden können.
-            s.broker.stop();
             if s.restarting.load(std::sync::atomic::Ordering::SeqCst) {
                 note("--- Panel-Ende (Neustart, Kind übernimmt) ---");
             } else {

@@ -1,11 +1,10 @@
-//! Attrappen für die Tests der App: ein Desktop, Prozesse, Konsole, Starter und eine
-//! VS-Code-Seite ohne Socket. Sie merken sich, was die Logik tun wollte; nichts davon
+//! Attrappen für die Tests der App: ein Desktop, Prozesse, Konsole und Starter. Sie
+//! merken sich, was die Logik tun wollte; nichts davon
 //! erreicht das echte System. Zusätzlich sperrt jeder Test `forbid_effects()`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use deck_core::protocol::Command;
 use deck_win::arrange::ClassWindow;
 use deck_win::console_input::Step;
 use deck_win::effects::{ConsoleInput, Desktop, Processes};
@@ -15,7 +14,6 @@ use deck_win::taskbar::TaskbarGroup;
 use deck_win::procs::ProcessInfo;
 use deck_win::{Hwnd, Rect, Result, WindowInfo};
 
-use crate::hosts::VsCodeHost;
 use crate::wt_setup::Launcher;
 
 #[derive(Default)]
@@ -41,12 +39,9 @@ impl FakeDesktop {
     pub fn add_wt(&self, hwnd: Hwnd, title: &str, rect: Rect, minimized: bool) {
         self.0.lock().unwrap().wt.push((ClassWindow { hwnd, title: title.into(), minimized }, rect));
     }
-    /// Ein Fenster mit Titel (für `find_window`/`list_titles`, etwa VS Code).
+    /// Ein fremdes Fenster (kein Agent), das lebt: etwa das, aus dem man kam.
     pub fn add_title(&self, hwnd: Hwnd, title: &str) {
         self.0.lock().unwrap().titles.push((hwnd, title.into()));
-    }
-    pub fn clear_titles(&self) {
-        self.0.lock().unwrap().titles.clear();
     }
     pub fn set_foreground(&self, hwnd: Hwnd, title: &str, class: &str) {
         self.0.lock().unwrap().fg = Some(WindowInfo { hwnd, title: title.into(), class: class.into(), pid: 1 });
@@ -97,22 +92,12 @@ fn default_monitors() -> Vec<Monitor> {
     vec![Monitor { handle: 1, rect: r, work: Rect::new(0, 0, 1920, 1040), primary: true, device: "D1".into(), scale: 1.0, refresh_hz: None }]
 }
 
-fn has_all(title: &str, needles: &[&str]) -> bool {
-    needles.iter().all(|n| title.contains(n))
-}
-
 impl Desktop for FakeDesktop {
     fn foreground(&self) -> Option<WindowInfo> {
         self.0.lock().unwrap().fg.clone()
     }
     fn is_minimized(&self, hwnd: Hwnd) -> bool {
         self.0.lock().unwrap().wt.iter().any(|(w, _)| w.hwnd == hwnd && w.minimized)
-    }
-    fn find_window(&self, needles: &[&str]) -> Option<Hwnd> {
-        self.0.lock().unwrap().titles.iter().find(|(_, t)| has_all(t, needles)).map(|(h, _)| *h)
-    }
-    fn list_titles(&self, needles: &[&str]) -> Vec<String> {
-        self.0.lock().unwrap().titles.iter().filter(|(_, t)| has_all(t, needles)).map(|(_, t)| t.clone()).collect()
     }
     fn class_windows(&self, _: &str) -> Vec<ClassWindow> {
         self.0.lock().unwrap().wt.iter().map(|(w, _)| w.clone()).collect()
@@ -203,80 +188,5 @@ impl Launcher for FakeLauncher {
     fn launch(&self, argv: &[String]) -> bool {
         self.0.lock().unwrap().push(argv.to_vec());
         true
-    }
-}
-
-/// Ein VS-Code-Fenster aus Sicht des Brokers.
-#[derive(Clone, Default)]
-pub struct FakeWindow {
-    pub workspace: String,
-    pub window: Option<String>,
-    pub slots: Vec<String>,
-    pub remote: Option<String>,
-}
-
-#[derive(Default)]
-pub struct FakeVsCode {
-    pub windows: Mutex<Vec<FakeWindow>>,
-    pub sent: Mutex<Vec<(String, Command)>>,
-    pub seen: Mutex<BTreeSet<String>>,
-}
-
-impl FakeVsCode {
-    pub fn open(&self, workspace: &str, window: Option<&str>, slots: &[&str]) {
-        self.windows.lock().unwrap().push(FakeWindow {
-            workspace: workspace.into(),
-            window: window.map(String::from),
-            slots: slots.iter().map(|s| s.to_string()).collect(),
-            remote: None,
-        });
-    }
-    pub fn sent(&self) -> Vec<(String, Command)> {
-        self.sent.lock().unwrap().clone()
-    }
-    fn find<T>(&self, win: &str, f: impl FnOnce(&mut FakeWindow) -> T) -> Option<T> {
-        self.windows.lock().unwrap().iter_mut().find(|w| w.window.as_deref() == Some(win)).map(f)
-    }
-}
-
-impl VsCodeHost for FakeVsCode {
-    fn connected(&self, win: &str) -> bool {
-        self.find(win, |_| ()).is_some()
-    }
-    fn remote(&self, win: &str) -> Option<String> {
-        self.find(win, |w| w.remote.clone()).flatten()
-    }
-    fn terminals(&self, win: &str) -> Vec<String> {
-        self.find(win, |w| w.slots.clone()).unwrap_or_default()
-    }
-    fn send(&self, win: &str, cmd: &Command) -> bool {
-        let ok = self.connected(win);
-        if ok {
-            self.sent.lock().unwrap().push((win.to_string(), cmd.clone()));
-        }
-        ok
-    }
-    fn assign(&self, workspace: &str, win: &str) -> bool {
-        let mut ws = self.windows.lock().unwrap();
-        match ws.iter_mut().find(|w| w.workspace.eq_ignore_ascii_case(workspace)) {
-            Some(w) => {
-                w.window = Some(win.into());
-                true
-            }
-            None => false,
-        }
-    }
-    fn forget(&self, win: &str) -> bool {
-        self.find(win, |w| w.window = None).is_some()
-    }
-    fn drain_seen(&self) -> BTreeSet<String> {
-        std::mem::take(&mut *self.seen.lock().unwrap())
-    }
-    fn workspaces(&self) -> Vec<String> {
-        self.windows.lock().unwrap().iter().map(|w| w.workspace.clone()).collect()
-    }
-    fn workspace_slots(&self, workspace: &str) -> Vec<String> {
-        let ws = self.windows.lock().unwrap();
-        ws.iter().find(|w| w.workspace.eq_ignore_ascii_case(workspace)).map(|w| w.slots.clone()).unwrap_or_default()
     }
 }

@@ -110,8 +110,8 @@ pub fn working(st: Option<&SlotState>, now: f64) -> bool {
     number(st.get("ts")).is_some_and(|ts| now - ts <= STALE_S)
 }
 
-/// Sitzt du gerade an genau diesem Agenten? Dann kein `/compact`: in VS Code holt das
-/// Senden den Terminal-Tab nach vorn, und was du tippst, mischte sich in den Befehl.
+/// Sitzt du gerade an genau diesem Agenten? Dann kein `/compact`: was du tippst,
+/// mischte sich in den Befehl.
 /// Das Deck versucht es im nächsten Takt wieder, solange Restzeit bleibt.
 pub fn user_busy(front: bool, input_idle_s: f64) -> bool {
     front && input_idle_s < TYPING_GRACE_S

@@ -18,8 +18,7 @@ use ts_rs::TS;
 /// Zustand eines Agenten, wie ihn die Kachel zeigt.
 ///
 /// `Lost` meldet kein Hook: das Panel errechnet ihn, wenn das Fenster des Agenten
-/// nicht mehr verbunden ist. `Unknown` steht bei Remote-Fenstern, deren Hooks auf
-/// der Gegenstelle schreiben (dort kommt hier nie eine Meldung an).
+/// nicht mehr verbunden ist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -29,19 +28,7 @@ pub enum Status {
     Waiting,
     Done,
     Lost,
-    Unknown,
     None,
-}
-
-/// Wo ein Repo-Block lebt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export)]
-pub enum Host {
-    /// Windows Terminal: ein Fenster je Agent, hohe Kachel mit Sessiontitel.
-    Terminal,
-    /// VS Code: Terminals in einem Editorfenster, flache Kachel.
-    Vscode,
 }
 
 /// Eine Agentenkachel.
@@ -80,27 +67,21 @@ pub struct TileView {
 pub struct BlockView {
     /// Fenster-Buchstabe (A … O).
     pub letter: String,
-    /// Angezeigter Name: Repo bzw. Workspace des Fensters.
+    /// Angezeigter Name: Ordnername des Blocks (Repo).
     pub name: String,
-    pub host: Host,
     /// Heimat-Block (Windows Terminal in `Repos`): steht immer oben.
     pub home: bool,
     /// Fenster verbunden? Ohne Verbindung sind alle Kacheln „getrennt“.
     pub connected: bool,
-    /// Remote-Fenster (SSH, WSL, Container): Zustand von hier aus nicht sichtbar.
-    pub remote: bool,
     pub tiles: Vec<TileView>,
-    /// Reihenlängen, wenn die Karten so liegen sollen wie die Fenster auf dem Bildschirm
-    /// (Windows Terminal): `[3, 3]` = zwei Reihen zu drei. Karten jenseits der Summe
+    /// Reihenlängen, wenn die Karten so liegen sollen wie die Fenster auf dem Bildschirm:
+    /// `[3, 3]` = zwei Reihen zu drei. Karten jenseits der Summe
     /// (minimierte Fenster) folgen danach im normalen Umbruch. Leer = normaler Umbruch.
     pub rows: Vec<u32>,
     /// So viele Karten passen in eine Reihe, wie Fenster auf dem Monitor des Blocks
-    /// nebeneinander passen (Windows Terminal). Bis dahin steht die ＋-Karte neben der
+    /// nebeneinander passen. Bis dahin steht die ＋-Karte neben der
     /// letzten Karte, danach am Anfang der nächsten Reihe. 0 = unbekannt.
     pub screen_cols: u32,
-    /// Der Block wartet darauf, dass ein VS-Code-Fenster angeklickt wird („Mit Fenster
-    /// verbinden“ im Kontextmenü des Kopfes, `connect.py: start_bind`).
-    pub binding: bool,
 }
 
 /// Ein Nutzungslimit (Session, Woche …) für die untere Leiste.

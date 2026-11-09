@@ -11,7 +11,6 @@ use deck_core::view::DeckView;
 use deck_win::effects::Desktop;
 use tauri::{AppHandle, Manager};
 
-use crate::broker::Broker;
 use crate::deck::Deck;
 use crate::dock::DockCtl;
 use crate::tooltip::TipState;
@@ -30,7 +29,6 @@ pub struct AppState {
     /// Slot, für den der Ticket-Dialog gerade offen ist.
     pub ticket_slot: Mutex<Option<String>>,
     pub desktop: Arc<dyn Desktop>,
-    pub broker: Arc<Broker>,
 }
 
 pub type Shared = Arc<AppState>;

@@ -1,14 +1,14 @@
-// Ein Repo-Block: Kopf (Repo-Name als Griff, daneben der Host), links die Schiene, die
-// Kopf und Karten zu einer Gruppe bindet, darunter das Kartenraster mit der ＋-Karte.
+// Ein Repo-Block: Kopf (Repo-Name als Griff), links die Schiene, die Kopf und Karten zu
+// einer Gruppe bindet, darunter das Kartenraster mit der ＋-Karte.
 //
-// Der Kopf meint das ganze Fenster (connect.py): Rechtsklick öffnet das native Menü
-// (Bindung vergessen, mit einem VS-Code-Fenster verbinden). Ein ✕ für das ganze Fenster
-// gibt es bewusst nicht (docs/DESIGN.md).
+// Der Kopf meint den ganzen Block (connect.py): Klick holt seine Fenster nach vorn,
+// Rechtsklick öffnet das native Menü (Block vergessen). Ein ✕ für den ganzen Block gibt
+// es bewusst nicht (docs/DESIGN.md).
 
 import { forwardRef, useMemo, type CSSProperties } from "react";
 import type { BlockView } from "../../bindings/BlockView";
 import { t, type Lang } from "../../logic/i18n";
-import { CARD_GAP, CARD_W, cardHeight, gridVars, placeAt, wrapLimit } from "../../logic/layout";
+import { CARD_GAP, CARD_H, CARD_W, gridVars, placeAt, wrapLimit } from "../../logic/layout";
 import { screenCells } from "../../logic/reorder";
 import { AddTile } from "./AddTile";
 import { Tile, type TileHandlers } from "./Tile";
@@ -43,15 +43,14 @@ interface Props {
 export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
   const { block, order, cols, lang, shift, lifted, landing, settling, head } = props;
   const offsetY = useBlockOffset(shift, block.letter);
-  const height = cardHeight(block.host);
-  // Windows Terminal meldet, wie die Fenster liegen: dann hat jede Karte ihre feste
+  // Rust meldet, wie die Fenster liegen: dann hat jede Karte ihre feste
   // Zelle (3 + 3 Fenster = 3 + 3 Karten), sonst brechen sie dicht um.
   // Die ＋-Karte (und minimierte) laufen dahinter nur so weit, wie auf dem Monitor
   // Fenster nebeneinander passen; danach vorn in der nächsten Reihe.
   const cells = block.rows.length ? screenCells(block.rows, order.length, cols, wrapLimit(block, cols)) : undefined;
   const drag = useTileDrag({
     order,
-    grid: { cols, stepX: CARD_W + CARD_GAP, stepY: height + CARD_GAP, cells },
+    grid: { cols, stepX: CARD_W + CARD_GAP, stepY: CARD_H + CARD_GAP, cells },
     onClick: props.onFocusSlot,
     onDragStart: props.onTileDragStart,
     onDragEnd: props.onTileDragEnd,
@@ -66,8 +65,6 @@ export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
   );
 
   const bySlot = new Map(block.tiles.map((x) => [x.slot, x]));
-  const host = block.host === "terminal" ? t(lang, "hostTerminal") : t(lang, "hostVscode");
-  const note = !block.connected ? t(lang, "notConnected") : block.remote ? t(lang, "remote") : null;
 
   const style: CSSProperties = {
     transform: offsetY ? `translateY(${offsetY}px)` : undefined,
@@ -78,7 +75,6 @@ export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
       ref={ref}
       className="block"
       data-letter={block.letter}
-      data-host={block.host}
       data-connected={block.connected}
       data-lifted={lifted || undefined}
       data-landing={(lifted && landing) || undefined}
@@ -106,21 +102,11 @@ export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
         >
           {block.name}
         </button>
-        {block.binding ? (
-          <span className="block-binding" role="status">
-            <span className="block-binding-dot" aria-hidden="true" />
-            {t(lang, "binding")}
-          </span>
-        ) : (
-          <span className="block-host">
-            {host}
-            {note && <span className="block-note"> · {note}</span>}
-          </span>
-        )}
-        {/* Kein ✕ für das ganze Fenster: die Python-Fassung hatte es nie verdrahtet, und ein
-            Knopf, der ein ganzes VS-Code-Fenster schließt, gehört nicht ungefragt dazu. */}
+        {!block.connected && <span className="block-note">{t(lang, "notConnected")}</span>}
+        {/* Kein ✕ für den ganzen Block: die Python-Fassung hatte es nie verdrahtet, und ein
+            Knopf, der alle Agenten eines Repos schließt, gehört nicht ungefragt dazu. */}
       </div>
-      <div className="block-grid" style={gridVars(cols, block.host) as CSSProperties}>
+      <div className="block-grid" style={gridVars(cols) as CSSProperties}>
         {order.map((slot, i) => {
           const tile = bySlot.get(slot);
           if (!tile) return null;
@@ -128,7 +114,6 @@ export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
             <Tile
               key={slot}
               tile={tile}
-              host={block.host}
               lang={lang}
               offset={drag.offsetOf(slot)}
               lifted={drag.liftedSlot === slot}

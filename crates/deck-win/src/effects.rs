@@ -24,8 +24,6 @@ pub trait Desktop: Send + Sync {
     // ── lesen ──
     fn foreground(&self) -> Option<WindowInfo>;
     fn is_minimized(&self, hwnd: Hwnd) -> bool;
-    fn find_window(&self, needles: &[&str]) -> Option<Hwnd>;
-    fn list_titles(&self, needles: &[&str]) -> Vec<String>;
     fn class_windows(&self, class: &str) -> Vec<ClassWindow>;
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect>;
     fn monitors(&self) -> Vec<Monitor>;
@@ -82,12 +80,6 @@ impl Desktop for Win32Desktop {
     }
     fn is_minimized(&self, hwnd: Hwnd) -> bool {
         window::is_minimized(hwnd)
-    }
-    fn find_window(&self, needles: &[&str]) -> Option<Hwnd> {
-        focus::find_window(needles)
-    }
-    fn list_titles(&self, needles: &[&str]) -> Vec<String> {
-        focus::list_titles(needles)
     }
     fn class_windows(&self, class: &str) -> Vec<ClassWindow> {
         arrange::class_windows(class)

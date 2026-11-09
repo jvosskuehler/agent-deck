@@ -1,15 +1,14 @@
-//! Windows Terminal als Host für Agenten, das Gegenstück zum Broker
-//! (`deck/ops/wt_host.py`). Für Windows Terminal gibt es keine Extension, also
-//! beantwortet diese Klasse die Fragen des Decks selbst:
+//! Windows Terminal als Host der Agenten (`deck/ops/wt_host.py`). Jede Frage und jedes
+//! Kommando des Decks landet hier:
 //!
 //! | Frage / Kommando | Windows Terminal |
 //! |---|---|
 //! | welche Slots leben | `.wtpid`-Dateien mit lebender Shell |
-//! | createAgent | `wt.exe -w deck-<Slot> new-tab`, danach kacheln |
-//! | focusPane | Fenster mit dem Slot als Titel nach vorn |
-//! | send / key | Eingabepuffer der Konsole (über `deck-console`) |
-//! | closeAgent | Prozessbaum der Pane-Shell beenden |
-//! | seen | Vordergrundfenster trägt den Slot-Titel |
+//! | [`WtHost::create_agent`] | `wt.exe -w deck-<Slot> new-tab`, danach kacheln |
+//! | [`WtHost::focus_pane`] | Fenster mit dem Slot als Titel nach vorn |
+//! | [`WtHost::send_text`] / [`WtHost::key`] | Eingabepuffer der Konsole (über `deck-console`) |
+//! | [`WtHost::close_agent`] | Prozessbaum der Pane-Shell beenden |
+//! | gesehen | Vordergrundfenster trägt den Slot-Titel |
 //!
 //! Welche Buchstaben in Windows Terminal leben, steht in `wt_hosts.json`
 //! (`{Buchstabe: Ordner}`). Ein WT-Block gilt als verbunden, solange er dort steht: das
@@ -22,7 +21,6 @@ use std::fs;
 use std::sync::{Arc, RwLock};
 
 use deck_core::paths::{load_json, save_json};
-use deck_core::protocol::Command;
 use deck_core::wt::{self, Step};
 use deck_win::console_input::Step as ConsoleStep;
 use serde_json::Value;
@@ -171,10 +169,6 @@ impl WtHost {
         out
     }
 
-    pub fn connected(&self, win: &str) -> bool {
-        self.has(win)
-    }
-
     pub fn terminals(&mut self, win: &str) -> Vec<String> {
         if !self.has(win) {
             return Vec::new();
@@ -215,8 +209,8 @@ impl WtHost {
         });
     }
 
-    /// Den Block vergessen. Laufende Panes bleiben offen: „vergessen“ heißt wie bei VS
-    /// Code, das Deck schaut nicht mehr hin, es schließt nichts.
+    /// Den Block vergessen. Laufende Panes bleiben offen: „vergessen“ heißt, das Deck
+    /// schaut nicht mehr hin, es schließt nichts.
     pub fn forget(&mut self, win: &str) -> bool {
         let gone = self.hosts.write().map(|mut h| h.remove(win).is_some()).unwrap_or(false);
         if gone {
@@ -249,40 +243,26 @@ impl WtHost {
         self.save();
     }
 
-    /// Ein Kommando wie die Extension ausführen. `true` = angenommen.
-    pub fn send(&mut self, win: &str, cmd: &Command) -> bool {
-        if !self.has(win) {
-            return false;
-        }
-        match cmd {
-            Command::FocusPane { slot } => self.focus(slot),
-            Command::Send { slot, text, execute, submit } => {
-                let steps = wt::send_steps(text, *execute && !*submit, *submit);
-                self.input(slot, steps)
-            }
-            Command::Key { slot, key, repeat } => self.input(slot, wt::key_steps(key, *repeat)),
-            Command::CreateAgent { model, args, cwd, slot } => {
-                self.create(win, model.as_deref(), slot.as_deref(), args.as_deref(), cwd.as_deref())
-            }
-            Command::CloseAgent { slot } => self.close(slot),
-            Command::CloseWindow => {
-                for s in self.terminals(win) {
-                    self.close(&s);
-                }
-                true
-            }
-            // Gibt es in Windows Terminal nicht: nichts zu tun.
-            Command::Reload | Command::SaveAll => true,
-            Command::Assign { .. } | Command::Unassign => false,
-        }
+    /// Text an den Agenten. `submit`: Text schreiben und per EIGENEM Enter abschicken
+    /// (ein langer Prompt kommt als Paste an, ein mitgeschicktes Enter würde
+    /// verschluckt); sonst wird die Zeile direkt ausgeführt (Slash-Kommandos).
+    /// `false` = der Slot lebt nicht.
+    pub fn send_text(&mut self, slot: &str, text: &str, submit: bool) -> bool {
+        self.input(slot, wt::send_steps(text, !submit, submit))
     }
 
-    /// Einen Agenten in einem eigenen Fenster `deck-<Slot>` öffnen.
-    fn create(&mut self, win: &str, model: Option<&str>, slot: Option<&str>, args: Option<&str>, cwd: Option<&str>) -> bool {
+    /// Eine Taste (`enter`, `esc`, `shift-tab` …), `repeat`-mal.
+    pub fn key(&mut self, slot: &str, key: &str, repeat: u32) -> bool {
+        self.input(slot, wt::key_steps(key, repeat))
+    }
+
+    /// Einen Agenten in einem eigenen Fenster `deck-<Slot>` im Ordner des Blocks öffnen.
+    /// `args` ist die fertige Flag-Zeile (`agent_flags::flags`). `true` = angenommen.
+    pub fn create_agent(&mut self, win: &str, model: Option<&str>, args: Option<&str>) -> bool {
         let Some(folder) = self.folder(win) else { return false };
         let mut taken = self.terminals(win);
         taken.extend(self.pending.keys().cloned());
-        let name = wt::wanted_or_next(win, slot, &taken);
+        let name = wt::next_slot(win, &taken);
         let argv = match wt::claude_argv(model, args) {
             Ok(a) => a,
             Err(e) => {
@@ -293,8 +273,7 @@ impl WtHost {
         self.pending.insert(name.clone(), (self.clock)());
         let s = &self.setup;
         let spec = wt::launch_spec(&name, &s.state_dir.to_string_lossy(), &argv);
-        let work_dir = cwd.filter(|c| !c.is_empty()).map_or(folder, String::from);
-        let line = wt::wt_argv(&s.wt_exe, &name, &work_dir, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref());
+        let line = wt::wt_argv(&s.wt_exe, &name, &folder, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref());
         let launcher = self.fx.launcher.clone();
         self.worker.run(move || {
             launcher.launch(&line);
@@ -302,7 +281,8 @@ impl WtHost {
         true
     }
 
-    fn focus(&mut self, slot: &str) -> bool {
+    /// Das Fenster des Agenten nach vorn. `false` = der Slot lebt nicht.
+    pub fn focus_pane(&mut self, slot: &str) -> bool {
         if !self.alive_slots().contains_key(slot) {
             return false;
         }
@@ -364,8 +344,8 @@ impl WtHost {
     }
 
     /// Den Agenten beenden: die Shell des Panes samt claude (Profil „Agent Deck“ macht
-    /// das Fenster dann selbst zu).
-    fn close(&mut self, slot: &str) -> bool {
+    /// das Fenster dann selbst zu). `false` = der Slot lebt nicht.
+    pub fn close_agent(&mut self, slot: &str) -> bool {
         let Some(pid) = self.alive_slots().get(slot).copied() else { return false };
         let path = self.setup.state_dir.join(format!("{slot}{}", wt::PID_SUFFIX));
         let p = self.fx.procs.clone();

@@ -162,7 +162,6 @@ fn while_the_agent_works_the_line_shows_no_timer_but_the_live_file_keeps_it() {
         agent_slot: Some("A1".into()),
         cwd: None,
         now: 1_794_180_000.0,
-        ancestors: Box::new(Vec::new),
     };
     std::fs::create_dir_all(&env.state_dir).unwrap();
     let stdin = json!({"model": "opus", "prompt_cache": {"warm": true, "ttl": "1h", "expires_at": 1_794_181_000}}).to_string();

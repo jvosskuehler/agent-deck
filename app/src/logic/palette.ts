@@ -27,7 +27,7 @@ interface Tone {
 interface Palette {
   /** Grund jeder Karte unter der Tönung. */
   card: string;
-  /** Fläche einer ruhigen Karte (idle, none, unknown). */
+  /** Fläche einer ruhigen Karte (idle, none). */
   idleCard: string;
   /** Hex-Alpha der atmenden Ebene bei Rückfrage und denkt. */
   pulse: string;

@@ -3,14 +3,12 @@
 //! in `Deck::tick`.
 //!
 //! Ob es soweit ist und wie oft, rechnet `deck_core::auto_compact`; hier steht nur, was
-//! dafür das System gefragt wird (Host verbunden, Fenster vorn, letzte Eingabe) und
-//! wie gesendet wird: derselbe Weg wie `/model` aus dem Kontextmenü, also für beide
-//! Hosts (VS Code über die Extension, Windows Terminal über die Konsoleneingabe).
+//! dafür das System gefragt wird (Block verbunden, Fenster vorn, letzte Eingabe) und
+//! wie gesendet wird: derselbe Weg wie `/model` aus dem Kontextmenü, über die
+//! Konsoleneingabe des Windows-Terminal-Fensters.
 
 use deck_core::auto_compact::{due, enabled};
-use deck_core::config::VSCODE_MARKER;
 use deck_core::prompt_cache::user_busy;
-use deck_core::protocol::Command;
 use deck_core::wt::slot_from_title;
 
 use crate::applog;
@@ -35,16 +33,13 @@ impl Deck {
         if self.compact_memo.already(slot, until) {
             return false;
         }
-        let win = Deck::letter(slot);
-        // Remote: die Hooks schreiben drüben, was hier steht, ist nicht dieser Agent.
-        if self.hosts.remote(&win).is_some() || !self.hosts.connected(&win) {
+        if !self.wt.has(&Deck::letter(slot)) {
             return false;
         }
         if user_busy(self.agent_in_front(slot), self.desktop.input_idle_s()) {
             return false;
         }
-        let cmd = Command::Send { slot: slot.to_string(), text: COMPACT.into(), execute: true, submit: false };
-        if !self.hosts.send(&win, &cmd) {
+        if !self.wt.send_text(slot, COMPACT, false) {
             // Nicht gemerkt: im nächsten Takt wieder, solange Restzeit bleibt.
             return false;
         }
@@ -54,16 +49,10 @@ impl Deck {
         true
     }
 
-    /// Liegt das Fenster dieses Agenten vorn? In Windows Terminal hat jeder Agent ein
-    /// eigenes Fenster mit dem Slot als Titel. Bei VS Code zählt jedes VS-Code-Fenster:
-    /// welches Fenster welchen Buchstaben trägt, sagt der Titel nicht, und lieber einmal
-    /// zu vorsichtig als dir in die Eingabe zu tippen.
+    /// Liegt das Fenster dieses Agenten vorn? Jeder Agent hat ein eigenes Fenster mit
+    /// dem Slot als Titel.
     fn agent_in_front(&self, slot: &str) -> bool {
         let Some(fg) = self.desktop.foreground() else { return false };
-        if self.hosts.is_wt(&Deck::letter(slot)) {
-            slot_from_title(Some(&fg.title)).as_deref() == Some(slot)
-        } else {
-            fg.title.contains(VSCODE_MARKER)
-        }
+        slot_from_title(Some(&fg.title)).as_deref() == Some(slot)
     }
 }

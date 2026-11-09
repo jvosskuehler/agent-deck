@@ -1,11 +1,11 @@
 //! Das Deck ohne Fenster: Zustand, Poll-Takt und Anzeigemodell.
 //!
 //! Was `deck/ui/panel.py` und `refresh.py` je Takt tun, in der Reihenfolge von dort:
-//! Bindungen nachziehen, geschlossene Fenster abräumen, neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen, worktrees fegen,
+//! verwaiste Bindungen abräumen, neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen, worktrees fegen,
 //! Hook-Modi übernehmen, Startmodus antreiben, Ansicht bauen. Die Themen stehen in
 //! eigenen Dateien (`window_sync.rs`, `actions.rs`, `ticket.rs`) als `impl Deck`.
 //!
-//! Alles mit Wirkung nach außen geht über die Hosts (Broker, Windows Terminal), den
+//! Alles mit Wirkung nach außen geht über den Windows-Terminal-Host ([`WtHost`]), den
 //! `Desktop`-Trait und [`crate::services::Services`]; Tests reichen Attrappen herein.
 
 use std::collections::HashMap;
@@ -22,14 +22,13 @@ use deck_core::front::BackToggle;
 use deck_core::i18n::Lang;
 use deck_core::slot_state::{SlotState, read_all, read_found_tickets, read_found_worktrees, read_live};
 use deck_core::status_model::{adopt_hook_mode, mode_cycle};
-use deck_core::view::{DeckView, Host};
+use deck_core::view::DeckView;
 use deck_services::worktree_sweep::SweepView;
 use deck_win::effects::Desktop;
 
 use crate::app_paths::Paths;
-use crate::block_head::BindRequest;
-use crate::hosts::Hosts;
 use crate::services::Services;
+use crate::wt_host::WtHost;
 
 /// Ein per ＋ angeforderter Agent, dessen Slot noch nicht gemeldet ist.
 #[derive(Debug, Clone)]
@@ -42,7 +41,7 @@ pub struct AwaitNew {
 pub struct Deck {
     pub paths: Paths,
     pub store: BindStore,
-    pub hosts: Hosts,
+    pub wt: WtHost,
     pub desktop: Arc<dyn Desktop>,
     pub services: Services,
     pub lang: Lang,
@@ -54,10 +53,6 @@ pub struct Deck {
     pub mode_ts: HashMap<String, f64>,
     pub pending_auto: HashMap<String, PendingAuto>,
     pub await_new: Option<AwaitNew>,
-    /// Laufendes „Mit Fenster verbinden“ (Kopf eines Blocks).
-    pub bind: Option<BindRequest>,
-    /// Fenster → seit wann getrennt UND ohne offenes VS-Code-Fenster.
-    pub gone_since: HashMap<String, f64>,
     /// Buchstabe des Heimat-Blocks (Windows Terminal über allen Repos).
     pub home_win: Option<String>,
     /// Ein Dialog des Decks hat den Fokus: Auto-Fokus auslassen (er klaute ihn sonst).
@@ -80,13 +75,13 @@ pub struct Deck {
 }
 
 impl Deck {
-    pub fn new(paths: Paths, hosts: Hosts, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
+    pub fn new(paths: Paths, wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
         let store = BindStore::load(&paths.app_dir);
         let lang = Lang::from_settings(&paths.claude_settings);
         Deck {
             paths,
             store,
-            hosts,
+            wt,
             desktop,
             services,
             lang,
@@ -95,8 +90,6 @@ impl Deck {
             mode_ts: HashMap::new(),
             pending_auto: HashMap::new(),
             await_new: None,
-            bind: None,
-            gone_since: HashMap::new(),
             home_win: None,
             modal: false,
             states: HashMap::new(),
@@ -115,9 +108,7 @@ impl Deck {
 
     /// Ein Takt des Polls (alle 400 ms). Liefert die neue Ansicht.
     pub fn tick(&mut self, now: f64) -> DeckView {
-        self.sync_bindings();
-        self.poll_bind(now);
-        self.cleanup_closed_windows(now);
+        self.prune_stale_bindings();
         self.autofocus_new(now);
         self.mark_seen_read(now);
         self.read_files();
@@ -167,9 +158,9 @@ impl Deck {
         v.tickets = self.found.iter().map(|(k, t)| (k.clone(), t.clone())).collect();
         v.tickets.extend(self.store.tickets.iter().map(|(k, t)| (k.clone(), t.clone())));
         for w in WINDOWS {
-            if self.hosts.connected(w) {
+            if self.wt.has(w) {
                 v.connected.insert(w.to_string());
-                v.live.extend(self.hosts.terminals(w));
+                v.live.extend(self.wt.terminals(w));
             }
         }
         v
@@ -212,20 +203,10 @@ impl Deck {
     fn window_infos(&mut self) -> Vec<WindowInfo> {
         let mut out = Vec::new();
         for w in WINDOWS {
-            let connected = self.hosts.connected(w);
-            let host = if self.hosts.is_wt(w) { Host::Terminal } else { Host::Vscode };
-            let terminals = if connected { self.hosts.terminals(w) } else { Vec::new() };
-            let (screen, screen_cols) =
-                if connected && host == Host::Terminal { self.hosts.screen_rows(w) } else { (Vec::new(), 0) };
-            out.push(WindowInfo {
-                letter: w.to_string(),
-                host,
-                connected,
-                remote: self.hosts.remote(w).is_some(),
-                terminals,
-                screen,
-                screen_cols,
-            });
+            let connected = self.wt.has(w);
+            let terminals = if connected { self.wt.terminals(w) } else { Vec::new() };
+            let (screen, screen_cols) = if connected { self.wt.screen_rows(w) } else { (Vec::new(), 0) };
+            out.push(WindowInfo { letter: w.to_string(), connected, terminals, screen, screen_cols });
         }
         out
     }
@@ -250,10 +231,7 @@ impl Deck {
             lang: self.lang,
             usage,
         };
-        let mut view = build_deck_view(&input, &mut self.memory);
-        for b in &mut view.blocks {
-            b.binding = self.binding(&b.letter);
-        }
+        let view = build_deck_view(&input, &mut self.memory);
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
         // Die Auswahl gilt einer Kachel, die es gibt; sonst bliebe ein Ring an einem
         // später gleichnamigen Agenten hängen.

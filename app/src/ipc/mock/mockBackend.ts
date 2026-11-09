@@ -3,8 +3,7 @@
 // (`pnpm dev`). Er wechselt ab und zu Zustände, damit Atmen und Aufblühen zu sehen sind.
 //
 // Startwerte über die Adresse: ?lang=en, ?edge=left, ?phase=closed, ?mode=bypassPermissions,
-// ?still=1 (keine Zustandswechsel, für Screenshots), ?blocks=3 (dritter Block, Remote),
-// ?binding=A (Block A wartet auf den Klick in ein Fenster), ?zoom=0.8.
+// ?still=1 (keine Zustandswechsel, für Screenshots), ?blocks=3 (dritter Block), ?zoom=0.8.
 // Playwright steuert über window.__deckMock.
 
 import type { DeckView } from "../../bindings/DeckView";
@@ -55,8 +54,6 @@ export function createMockBackend(): Backend {
   let lang: Lang = langFromSetting(settings.language);
   const blocks = initialBlocks(lang, now() - 600, params.get("blocks") === "3");
   let dock: DockView = { edge: settings.dockEdge, phase: params.get("phase") ?? "open", zoom: Number(params.get("zoom") ?? 1) };
-  const bindingLetter = params.get("binding");
-  if (bindingLetter) for (const b of blocks) b.binding = b.letter === bindingLetter;
 
   const view = (): DeckView => ({ blocks, usage: usage(lang), urgent: urgentOf(blocks), lang });
 
@@ -113,7 +110,7 @@ export function createMockBackend(): Backend {
       const slot = `${letter}${nextSlotNo++}`;
       b.tiles.push({
         slot, status: "thinking", statusLabel: statusText("thinking", lang), model: "Opus 5.5", effort: "xhigh",
-        mode: "auto", title: b.host === "terminal" ? (lang === "en" ? "New session" : "Neue Sitzung") : null,
+        mode: "auto", title: lang === "en" ? "New session" : "Neue Sitzung",
         reference: null, referenceDetected: false, selected: false, statusChangedAt: now(),
       });
       pushView();

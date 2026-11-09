@@ -1,7 +1,7 @@
 //! Text und Tasten in die Konsole eines fremden Prozesses schreiben, ohne Fokus (aus
 //! `platform/console_input.py`).
 //!
-//! Windows Terminal hat kein `sendText` wie VS Code. Jede Konsole hat aber einen
+//! Windows Terminal hat keine Schnittstelle, um Text an ein Pane zu schicken. Jede Konsole hat aber einen
 //! Eingabepuffer, und `WriteConsoleInputW` legt dort Tastendrücke ab, als hätte jemand
 //! getippt: der Prozess im Pane liest sie wie echte Eingabe, egal welches Fenster vorn
 //! ist. Dazu hängt man sich per `AttachConsole(pid)` an dessen Konsole. Erprobt in der
@@ -15,8 +15,8 @@
 //!
 //! Steuerzeichen (`\r`, Esc, Tab, Backspace) gehen mit passendem Virtual-Key-Code raus,
 //! alles andere als Zeichen. Folgen wie `\x1b[Z` (Shift+Tab) oder die Bracketed-Paste-
-//! Marker kommen Zeichen für Zeichen an; Claude liest daraus dieselbe Sequenz wie aus
-//! VS Code. Welche Folge eine Taste ist (KEYMAP, Pausen), ist Fachlogik in `deck-core`.
+//! Marker kommen Zeichen für Zeichen an; Claude liest daraus dieselbe Sequenz wie von
+//! einer echten Tastatur. Welche Folge eine Taste ist (KEYMAP, Pausen), ist Fachlogik in `deck-core`.
 
 use std::io::Write;
 use std::os::windows::process::CommandExt;

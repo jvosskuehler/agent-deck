@@ -132,6 +132,5 @@ fn status_labels_are_localized_and_running_reads_as_thinking() {
     assert_eq!(status_label(Lang::English, "done"), "unread");
     assert_eq!(status_label(Lang::German, "running"), "denkt");
     assert_eq!(status_label(Lang::German, "lost"), "getrennt");
-    assert_eq!(status_label(Lang::English, "unknown"), "unknown");
     assert_eq!(status_label(Lang::German, "bogus"), "idle");
 }

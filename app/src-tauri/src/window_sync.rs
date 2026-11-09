@@ -1,14 +1,13 @@
-//! Fenster und Slots pflegen (`deck/ui/windows.py`, Teile von `refresh.py`): Bindungen
-//! nachziehen, geschlossene Fenster abräumen, neuen Chat fokussieren, „gesehen“ setzen,
-//! neue Agenten in ihren Startmodus treiben.
+//! Blöcke und Slots pflegen (`deck/ui/windows.py`, Teile von `refresh.py`): Heimat-Block
+//! anlegen, verwaiste Bindungen abräumen, neuen Chat fokussieren, „gesehen“ setzen, neue
+//! Agenten in ihren Startmodus treiben.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use deck_core::auto_mode::{AutoStep, PendingAuto, decide};
-use deck_core::binding::{is_placeholder_ws, repo_from_title, strip_remote_tag};
 use deck_core::claude::settings::read_values;
-use deck_core::config::{MODE_START, NEW_AGENT_MODE, STALE_WINDOW_S, VSCODE_MARKER, WINDOWS, terminal_home};
+use deck_core::config::{MODE_START, NEW_AGENT_MODE, WINDOWS, terminal_home};
 use deck_core::paths::{load_json, state_path};
 use deck_core::field::number;
 use deck_core::slot_state::{read_all, write_state};
@@ -28,13 +27,13 @@ impl Deck {
             return;
         }
         let key = norm(&folder);
-        let existing = self.hosts.wt.blocks().into_iter().find(|(_, f)| norm(f) == key).map(|(w, _)| w);
+        let existing = self.wt.blocks().into_iter().find(|(_, f)| norm(f) == key).map(|(w, _)| w);
         let win = match existing {
             Some(w) => w,
             None => {
-                let free = WINDOWS.iter().find(|w| !self.store.bindings.contains_key(**w) && !self.hosts.wt.has(w));
+                let free = WINDOWS.iter().find(|w| !self.store.bindings.contains_key(**w) && !self.wt.has(w));
                 let Some(free) = free else { return };
-                self.hosts.wt.open_repo(free, &folder);
+                self.wt.open_repo(free, &folder);
                 free.to_string()
             }
         };
@@ -46,91 +45,29 @@ impl Deck {
         self.home_win = Some(win);
     }
 
-    /// Auto-Verknüpfung: eine gemerkte Extension bekommt ihren Buchstaben; jede
-    /// verbundene OHNE Buchstaben das nächste freie Fenster, bevorzugt den Buchstaben,
-    /// den ihre Terminals schon tragen (der bleibt so über Neuverbinden stabil).
-    pub fn sync_bindings(&mut self) {
-        for (w, repo) in self.store.bindings.clone() {
-            if !repo.is_empty() && !self.hosts.connected(&w) {
-                self.hosts.assign(&repo, &w);
-            }
-        }
-        let mut bound: BTreeSet<String> = self.store.bindings.values().cloned().collect();
-        for ws in self.hosts.workspaces() {
-            if is_placeholder_ws(Some(&ws)) || bound.contains(&ws) {
-                continue;
-            }
-            let slots = self.hosts.workspace_slots(&ws);
-            let pref = slots.first().and_then(|s| s.chars().next()).map(|c| c.to_uppercase().to_string());
-            let free = match pref {
-                Some(p) if WINDOWS.contains(&p.as_str()) && !self.store.bindings.contains_key(&p) => Some(p),
-                _ => WINDOWS.iter().find(|w| !self.store.bindings.contains_key(**w)).map(|w| w.to_string()),
-            };
-            let Some(free) = free else { break };
-            self.store.bindings.insert(free.clone(), ws.clone());
-            bound.insert(ws.clone());
-            self.store.save_bindings();
-            self.hosts.assign(&ws, &free);
-        }
-    }
-
-    /// Ein gebundenes Fenster abräumen, sobald sein VS-Code-Fenster WIRKLICH zu ist. Ein
-    /// Reload lässt das native Fenster (mit dem Repo im Titel) offen: abgeräumt wird nur,
-    /// wenn kein offenes VS-Code-Fenster mehr zu diesem Repo existiert, nach kurzer Frist.
-    pub fn cleanup_closed_windows(&mut self, now: f64) {
-        let pending: Vec<String> =
-            WINDOWS.iter().filter(|w| self.store.bindings.contains_key(**w)).map(|w| w.to_string()).collect();
-        let pending: Vec<String> = pending.into_iter().filter(|w| !self.hosts.connected(w)).collect();
-        if pending.is_empty() {
-            self.gone_since.clear();
+    /// Eine Bindung ohne Windows-Terminal-Block abräumen (etwa die eines früheren
+    /// VS-Code-Fensters), samt der Spuren ihrer Agenten: dieselbe Aufräumung wie beim
+    /// Schließen, sonst blieben worktree und Marker verwaist.
+    pub fn prune_stale_bindings(&mut self) {
+        let stale: Vec<String> = self.store.bindings.keys().filter(|w| !self.wt.has(w)).cloned().collect();
+        if stale.is_empty() {
             return;
         }
-        let open: BTreeSet<String> = self
-            .desktop
-            .list_titles(&[VSCODE_MARKER])
-            .iter()
-            .map(|t| repo_from_title(t))
-            .filter(|r| !r.is_empty() && !is_placeholder_ws(Some(r)) && r != VSCODE_MARKER)
-            .map(|r| r.to_lowercase())
-            .collect();
-        let mut changed = false;
-        for w in &pending {
-            let repo = self.store.bindings.get(w).cloned().unwrap_or_default();
-            // Gebunden ist der Name MIT Remote-Anhängsel, die Titel sind nackt.
-            if open.contains(&strip_remote_tag(&repo).to_lowercase()) {
-                self.gone_since.remove(w);
-                continue;
+        for w in &stale {
+            for slot in self.slots_for_window(w) {
+                self.cleanup_worktrees(&slot);
+                if self.store.tickets.remove(&slot).is_some() {
+                    self.store.save_tickets();
+                }
+                self.clear_found_ticket(&slot);
+                self.forget_slot(&slot);
             }
-            match self.gone_since.get(w) {
-                None => {
-                    self.gone_since.insert(w.clone(), now);
-                }
-                Some(t0) if now - t0 >= STALE_WINDOW_S => {
-                    // Nicht über das Deck geschlossen (Alt+F4, Absturz): dieselbe
-                    // Aufräumung wie beim Schließen nachholen, sonst bleiben worktree und
-                    // Marker verwaist.
-                    for slot in self.slots_for_window(w) {
-                        self.cleanup_worktrees(&slot);
-                        if self.store.tickets.remove(&slot).is_some() {
-                            self.store.save_tickets();
-                        }
-                        self.clear_found_ticket(&slot);
-                        self.forget_slot(&slot);
-                    }
-                    self.store.bindings.remove(w);
-                    self.gone_since.remove(w);
-                    if self.active_slot.as_ref().is_some_and(|a| Deck::letter(a) == *w) {
-                        self.active_slot = None;
-                    }
-                    changed = true;
-                }
-                Some(_) => {}
+            self.store.bindings.remove(w);
+            if self.active_slot.as_ref().is_some_and(|a| Deck::letter(a) == *w) {
+                self.active_slot = None;
             }
         }
-        self.gone_since.retain(|w, _| pending.contains(w));
-        if changed {
-            self.store.save_bindings();
-        }
+        self.store.save_bindings();
     }
 
     /// Neuen ＋-Chat auswählen und fokussieren, sobald sein Slot da ist. Das Vormerken
@@ -138,7 +75,7 @@ impl Deck {
     /// des Decks den Fokus hat.
     pub fn autofocus_new(&mut self, now: f64) {
         let Some(a) = self.await_new.clone() else { return };
-        let fresh: Vec<String> = self.hosts.terminals(&a.win).into_iter().filter(|s| !a.before.contains(s)).collect();
+        let fresh: Vec<String> = self.wt.terminals(&a.win).into_iter().filter(|s| !a.before.contains(s)).collect();
         if let Some(last) = fresh.last().cloned() {
             self.register_pending_auto(&fresh, now);
             self.await_new = None;
@@ -188,10 +125,10 @@ impl Deck {
         }
     }
 
-    /// In VS Code bzw. Windows Terminal angeklickte Panes: „ungelesen“ → idle, wie ein
-    /// Klick auf die Kachel. Die Kachel des zuletzt vorgeholten Panes wird ausgewählt.
+    /// In Windows Terminal vorgeholte Agentenfenster: „ungelesen“ → idle, wie ein Klick
+    /// auf die Kachel. Die Kachel des zuletzt vorgeholten Agenten wird ausgewählt.
     pub fn mark_seen_read(&mut self, now: f64) {
-        let seen = self.hosts.drain_seen();
+        let seen = self.wt.drain_seen();
         if seen.is_empty() {
             return;
         }

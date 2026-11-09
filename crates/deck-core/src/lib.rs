@@ -28,7 +28,6 @@ pub mod ordering;
 pub mod paths;
 pub mod prompt_cache;
 pub mod prompts;
-pub mod protocol;
 pub mod slot_state;
 pub mod status_model;
 pub mod text;

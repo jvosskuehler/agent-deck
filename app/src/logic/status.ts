@@ -33,17 +33,14 @@ interface TileLook {
   pulse: string;
   /** Die Ebene atmet (Deckkraft 0,15 ↔ 1 in 3 s). */
   breathe: boolean;
-  /** Karte matt (Remote: Zustand von hier aus nicht sichtbar). */
-  matte: boolean;
 }
 
 /**
  * Aussehen einer Karte je Zustand: die ganze Karte ist ein Feld in der Statusfarbe,
  * ohne Rand und ohne Leuchten. Rückfrage und denkt pulsieren in der Fläche.
  *
- * idle, none und unknown bekommen statt einer Tönung die ruhige Fläche (Overlay), damit
- * sie als „nichts zu tun“ zurücktreten; unbekannt ist zusätzlich matt, weil die Karte da
- * und bedienbar ist, ihr Zustand aber nicht zu sehen.
+ * idle und none bekommen statt einer Tönung die ruhige Fläche (Overlay), damit sie als
+ * „nichts zu tun“ zurücktreten.
  */
 export function tileLook(status: Status, scheme: Scheme): TileLook {
   const pal = PALETTES[scheme];
@@ -54,7 +51,6 @@ export function tileLook(status: Status, scheme: Scheme): TileLook {
     tint: kind === "none" ? pal.idleCard : tone.fill,
     pulse: kind === "strong" ? tone.pig + pal.pulse : "transparent",
     breathe: kind === "strong",
-    matte: status === "unknown",
   };
 }
 

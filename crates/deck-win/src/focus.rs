@@ -1,10 +1,7 @@
 //! Fenster finden, nach vorn holen und per DWM umstylen (aus `platform/focus.py`).
 //!
-//! Beim Klick auf eine Kachel holt die App das richtige Fenster nach vorn: ein
-//! VS-Code-Fenster (gefunden über den Titel) oder das Windows-Terminal-Fenster eines
-//! Agenten (Klasse [`WT_WINDOW_CLASS`](crate::window::WT_WINDOW_CLASS), Titel = Slot).
-//! Das einzelne Terminal in VS Code fokussiert die Extension über den Broker, nicht
-//! dieses Modul.
+//! Beim Klick auf eine Kachel holt die App das Windows-Terminal-Fenster des Agenten
+//! nach vorn (Klasse [`WT_WINDOW_CLASS`](crate::window::WT_WINDOW_CLASS), Titel = Slot).
 //!
 //! Nicht übernommen: `toplevel_hwnd` (Tk-Fenster-Id → echtes Fenster, gibt es in Tauri
 //! nicht) und `restrict_resize_to_corner` (WndProc-Subclassing für den nativen Rahmen
@@ -25,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::guard;
 use crate::types::{Hwnd, Result};
 use crate::window::{
-    WindowInfo, class_of, contains_all, describe, for_each_top_level, is_minimized, is_visible,
+    WindowInfo, class_of, describe, for_each_top_level, is_minimized, is_visible,
     pid_of, thread_of, title_of,
 };
 
@@ -38,45 +35,6 @@ pub fn foreground_hwnd() -> Option<Hwnd> {
 /// Das aktive Fenster mit Titel, Klasse und Prozess.
 pub fn foreground() -> Option<WindowInfo> {
     foreground_hwnd().and_then(describe)
-}
-
-/// Erstes sichtbares Fenster (Z-Reihenfolge), dessen Titel ALLE `needles` enthält,
-/// ohne Groß-/Kleinschreibung. So findet die App das VS-Code-Fenster eines Repos.
-pub fn find_window(needles: &[&str]) -> Option<Hwnd> {
-    let mut hit = None;
-    for_each_top_level(|h| {
-        let Some(h) = Hwnd::from_h(h) else {
-            return true;
-        };
-        if is_visible(h) {
-            let t = title_of(h);
-            if !t.is_empty() && contains_all(&t, needles) {
-                hit = Some(h);
-                return false;
-            }
-        }
-        true
-    });
-    hit
-}
-
-/// Titel aller sichtbaren Fenster, die alle `needles` enthalten. Gedacht für „welche
-/// VS-Code-Fenster sind überhaupt noch offen?“: ein geschlossenes fehlt, ein minimiertes
-/// oder gerade neu ladendes ist dabei.
-pub fn list_titles(needles: &[&str]) -> Vec<String> {
-    let mut out = Vec::new();
-    for_each_top_level(|h| {
-        if let Some(h) = Hwnd::from_h(h)
-            && is_visible(h)
-        {
-            let t = title_of(h);
-            if !t.is_empty() && contains_all(&t, needles) {
-                out.push(t);
-            }
-        }
-        true
-    });
-    out
 }
 
 /// Sichtbares Fenster der Klasse `class` mit genau dem Titel `title` (auch minimiert).

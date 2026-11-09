@@ -4,7 +4,7 @@
 //! Warum eine Datei und kein Fenster (Python `ops/instance.py`, `BEAT_PATH`): angedockt
 //! und eingeklappt hat das Deck unter Umständen kein sichtbares Fenster; wer daran „lebt
 //! es noch?“ entscheidet, startet ein ZWEITES daneben, und zwei Decks sind der schlimmste
-//! Zustand (nur eines bekommt den Broker-Port). Der Herzschlag erkennt zusätzlich ein
+//! Zustand (zwei Pollschleifen, zwei Fokus-Rahmen, doppelte Tastenkürzel). Der Herzschlag erkennt zusätzlich ein
 //! HÄNGENDES Deck (Prozess lebt, Schleife steht).
 //!
 //! Vertrag (in `%LOCALAPPDATA%\claude-agent-deck\`, neben `state\`):

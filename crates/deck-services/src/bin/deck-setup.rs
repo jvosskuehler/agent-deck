@@ -1,11 +1,14 @@
 //! `deck-setup`: richtet die Claude-Code-Hooks für das Deck ein, prüft sie und nimmt sie
-//! wieder heraus. Gebraucht von `tools/install.ps1`.
+//! wieder heraus, und räumt die frühere VS-Code-Extension weg. Gebraucht von
+//! `tools/install.ps1`.
 //!
 //! ```text
 //! deck-setup install   --bin <ordner>   Hooks und statusLine auf die Programme in <ordner>
 //!                                       richten. Fremde Einträge bleiben stehen.
 //! deck-setup check     --bin <ordner>   Befunde: fehlende Einträge, cmd /c, Pfade ins Leere …
 //! deck-setup uninstall                  Einträge dieser Fassung heraus, alles andere bleibt.
+//! deck-setup remove-vscode-extension    Eintrag in ~/.vscode/extensions/extensions.json und
+//!                                       Ordner agent-deck-bridge entfernen (mehrfach harmlos).
 //! ```
 //!
 //! Ausgabe: eine Zeile je Befund (`ok|info|warn|fail: …`), am Ende `## fails=N warns=N`.
@@ -14,7 +17,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use deck_services::install;
+use deck_services::{install, vscode_cleanup};
 use deck_services::report::{Grade, Report};
 
 fn arg_value(args: &[String], name: &str) -> Option<PathBuf> {
@@ -32,7 +35,7 @@ fn print(r: &Report) {
         println!("{grade}: {}", line.text);
     }
     if let Some(b) = &r.backup {
-        println!("info: Sicherung der settings.json: {b}");
+        println!("info: Sicherung: {b}");
     }
     println!("## fails={} warns={}", r.fails(), r.warns());
 }
@@ -46,8 +49,9 @@ fn main() -> ExitCode {
         (Some("install"), Some(bin)) => install::install(&settings_file, &bin, true),
         (Some("check"), Some(bin)) => install::check(&settings_file, &bin),
         (Some("uninstall"), _) => install::uninstall(&settings_file),
+        (Some("remove-vscode-extension"), _) => vscode_cleanup::remove_extension(&vscode_cleanup::extensions_dir()),
         _ => {
-            eprintln!("deck-setup install|check --bin <ordner> | uninstall");
+            eprintln!("deck-setup install|check --bin <ordner> | uninstall | remove-vscode-extension");
             return ExitCode::from(2);
         }
     };

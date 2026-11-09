@@ -17,7 +17,7 @@
 //! | [`usage`] | `claude/usage.py`, `usage_token.py`, `claude-usage-shared/usage_poller.py` | nichts |
 //! | [`summary`] | `claude/summarize.py` (`generate`, `_run_claude`), `ui/uithread.py` | nichts |
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
-//! | [`vscode_ext`] | `ops/vscode_ext.py` + Kopierschritt aus `install.ps1` | nichts |
+//! | [`vscode_cleanup`] | (neu) die frühere VS-Code-Extension entfernen | nichts |
 //! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
@@ -30,7 +30,7 @@ pub mod logfile;
 pub mod report;
 pub mod summary;
 pub mod usage;
-pub mod vscode_ext;
+pub mod vscode_cleanup;
 pub mod watchdog;
 pub mod worktree;
 pub mod worktree_sweep;

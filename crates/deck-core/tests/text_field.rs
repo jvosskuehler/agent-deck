@@ -49,7 +49,7 @@ fn a_field_of_the_wrong_type_counts_as_missing() {
 
 #[test]
 fn state_files_are_compact_utf8_json_with_key_order_and_number_types_kept() {
-    // Die App, die Hooks und die VS-Code-Extension (JSON.parse) lesen diese Dateien.
+    // Die App und die Hooks lesen diese Dateien, das Format bleibt stabil.
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("A1.json");
     let v = json!({"slot": "A1", "status": "done", "ts": 1_762_467_890.0, "n": 3, "prompt": "für 😀 \"x\"\n"});

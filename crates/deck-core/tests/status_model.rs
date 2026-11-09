@@ -29,11 +29,10 @@ fn thinking_without_fresh_report_falls_asleep_and_unknown_status_is_idle() {
 }
 
 #[test]
-fn a_remote_tile_without_report_is_unknown_not_idle() {
-    assert_eq!(initial_status(None, true), "unknown");
-    assert_eq!(initial_status(None, false), "idle");
-    assert_eq!(initial_status(Some(&st(json!({"status": "waiting"}))), true), "waiting");
-    assert_eq!(initial_status(Some(&st(json!({"ts": 1}))), false), "idle");
+fn a_tile_without_report_is_idle_and_a_report_wins() {
+    assert_eq!(initial_status(None), "idle");
+    assert_eq!(initial_status(Some(&st(json!({"status": "waiting"})))), "waiting");
+    assert_eq!(initial_status(Some(&st(json!({"ts": 1})))), "idle");
 }
 
 #[test]

@@ -93,29 +93,10 @@
   cursor: grabbing;
 }
 
-.block-host {
+.block-note {
   font-size: 11px;
   color: var(--dim);
   white-space: nowrap;
-}
-
-/* „Mit Fenster verbinden“ läuft: statt des Hosts die Bitte, ein Fenster anzuklicken. */
-.block-binding {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--warn-ink);
-  white-space: nowrap;
-}
-
-.block-binding-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--warn-pig);
-  animation: breathe 1.4s ease-in-out infinite;
 }
 
 .block-grid {

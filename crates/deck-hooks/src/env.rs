@@ -1,22 +1,16 @@
 //! Umgebung eines Hook-Laufs und die Slot-Auflösung.
 //!
-//! Der Slot (A1 … O9) kommt auf zwei Wegen:
-//! 1. `AGENT_SLOT` aus der Umgebung: von der Extension bzw. dem Windows-Terminal-
-//!    Startskript gesetzt.
-//! 2. Über die Prozesskette: der Hook läuft als Nachfahre des Claude-Prozesses. Der
-//!    erste Vorfahre, der in einer `pidmap-<Fenster>.json` der Extension steht, nennt
-//!    den Slot. So melden auch selbst gestartete Sessions.
+//! Der Slot (A1 … O9) kommt aus `AGENT_SLOT` in der Umgebung: das Startskript im
+//! Windows-Terminal-Fenster des Agenten (`wt_agent.ps1`) setzt ihn. Ohne ihn meldet der
+//! Hook nichts: eine selbst gestartete Session gehört nicht zum Deck.
 //!
-//! Alles, was nach außen greift (Ordner, Uhr, Prozesse), steckt in `HookEnv`; Tests
-//! bauen sich eine eigene mit Wegwerf-Ordnern.
+//! Alles, was nach außen greift (Ordner, Uhr), steckt in `HookEnv`; Tests bauen sich
+//! eine eigene mit Wegwerf-Ordnern.
 
-use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use deck_core::paths;
-use serde_json::Value;
 
 pub struct HookEnv {
     /// `%LOCALAPPDATA%\claude-agent-deck\state`.
@@ -29,8 +23,6 @@ pub struct HookEnv {
     /// Arbeitsverzeichnis des Hooks = das des Agenten.
     pub cwd: Option<String>,
     pub now: f64,
-    /// Eigene Prozesskette; wird nur gefragt, wenn eine pidmap existiert.
-    pub ancestors: Box<dyn Fn() -> Vec<u32>>,
 }
 
 impl HookEnv {
@@ -43,48 +35,16 @@ impl HookEnv {
             agent_slot: std::env::var("AGENT_SLOT").ok().filter(|s| !s.is_empty()),
             cwd: std::env::current_dir().ok().map(|p| p.to_string_lossy().into_owned()).filter(|s| !s.is_empty()),
             now: unix_now(),
-            ancestors: Box::new(crate::procs::ancestor_pids),
         }
     }
 
     /// Slot dieses Laufs, oder `None` (dann meldet der Hook nichts).
     pub fn resolve_slot(&self) -> Option<String> {
-        if let Some(s) = &self.agent_slot {
-            return Some(s.clone());
-        }
-        slot_from_procs(&self.state_dir, &*self.ancestors)
+        self.agent_slot.clone()
     }
 }
 
 /// Jetzt, in Unix-Sekunden.
 pub fn unix_now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
-}
-
-/// Alle `pidmap-*.json` zu `{pid: slot}` vereinen (PIDs sind global eindeutig).
-/// Kaputte Dateien zählen nicht, ebenso Einträge, deren Schlüssel keine PID oder deren
-/// Wert kein Slot-Name ist.
-pub fn load_pidmap(dir: &Path) -> HashMap<u32, String> {
-    let mut out = HashMap::new();
-    let Ok(rd) = fs::read_dir(dir) else { return out };
-    let mut names: Vec<String> = rd.flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
-    names.sort();
-    for name in names.iter().filter(|n| n.starts_with("pidmap-") && n.ends_with(".json")) {
-        let Some(Value::Object(m)) = paths::load_json(&dir.join(name)) else { continue };
-        for (k, v) in m {
-            if let (Ok(pid), Some(slot)) = (k.trim().parse(), v.as_str().filter(|s| !s.is_empty())) {
-                out.insert(pid, slot.to_string());
-            }
-        }
-    }
-    out
-}
-
-/// Ersten eigenen Vorfahren finden, der in der pidmap steht: dessen Slot.
-pub fn slot_from_procs(dir: &Path, ancestors: &dyn Fn() -> Vec<u32>) -> Option<String> {
-    let pm = load_pidmap(dir);
-    if pm.is_empty() {
-        return None;
-    }
-    ancestors().into_iter().find_map(|pid| pm.get(&pid).cloned())
 }

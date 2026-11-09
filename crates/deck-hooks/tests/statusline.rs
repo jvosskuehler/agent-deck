@@ -17,7 +17,6 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
         agent_slot: slot.map(String::from),
         cwd: None,
         now: 1000.5,
-        ancestors: Box::new(Vec::new),
     }
 }
 

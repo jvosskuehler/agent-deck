@@ -43,7 +43,7 @@ nicht auf das erste Ereignis warten muss.
 | `get_dock` | – | `DockView` | aktueller Andock-Zustand |
 | `get_settings` | – | `SettingsView` | aktuelle Einstellungen |
 | `panel_content_size` | `width`, `height` (CSS-Pixel) | – | Fenstergröße anpassen |
-| `focus_slot` | `slot` | – | Agent nach vorn holen (Fenster + Pane), Auswahl setzen |
+| `focus_slot` | `slot` | – | Agent nach vorn holen (sein Windows-Terminal-Fenster), Auswahl setzen |
 | `close_slot` | `slot` | – | Agent schließen (inkl. Worktree aufräumen wie heute) |
 | `create_agent` | `letter` | – | neuen Agenten im Block anlegen |
 | `show_tile_menu` | `slot` | – | natives Kontextmenü an der Zeigerposition |
@@ -54,7 +54,7 @@ nicht auf das erste Ereignis warten muss.
 | `open_settings` | – | – | Einstellungsfenster zeigen |
 | `set_setting` | `key` (Feldname aus `SettingsView`), `value` | `SettingsView` | sofort speichern |
 | `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
-| `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen, mit VS-Code-Fenster verbinden) |
+| `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen) |
 | `panel_hold` | `hold: boolean` | – | Karte oder Block wird gezogen: Panel bleibt offen (höchstens 60 s) |
 | `panel_drag` | `mode`: `move` \| `zoom`, `x`, `y` (Stelle des Drucks, CSS-Pixel) | – | Nur frei schwebend: Rust folgt dem Zeiger, bis die Taste los ist, verschiebt bzw. zoomt und merkt sich das Ergebnis |
 | `focus_block` | `letter` | – | Klick auf den Repo-Namen: Fenster des Blocks nach vorn (wie `show_window` in Python) |
@@ -84,10 +84,9 @@ nicht auf das erste Ereignis warten muss.
 
 ### Blockkopf, Neustart, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
 
-- Kopf eines Blocks (`connect.py`): Rechtsklick → natives Menü mit „Mit VS-Code-Fenster
-  verbinden …“ (nur VS Code; der nächste Klick in ein VS-Code-Fenster binnen 20 s bindet
-  es, ein zweites Mal bricht ab) und „<Repo> vergessen“ (nicht beim Heimat-Block). Solange
-  verbunden wird, steht `BlockView.binding` und der Kopf zeigt die Bitte statt des Hosts.
+- Kopf eines Blocks (`connect.py`): Rechtsklick → natives Menü mit „<Repo> vergessen“
+  (nicht beim Heimat-Block; der hat kein Menü). Das frühere „Mit VS-Code-Fenster
+  verbinden …“ ist mit den VS-Code-Agenten entfallen (seit 09.11.2026 nur Windows Terminal).
 - `TooltipView.origin`: Herkunftszeilen über Ticket und Zusammenfassung („Repo · Fenster
   A · A2“, bei worktree „↳ wt/<Ordner>“), wie `hover.py: _origin_lines`.
 - „Panel neu starten“ (`restart_panel`) startet die Exe mit denselben Argumenten und

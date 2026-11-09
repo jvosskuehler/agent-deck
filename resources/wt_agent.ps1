@@ -1,6 +1,6 @@
 # Startet einen Claude-Agenten in einem Windows-Terminal-Pane, das das Agent Deck
 # geoeffnet hat (app/src-tauri/src/wt_host.rs). Laeuft mit -NoExit: endet claude, bleibt die Shell im
-# Pane stehen - wie ein VS-Code-Terminal nach `exit` aus claude.
+# Pane stehen und laesst sich weiter benutzen.
 #
 # -Spec ist Base64-JSON aus deck-core wt::launch_spec: { slot, state, args }.
 param([Parameter(Mandatory = $true)][string]$Spec)
