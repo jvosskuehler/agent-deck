@@ -16,9 +16,9 @@
 cbuffer Params : register(b0)
 {
     float4 win;        // Agentenfenster im Rahmenfenster: x0, y0, x1, y1 (Pixel)
-    float4 misc;       // Skalierung, Umfang P, Design (0..3), Zeit
+    float4 misc;       // Skalierung, Umfang P, Design (0..3, Winter ab 10), Zeit
     float4 pa;         // je Design
-    float4 pb;         // je Design
+    float4 pb;         // je Design; pb.w = 1 bei dunklem Terminal (lesen nur die Winter-Designs)
     float4 items[8];   // je Design: Funken bzw. Lichtboegen
 };
 
@@ -215,19 +215,24 @@ float4 lauflicht(float u, float s, float P, float sc)
     return float4(rgb, a);
 }
 
+// Die Winter-Designs (ab 10) stehen in frame_winter.hlsl, das hinter diese Datei
+// gehaengt wird.
+float4 winter(int design, float2 p, float u, float s, float W, float H);
+
 float4 PSMain(VSOut i) : SV_Target
 {
     float2 p = i.pos.xy;
     float u, s, W, H;
     edge(p, u, s, W, H);
     float sc = misc.x, P = misc.y;
-    // Tief im Fenster leuchtet nichts mehr: dort sofort durchsichtig, das spart den
-    // weitaus groessten Teil der Pixel.
-    if (u > 24 * sc)
-        return float4(0, 0, 0, 0);
     int design = (int)misc.z;
+    // Tief im Fenster leuchtet nichts mehr: dort sofort durchsichtig, das spart den
+    // weitaus groessten Teil der Pixel. Im Winter schneit es auch dort.
+    if (design < 10 && u > 24 * sc)
+        return float4(0, 0, 0, 0);
     float4 c;
-    if (design == 0) c = kometen(u, s, P, sc);
+    if (design >= 10) c = winter(design, p, u, s, W, H);
+    else if (design == 0) c = kometen(u, s, P, sc);
     else if (design == 1) c = glut(p, u, s, P, sc);
     else if (design == 2) c = hochspannung(u, s, P, sc);
     else c = lauflicht(u, s, P, sc);

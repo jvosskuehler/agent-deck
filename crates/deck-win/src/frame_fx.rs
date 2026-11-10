@@ -23,15 +23,37 @@ pub enum Design {
     Hochspannung,
     /// Glühbirnen wie am Kinoschild, jede dritte brennt hell, das Licht hüpft im Takt.
     Lauflicht,
+    // Die Winter-Designs (Canvas „Weihnachts-Terminals“, 2026-11-10) zählen ab 10: so
+    // erkennt sie der Shader, und neue Stammdesigns können darunter weiterzählen.
+    /// Eisrand, auf der Oberkante wächst Schnee, unten wachsen Eiszapfen und tropfen.
+    Schneewehe = 10,
+    /// Grüne, türkise und violette Lichtvorhänge wehen um das Fenster.
+    Nordlicht = 11,
+    /// Eine kleine Dampflok zieht vier Wagen um das Fenster, hinter ihr glüht der Rand nach.
+    Express = 12,
 }
 
 impl Design {
+    /// Die Stammdesigns: laufen das ganze Jahr außer in der Winterzeit.
     pub const ALL: [Design; 4] = [
         Design::Kometen,
         Design::Glut,
         Design::Hochspannung,
         Design::Lauflicht,
     ];
+
+    /// Das Winterkleid, vom ersten Advent bis Dreikönig (`deck_core::season`). Mit Schnee
+    /// über dem ganzen Fenster, siehe [`crate::frame_fx_winter`].
+    pub const WINTER: [Design; 3] = [Design::Schneewehe, Design::Nordlicht, Design::Express];
+
+    /// Aus welchen Designs gerade gewählt wird.
+    pub const fn pool(winter: bool) -> &'static [Design] {
+        if winter { &Design::WINTER } else { &Design::ALL }
+    }
+
+    pub const fn is_winter(self) -> bool {
+        self.id() >= 10
+    }
 
     /// Nummer im Shader (`misc.z`).
     pub const fn id(self) -> u32 {
@@ -61,15 +83,26 @@ pub const MARGIN_PT: f64 = 36.0;
 pub struct FrameParams {
     /// Agentenfenster im Rahmenbild: x0, y0, x1, y1 (Pixel).
     pub win: [f32; 4],
-    /// Skalierung, Umfang P, Design (0..3), Zeit (mod 1000 s).
+    /// Skalierung, Umfang P, Design (0..3, Winter ab 10), Zeit (mod 1000 s, Winter mod
+    /// 3600 s: dort treibt sie Schnee und Licht, ein Umbruch ist ein sichtbarer Sprung).
     pub misc: [f32; 4],
     pub a: [f32; 4],
+    /// Je Design; `b[3]` ist bei allen frei für hell oder dunkel ([`FrameParams::with_night`]).
     pub b: [f32; 4],
     /// Funken bzw. Lichtbögen.
     pub items: [[f32; 4]; 8],
 }
 
-fn modp(x: f64, m: f64) -> f64 {
+impl FrameParams {
+    /// Dunkles Terminal? Die Winter-Designs malen ihre Flocken dann weiß, auf hellem
+    /// Papier eisblau (weiße wären dort unsichtbar). Die Stammdesigns lesen es nicht.
+    pub fn with_night(mut self, night: bool) -> FrameParams {
+        self.b[3] = if night { 1.0 } else { 0.0 };
+        self
+    }
+}
+
+pub(crate) fn modp(x: f64, m: f64) -> f64 {
     x - m * (x / m).floor()
 }
 
@@ -105,7 +138,7 @@ pub fn compute(
             sc as f32,
             perimeter as f32,
             design.id() as f32,
-            modp(t, 1000.0) as f32,
+            modp(t, if design.is_winter() { 3600.0 } else { 1000.0 }) as f32,
         ],
         ..Default::default()
     };
@@ -114,6 +147,9 @@ pub fn compute(
         Design::Glut => glut(&mut p, seed, t, sc, perimeter, win, width),
         Design::Hochspannung => hochspannung(&mut p, seed, t, sc, perimeter),
         Design::Lauflicht => lauflicht(&mut p, t, sc),
+        Design::Schneewehe | Design::Nordlicht | Design::Express => {
+            crate::frame_fx_winter::fill(&mut p, design, t, width / sc, height / sc)
+        }
     }
     p
 }

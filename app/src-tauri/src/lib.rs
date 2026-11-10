@@ -118,6 +118,7 @@ pub fn run() {
         _ => JUMP_HOTKEY.to_string(),
     };
     let front_combos = deck_core::front::combos(deck.store.settings.get("front_hotkeys"), &FRONT_HOTKEYS);
+    let frame_season = deck.store.settings.get("frame_season").cloned();
     let english = deck.lang.is_english();
     let state = Arc::new(AppState {
         deck: Mutex::new(deck),
@@ -176,7 +177,7 @@ pub fn run() {
             poll::start(handle);
             hotkey::start(handle, combo);
             hotkey::start_front(handle, front_combos);
-            focus_frame::start(desktop, host_map, Some(agent_group));
+            focus_frame::start(desktop, host_map, Some(agent_group), frame_season);
             Ok(())
         })
         .build(tauri::generate_context!());

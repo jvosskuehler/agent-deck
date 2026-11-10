@@ -3,7 +3,9 @@
 //! `deck_win::frame_gpu_overlay`; dieses Modul entscheidet, ob und um welches Fenster.
 //!
 //! Bei jedem Fokuswechsel kommt ein zufälliges Design dran, nie zweimal dasselbe
-//! hintereinander. Die Agentenfenster bekommen eckige Ecken: ein eckiger Rahmen um eine
+//! hintereinander. Vom ersten Advent bis Dreikönig kommen statt der Stammdesigns die drei
+//! Winter-Designs dran (`deck_core::season`, Einstellung `frame_season`); geprüft wird
+//! bei jedem Fokuswechsel, der Wechsel braucht also keinen Neustart. Die Agentenfenster bekommen eckige Ecken: ein eckiger Rahmen um eine
 //! runde Win11-Ecke ließe dort den Hintergrund durchscheinen. Das geschieht bei jedem
 //! Fokuswechsel für alle Agentenfenster, damit gekachelte Fenster gleich aussehen.
 //! Dazu bekommt ihr Rand die Grundfarbe des Terminals: der Win11-Rand ist sonst
@@ -43,6 +45,10 @@ pub struct FrameWatch {
     pub target: Option<Hwnd>,
     pub design: Option<Design>,
     pub seed: i32,
+    /// Dunkles Terminal? Ohne Auskunft hell, wie beim Rand.
+    pub night: bool,
+    /// Ist gerade Winterzeit? Gefragt wird bei jedem Fokuswechsel.
+    pub winter: Box<dyn Fn() -> bool>,
     rng: u64,
 }
 
@@ -59,6 +65,8 @@ impl FrameWatch {
             target: None,
             design: None,
             seed: 0,
+            night: false,
+            winter: Box::new(|| false),
             rng: seed | 1,
         }
     }
@@ -77,6 +85,7 @@ impl FrameWatch {
 
     fn square_agents(&mut self) {
         let light = self.desktop.light_theme();
+        self.night = light == Some(false);
         if self.styled_light != Some(light) {
             self.styled_light = Some(light);
             self.squared.clear();
@@ -123,7 +132,7 @@ impl FrameWatch {
         self.target = target;
         if target.is_some() {
             let r = self.random();
-            self.design = Design::pick(&Design::ALL, self.design, r);
+            self.design = Design::pick(Design::pool((self.winter)()), self.design, r);
             self.seed = (self.random() % (1 << 30)) as i32;
         }
         true
@@ -131,8 +140,8 @@ impl FrameWatch {
 }
 
 /// Den Rahmen-Thread starten. Fehlt die Grafikkarte, gibt es eben keinen Rahmen (einmal
-/// ins Log), das Deck läuft weiter.
-pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGroup>) {
+/// ins Log), das Deck läuft weiter. `season` ist die Einstellung `frame_season`.
+pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGroup>, season: Option<serde_json::Value>) {
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
     std::thread::Builder::new()
         .name("focus-frame".into())
@@ -145,6 +154,11 @@ pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGro
                 }
             };
             let mut watch = FrameWatch::new(desktop, hosts, group, seed);
+            watch.winter =
+                Box::new(move || deck_core::season::winter_frames(season.as_ref(), deck_win::clock::local_date()));
+            if (watch.winter)() {
+                note("Fokus-Rahmen: Winter-Designs (erster Advent bis Dreikönig oder frame_season)");
+            }
             let mut since_watch = Instant::now();
             let mut t0 = Instant::now();
             let mut logged = false;
@@ -159,7 +173,7 @@ pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGro
                 match (watch.target, watch.design) {
                     (Some(target), Some(design)) => {
                         // draw wartet auf den Bildwechsel: das ist der Takt der Animation.
-                        if let Err(e) = frame.draw(target, design, watch.seed, t0.elapsed().as_secs_f64())
+                        if let Err(e) = frame.draw(target, design, watch.seed, t0.elapsed().as_secs_f64(), watch.night)
                             && !logged
                         {
                             note(format!("Fokus-Rahmen: {e}"));
@@ -226,6 +240,47 @@ mod tests {
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
         assert_eq!(d.bordered(), vec![(Hwnd(5), 0x191724), (Hwnd(5), 0xFAF4ED)], "Moduswechsel färbt neu");
+    }
+
+    #[test]
+    fn in_winter_only_the_winter_designs_take_turns() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        w.winter = Box::new(|| true);
+        let mut seen = HashSet::new();
+        for _ in 0..40 {
+            d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+            w.step();
+            let design = w.design.expect("ein Design");
+            assert!(design.is_winter(), "{design:?}");
+            seen.insert(design);
+            d.set_foreground(Hwnd(9), "Editor", "Notepad");
+            w.step();
+        }
+        assert_eq!(seen.len(), Design::WINTER.len(), "alle drei kommen dran");
+        w.winter = Box::new(|| false);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        assert!(!w.design.unwrap().is_winter(), "nach Dreikönig wieder die Stammdesigns, ohne Neustart");
+    }
+
+    #[test]
+    fn snow_is_white_only_on_a_dark_terminal() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        assert!(!w.night, "ohne Auskunft hell, wie der Rand");
+        d.set_light(Some(false));
+        d.set_foreground(Hwnd(9), "Editor", "Notepad");
+        w.step();
+        assert!(w.night);
+        d.set_light(Some(true));
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        assert!(!w.night);
     }
 
     fn group() -> Option<TaskbarGroup> {

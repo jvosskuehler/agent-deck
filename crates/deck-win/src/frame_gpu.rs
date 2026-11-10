@@ -27,8 +27,9 @@ use windows::core::{PCSTR, s};
 use crate::frame_fx::FrameParams;
 use crate::types::{Error, Result};
 
-/// Der Shader, dieselbe Datei wie im Hilfsprogramm der Python-Fassung.
-pub const SHADER: &str = include_str!("frame.hlsl");
+/// Der Shader: die Stammdesigns (dieselbe Datei wie im Hilfsprogramm der Python-Fassung),
+/// dahinter die Winter-Designs.
+pub const SHADER: &str = concat!(include_str!("frame.hlsl"), "\n", include_str!("frame_winter.hlsl"));
 
 /// Gerät, Shader und Konstantenpuffer.
 pub struct GpuPipeline {
@@ -169,5 +170,149 @@ fn compile(entry: PCSTR, target: PCSTR) -> Result<Vec<u8>> {
             std::slice::from_raw_parts(code.GetBufferPointer() as *const u8, code.GetBufferSize())
                 .to_vec(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use windows::Win32::Graphics::Direct3D11::{
+        D3D11_BIND_RENDER_TARGET, D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE,
+        D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING, ID3D11Texture2D,
+    };
+    use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+
+    use super::*;
+    use crate::frame_fx::{Design, MARGIN_PT, compute};
+
+    /// Ein Rahmenbild abseits des Bildschirms: Ziel zum Zeichnen, Kopie zum Zurücklesen.
+    struct Canvas {
+        target: ID3D11Texture2D,
+        copy: ID3D11Texture2D,
+        rtv: ID3D11RenderTargetView,
+        size: (u32, u32),
+    }
+
+    fn canvas(gpu: &GpuPipeline, w: u32, h: u32) -> Canvas {
+        let mut desc = D3D11_TEXTURE2D_DESC {
+            Width: w,
+            Height: h,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+            ..Default::default()
+        };
+        let (mut target, mut copy, mut rtv) = (None, None, None);
+        // SAFETY: Beschreibungen und Ausgabezeiger leben während der Aufrufe.
+        unsafe {
+            gpu.device.CreateTexture2D(&desc, None, Some(&mut target)).unwrap();
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.BindFlags = 0;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+            gpu.device.CreateTexture2D(&desc, None, Some(&mut copy)).unwrap();
+            let target: ID3D11Texture2D = target.unwrap();
+            gpu.device.CreateRenderTargetView(&target, None, Some(&mut rtv)).unwrap();
+            Canvas { target, copy: copy.unwrap(), rtv: rtv.unwrap(), size: (w, h) }
+        }
+    }
+
+    /// Das zuletzt gezeichnete Bild als BGRA, vormultipliziert, zeilenweise von oben.
+    fn pixels(gpu: &GpuPipeline, c: &Canvas) -> Vec<u8> {
+        let (w, h) = (c.size.0 as usize, c.size.1 as usize);
+        let mut out = vec![0u8; w * h * 4];
+        // SAFETY: Die Kopie ist zum Lesen angelegt; gelesen wird nur innerhalb der Zeilen.
+        unsafe {
+            gpu.ctx.CopyResource(&c.copy, &c.target);
+            let mut map = D3D11_MAPPED_SUBRESOURCE::default();
+            gpu.ctx.Map(&c.copy, 0, D3D11_MAP_READ, 0, Some(&mut map)).unwrap();
+            for y in 0..h {
+                let row = (map.pData as *const u8).add(y * map.RowPitch as usize);
+                out[y * w * 4..(y + 1) * w * 4].copy_from_slice(std::slice::from_raw_parts(row, w * 4));
+            }
+            gpu.ctx.Unmap(&c.copy, 0);
+        }
+        out
+    }
+
+    /// Parameter für ein Fenster von `w` × `h` Pixeln, das mit vollem Hof im Bild liegt.
+    fn params(design: Design, t: f64, sc: f64, w: u32, h: u32, night: bool) -> (FrameParams, u32, u32) {
+        let m = (MARGIN_PT * sc).ceil() as u32;
+        let win = [m as f32, m as f32, (m + w) as f32, (m + h) as f32];
+        (compute(design, 7, t, sc, win, f64::from(w), f64::from(h)).with_night(night), w + 2 * m, h + 2 * m)
+    }
+
+    #[test]
+    fn the_shader_compiles_and_every_design_draws_on_the_edge() {
+        let gpu = GpuPipeline::new().expect("Shader übersetzt (frame.hlsl + frame_winter.hlsl)");
+        for design in Design::ALL.into_iter().chain(Design::WINTER) {
+            let (p, w, h) = params(design, 3.0, 1.0, 300, 200, false);
+            let c = canvas(&gpu, w, h);
+            gpu.draw(&c.rtv, w, h, &p);
+            let px = pixels(&gpu, &c);
+            let alpha = |x: u32, y: u32| px[((y * w + x) * 4 + 3) as usize];
+            let on_edge = (36..336).filter(|&x| alpha(x, 36) > 40).count();
+            assert!(on_edge > 20, "{design:?}: die Oberkante leuchtet ({on_edge} Pixel)");
+            assert_eq!(alpha(0, 0), 0, "{design:?}: die Ecke des Bilds liegt außerhalb des Hofs");
+            if !design.is_winter() {
+                assert_eq!(alpha(w / 2, h / 2), 0, "{design:?}: tief im Fenster bleibt es durchsichtig");
+            }
+        }
+    }
+
+    /// Standbilder der Winter-Designs zum Ansehen, über einem gemalten Terminal (hell und
+    /// dunkel), dazu die Rechenzeit je Bild bei 1920 × 1080:
+    /// `DECK_FRAME_STILLS=<ordner> cargo test -p deck-win stills -- --ignored --nocapture`
+    #[test]
+    #[ignore = "schreibt Bilder; nur zum Ansehen"]
+    fn stills() {
+        let dir = std::path::PathBuf::from(std::env::var("DECK_FRAME_STILLS").expect("DECK_FRAME_STILLS=<ordner>"));
+        let gpu = GpuPipeline::new().unwrap();
+        for design in Design::WINTER {
+            for (night, paper, name) in [(false, [0xEDu8, 0xF4, 0xFA], "hell"), (true, [0x1B, 0x1C, 0x1D], "dunkel")] {
+                for t in [0.5, 12.0, 40.0] {
+                    let (p, w, h) = params(design, t, 1.25, 850, 600, night);
+                    let c = canvas(&gpu, w, h);
+                    gpu.draw(&c.rtv, w, h, &p);
+                    let px = pixels(&gpu, &c);
+                    let m = (w - 850) / 2;
+                    let mut bmp = bmp_header(w, h);
+                    for y in (0..h).rev() {
+                        for x in 0..w {
+                            let i = ((y * w + x) * 4) as usize;
+                            let inside = x >= m && x < w - m && y >= m && y < h - m;
+                            let under: [u8; 3] = if inside { paper } else { [0x26, 0x21, 0x1E] };
+                            let a = u32::from(px[i + 3]);
+                            for ch in 0..3 {
+                                bmp.push((u32::from(px[i + ch]) + u32::from(under[ch]) * (255 - a) / 255).min(255) as u8);
+                            }
+                        }
+                        bmp.resize(bmp.len() + (4 - (w as usize * 3) % 4) % 4, 0);
+                    }
+                    std::fs::write(dir.join(format!("{design:?}-{name}-{t}.bmp")), bmp).unwrap();
+                }
+            }
+            let (p, w, h) = params(design, 20.0, 1.0, 1920, 1080, false);
+            let c = canvas(&gpu, w, h);
+            let start = Instant::now();
+            for _ in 0..60 {
+                gpu.draw(&c.rtv, w, h, &p);
+            }
+            pixels(&gpu, &c);
+            println!("{design:?}: {:.2} ms je Bild bei 1920 × 1080", start.elapsed().as_secs_f64() * 1000.0 / 60.0);
+        }
+    }
+
+    /// Kopf einer 24-Bit-BMP (Zeilen von unten nach oben, je auf 4 Byte aufgefüllt).
+    fn bmp_header(w: u32, h: u32) -> Vec<u8> {
+        let row = (w * 3).div_ceil(4) * 4;
+        let mut b = Vec::with_capacity((54 + row * h) as usize);
+        b.extend_from_slice(b"BM");
+        for v in [54 + row * h, 0, 54, 40, w, h, 1 | (24 << 16), 0, row * h, 2835, 2835, 0, 0] {
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        b
     }
 }

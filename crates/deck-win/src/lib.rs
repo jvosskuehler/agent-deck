@@ -12,7 +12,8 @@
 //! Der Fokus-Rahmen folgt dem Stand der Python-Fassung vom 2026-11-06 (vier animierte
 //! Designs, gezeichnet auf der Grafikkarte): [`frame_fx`] rechnet je Bild die Parameter,
 //! [`frame_gpu_overlay`] zeigt sie mit dem Shader `frame.hlsl` über DirectComposition
-//! in einem Fenster aus [`frame_window`].
+//! in einem Fenster aus [`frame_window`]. Vom ersten Advent bis Dreikönig laufen an
+//! ihrer Stelle drei Winter-Designs mit Schnee ([`frame_fx_winter`], `frame_winter.hlsl`).
 //!
 //! Nicht portiert, weil es nur für tkinter nötig war: Per-Pixel-Alpha für das
 //! Griff-Fenster (`layered.py`; der Griff ist jetzt WebView), Timer-Auflösung
@@ -23,12 +24,14 @@
 #![cfg(windows)]
 
 pub mod arrange;
+pub mod clock;
 pub mod console_input;
 pub mod dpapi;
 pub mod dpi;
 pub mod effects;
 pub mod focus;
 pub mod frame_fx;
+pub mod frame_fx_winter;
 pub mod frame_gpu;
 pub mod frame_gpu_overlay;
 pub mod frame_layout;
