@@ -31,6 +31,7 @@ pub mod paths;
 pub mod prompt_cache;
 pub mod prompts;
 pub mod ref_sources;
+pub mod season;
 pub mod slot_state;
 pub mod status_model;
 pub mod text;

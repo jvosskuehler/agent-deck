@@ -86,9 +86,10 @@ impl GpuFocusFrame {
     }
 
     /// Ein Bild um `target` zeichnen und zeigen; wartet auf den Bildwechsel des
-    /// Monitors. `Ok(false)`: nichts zu zeigen (Fenster weg, minimiert, außerhalb),
-    /// der Rahmen ist dann versteckt.
-    pub fn draw(&mut self, target: Hwnd, design: Design, seed: i32, t: f64) -> Result<bool> {
+    /// Monitors. `night`: das Terminal ist dunkel (Farbe der Schneeflocken im Winter).
+    /// `Ok(false)`: nichts zu zeigen (Fenster weg, minimiert, außerhalb), der Rahmen ist
+    /// dann versteckt.
+    pub fn draw(&mut self, target: Hwnd, design: Design, seed: i32, t: f64, night: bool) -> Result<bool> {
         guard::check("frame_gpu_overlay")?;
         let Some(layout) = layout_of(target) else {
             self.hide();
@@ -97,7 +98,7 @@ impl GpuFocusFrame {
         let frame = layout.frame;
         let (w, h) = (frame.width() as u32, frame.height() as u32);
         let rtv = self.target_view(w, h)?;
-        self.gpu.draw(&rtv, w, h, &layout.params(design, seed, t));
+        self.gpu.draw(&rtv, w, h, &layout.params(design, seed, t).with_night(night));
         let swap = &self.surface.as_ref().expect("eben angelegt").swap;
         // SAFETY: eigene Swapchain; Present(1) wartet auf den nächsten Bildwechsel.
         unsafe { swap.Present(1, DXGI_PRESENT(0)) }
