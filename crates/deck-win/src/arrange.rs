@@ -3,13 +3,17 @@
 //! WELCHE Fenster wohin gehören (Kachelraster, Spaltenzahl), rechnet der Fachkern; hier
 //! ist nur das Handwerk.
 
-use windows::Win32::Foundation::RECT;
+use windows::Win32::Foundation::{POINT, RECT};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
+use std::collections::HashSet;
+use std::sync::Mutex;
+
 use windows::Win32::Graphics::Dwm::{
-    DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_TRANSITIONS_FORCEDISABLED, DwmGetWindowAttribute,
-    DwmSetWindowAttribute,
+    DWMNCRP_DISABLED, DWMNCRP_USEWINDOWSTYLE, DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_NCRENDERING_POLICY,
+    DWMWA_TRANSITIONS_FORCEDISABLED, DwmGetWindowAttribute, DwmSetWindowAttribute,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowPlacement, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST,
+    GetClientRect, GetForegroundWindow, GetWindowPlacement, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST,
     SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     SWP_NOZORDER, SetWindowPos, ShowWindow, WINDOWPLACEMENT,
 };
@@ -92,10 +96,63 @@ fn no_transitions(hwnd: Hwnd) {
     };
 }
 
+/// Fenster, deren Schatten das Deck abgestellt hat ([`set_shadow`]).
+///
+/// Ohne Schatten zeichnet DWM nur noch die Client-Fläche des Fensters, meldet als
+/// sichtbaren Rahmen aber das ganze Außenrechteck (gemessen 11.11.2026 an Windows
+/// Terminal bei 150 %: außen -9..967, Client 2..956, gezeichnet 2..956; mit Schatten
+/// sichtbar 0..958). Wer danach kachelt, bekäme Lücken; darum gilt für diese Fenster die
+/// Client-Fläche als sichtbarer Rahmen.
+static SHADOWLESS: Mutex<Option<HashSet<isize>>> = Mutex::new(None);
+
+fn is_shadowless(hwnd: Hwnd) -> bool {
+    SHADOWLESS.lock().is_ok_and(|s| s.as_ref().is_some_and(|s| s.contains(&hwnd.0)))
+}
+
+/// Die Client-Fläche in Bildschirmkoordinaten.
+fn client_rect(hwnd: Hwnd) -> Option<Rect> {
+    let mut r = RECT::default();
+    let mut origin = POINT::default();
+    // SAFETY: Zeiger auf lokale Variablen.
+    unsafe {
+        GetClientRect(hwnd.h(), &mut r).ok()?;
+        ClientToScreen(hwnd.h(), &mut origin).ok().ok()?;
+    }
+    Some(Rect::new(origin.x, origin.y, origin.x + r.right, origin.y + r.bottom))
+}
+
+/// Den Schatten, den Windows dem Fenster gibt, ab- oder wieder anstellen (auch bei
+/// fremden Fenstern). Mit ihm gehen der Fensterrand und die runden Ecken. `Ok(false)`:
+/// DWM hat abgelehnt, das Fenster bleibt, wie es ist.
+pub fn set_shadow(hwnd: Hwnd, on: bool) -> Result<bool> {
+    guard::check("set_shadow")?;
+    if hwnd.is_null() {
+        return Ok(false);
+    }
+    let policy: i32 = if on { DWMNCRP_USEWINDOWSTYLE.0 } else { DWMNCRP_DISABLED.0 };
+    // SAFETY: Zeiger auf einen lokalen i32, Größe passend.
+    let done = unsafe {
+        DwmSetWindowAttribute(hwnd.h(), DWMWA_NCRENDERING_POLICY, (&raw const policy).cast(), size_of::<i32>() as u32)
+    }
+    .is_ok();
+    if let Ok(mut set) = SHADOWLESS.lock() {
+        let set = set.get_or_insert_with(HashSet::new);
+        if done && !on {
+            set.insert(hwnd.0);
+        } else if done {
+            set.remove(&hwnd.0);
+        }
+    }
+    Ok(done)
+}
+
 /// Der SICHTBARE Rand (DWM, ohne Greifrand). `None` ohne DWM-Auskunft.
 pub fn visible_rect(hwnd: Hwnd) -> Option<Rect> {
     if hwnd.is_null() {
         return None;
+    }
+    if is_shadowless(hwnd) {
+        return client_rect(hwnd);
     }
     let mut r = RECT::default();
     // SAFETY: Zeiger und Größe passen zu RECT.

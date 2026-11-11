@@ -22,6 +22,7 @@ pub mod field;
 pub mod deck_view;
 pub mod front;
 pub mod git_head;
+pub mod group_shadow;
 pub mod i18n;
 pub mod isotime;
 pub mod menu;

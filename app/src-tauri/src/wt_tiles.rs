@@ -12,9 +12,28 @@ use std::collections::HashMap;
 
 use deck_core::arrange::{self, max_cols_for, tile_grid};
 use deck_core::dock::Area;
+use deck_core::group_shadow::seam_px;
 use deck_core::wt::{WINDOW_CLASS, slot_from_title};
 use deck_win::effects::Desktop;
 use deck_win::{Hwnd, Rect};
+
+/// Die Kachel `(x, y, w, h)` als Fensterfläche: rechts und unten bleibt die Naht frei
+/// (`deck_core::group_shadow`), dort scheint die Nahtfarbe des Gruppenschattens durch.
+fn tile_rect((x, y, w, h): arrange::Rect, scale: f64) -> Rect {
+    let seam = seam_px(scale);
+    Rect::from_xywh(x as i32, y as i32, (w - seam).max(1) as i32, (h - seam).max(1) as i32)
+}
+
+/// Vor dem Legen eines Rasters: den Fenstern den eigenen Schatten nehmen. Ohne ihn
+/// zeichnet Windows sie ein paar Pixel kleiner; wer erst legt und dann abstellt, bekommt
+/// statt der Naht eine breite Fuge. Ein einzelnes Fenster behält seinen Schatten.
+fn flatten(desktop: &dyn Desktop, hwnds: &[Hwnd]) {
+    if hwnds.len() > 1 {
+        for h in hwnds {
+            let _ = desktop.set_shadow(*h, false);
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct WtTiler {
@@ -87,15 +106,17 @@ pub fn tile(desktop: &dyn Desktop, slots: &[String]) -> usize {
     let Some(r) = desktop.window_rect(first) else { return 0 };
     let (cx, cy) = r.center();
     let Some(area) = desktop.work_area(cx, cy) else { return 0 };
-    let cols = max_cols_for(i64::from(area.width()), desktop.scale_of(first));
+    let scale = desktop.scale_of(first);
+    flatten(desktop, &order);
+    let cols = max_cols_for(i64::from(area.width()), scale);
     let grid = tile_grid(
         order.len() as i64,
         (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
         cols,
     );
     let mut placed = 0;
-    for (hwnd, (x, y, w, h)) in order.iter().zip(grid) {
-        if desktop.place(*hwnd, Rect::from_xywh(x as i32, y as i32, w as i32, h as i32)).is_ok() {
+    for (hwnd, cell) in order.iter().zip(grid) {
+        if desktop.place(*hwnd, tile_rect(cell, scale)).is_ok() {
             placed += 1;
         }
     }
@@ -163,8 +184,9 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
             (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
             cols,
         );
-        for ((_, hwnd, _), (x, y, w, h)) in order.iter().zip(grid) {
-            let _ = desktop.place(*hwnd, Rect::from_xywh(x as i32, y as i32, w as i32, h as i32));
+        flatten(desktop, &order.iter().map(|(_, h, _)| *h).collect::<Vec<_>>());
+        for ((_, hwnd, _), cell) in order.iter().zip(grid) {
+            let _ = desktop.place(*hwnd, tile_rect(cell, scale));
         }
     }
     order.into_iter().map(|(s, h, _)| (s, h)).collect()
@@ -255,9 +277,9 @@ mod tests {
         assert_eq!(
             d.placed(),
             [
-                (Hwnd(11), Rect::new(1920, 0, 2720, 1160)),
-                (Hwnd(12), Rect::new(2720, 0, 3520, 1160)),
-                (Hwnd(21), Rect::new(3520, 0, 4320, 1160)),
+                (Hwnd(11), Rect::new(1920, 0, 2719, 1159)),
+                (Hwnd(12), Rect::new(2720, 0, 3519, 1159)),
+                (Hwnd(21), Rect::new(3520, 0, 4319, 1159)),
             ]
         );
     }
@@ -348,8 +370,9 @@ mod tests {
         let n = tile(&d, &["A1".into(), "A2".into(), "A3".into()]);
         assert_eq!(n, 2, "minimierte bleiben liegen");
         let placed = d.placed();
-        assert_eq!(placed[0], (Hwnd(11), Rect::new(0, 0, 960, 1040)));
-        assert_eq!(placed[1], (Hwnd(12), Rect::new(960, 0, 1920, 1040)));
+        // Rechts und unten bleibt je Kachel die Naht frei (1 px bei 100 %).
+        assert_eq!(placed[0], (Hwnd(11), Rect::new(0, 0, 959, 1039)));
+        assert_eq!(placed[1], (Hwnd(12), Rect::new(960, 0, 1919, 1039)));
         assert_eq!(hwnd_of(&d, "A3"), Some(Hwnd(13)));
     }
 }

@@ -13,6 +13,7 @@ pub mod deck;
 pub mod dock;
 pub mod dock_drag;
 pub mod focus_frame;
+pub mod group_shadow;
 pub mod hotkey;
 pub mod launcher;
 pub mod menu;
@@ -120,6 +121,8 @@ pub fn run() {
     };
     let front_combos = deck_core::front::combos(deck.store.settings.get("front_hotkeys"), &FRONT_HOTKEYS);
     let frame_season = deck.store.settings.get("frame_season").cloned();
+    // Gemeinsamer Schatten für bündig liegende Agenten; `false` lässt jedem seinen eigenen.
+    let group_shadow = deck.store.settings.get("group_shadow").and_then(serde_json::Value::as_bool).unwrap_or(true);
     let english = deck.lang.is_english();
     let state = Arc::new(AppState {
         deck: Mutex::new(deck),
@@ -178,7 +181,7 @@ pub fn run() {
             poll::start(handle);
             hotkey::start(handle, combo);
             hotkey::start_front(handle, front_combos);
-            focus_frame::start(desktop, host_map, frame_hold, Some(agent_group), frame_season);
+            focus_frame::start(desktop, host_map, frame_hold, Some(agent_group), frame_season, group_shadow);
             Ok(())
         })
         .build(tauri::generate_context!());

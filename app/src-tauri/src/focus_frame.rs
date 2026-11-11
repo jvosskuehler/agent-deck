@@ -12,6 +12,9 @@
 //! halbdurchsichtig, zwischen zwei Kacheln schien eine Fuge Hintergrund durch.
 //! Und jedes Agentenfenster kommt einmal in die eigene Taskleisten-Gruppe der Agenten
 //! (eigener Knopf mit eigenem Symbol statt des Terminal-Knopfs, `deck_win::taskbar`).
+//!
+//! Im selben Thread läuft der gemeinsame Schatten bündig liegender Agenten
+//! (`crate::group_shadow`): auch er braucht eigene Fenster und deren Nachrichtenpumpe.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -25,6 +28,7 @@ use deck_win::frame_fx::Design;
 use deck_win::taskbar::TaskbarGroup;
 
 use crate::applog::note;
+use crate::group_shadow::{ShadowLayer, ShadowWatch};
 use crate::wt_host::{FrameHold, HostMap, WtHost};
 
 /// So oft wird geschaut, welches Fenster vorn ist.
@@ -146,25 +150,33 @@ impl FrameWatch {
 }
 
 /// Den Rahmen-Thread starten. Fehlt die Grafikkarte, gibt es eben keinen Rahmen (einmal
-/// ins Log), das Deck läuft weiter. `season` ist die Einstellung `frame_season`.
+/// ins Log), das Deck läuft weiter. `season` ist die Einstellung `frame_season`,
+/// `group_shadow` schaltet den gemeinsamen Schatten bündig liegender Agenten ein.
 pub fn start(
     desktop: Arc<dyn Desktop>,
     hosts: HostMap,
     hold: FrameHold,
     group: Option<TaskbarGroup>,
     season: Option<serde_json::Value>,
+    group_shadow: bool,
 ) {
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
     std::thread::Builder::new()
         .name("focus-frame".into())
         .spawn(move || {
             let mut frame = match deck_win::frame_gpu_overlay::GpuFocusFrame::new() {
-                Ok(f) => f,
+                Ok(f) => Some(f),
                 Err(e) => {
                     note(format!("Fokus-Rahmen nicht verfügbar: {e}"));
-                    return;
+                    None
                 }
             };
+            if frame.is_none() && !group_shadow {
+                return;
+            }
+            let mut shadows = group_shadow.then(|| (ShadowWatch::new(desktop.clone(), hosts.clone()), ShadowLayer::default()));
+            let shadow_desktop = desktop.clone();
+            let shadow_hold = hold.clone();
             let mut watch = FrameWatch::new(desktop, hosts, group, seed);
             watch.hold = hold;
             watch.winter =
@@ -182,9 +194,19 @@ pub fn start(
                     if watch.step() {
                         t0 = Instant::now();
                     }
+                    // Solange das Deck Fenster umlegt, wartet auch der Schatten: sonst
+                    // würde er für jeden Zwischenstand neu gerechnet.
+                    if let Some((plan, layer)) = shadows.as_mut()
+                        && !shadow_hold.load(std::sync::atomic::Ordering::SeqCst)
+                    {
+                        if plan.step() {
+                            layer.apply(&plan.plans);
+                        }
+                        layer.keep_behind(&shadow_desktop.z_order());
+                    }
                 }
-                match (watch.target, watch.design) {
-                    (Some(target), Some(design)) => {
+                match (frame.as_mut().zip(watch.target), watch.design) {
+                    (Some((frame, target)), Some(design)) => {
                         // draw wartet auf den Bildwechsel: das ist der Takt der Animation.
                         if let Err(e) = frame.draw(target, design, watch.seed, t0.elapsed().as_secs_f64(), watch.night)
                             && !logged
@@ -195,7 +217,9 @@ pub fn start(
                         }
                     }
                     _ => {
-                        frame.hide();
+                        if let Some(f) = frame.as_mut() {
+                            f.hide();
+                        }
                         std::thread::sleep(WATCH);
                     }
                 }

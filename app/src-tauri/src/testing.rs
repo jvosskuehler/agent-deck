@@ -30,6 +30,7 @@ struct Desk {
     restored: Vec<Hwnd>,
     minimized: Vec<Hwnd>,
     raised: Vec<Hwnd>,
+    shadows: Vec<(Hwnd, bool)>,
     /// Fenster von oben nach unten.
     z: Vec<Hwnd>,
     monitors: Vec<Monitor>,
@@ -87,6 +88,14 @@ impl FakeDesktop {
     /// Fenster, die ohne Tastatur nach oben gelegt wurden, in dieser Reihenfolge.
     pub fn raised(&self) -> Vec<Hwnd> {
         self.0.lock().unwrap().raised.clone()
+    }
+    /// Bei welchen Fenstern der Schatten ab- (`false`) oder angestellt wurde.
+    pub fn shadows(&self) -> Vec<(Hwnd, bool)> {
+        self.0.lock().unwrap().shadows.clone()
+    }
+    /// Ein Agentenfenster wurde verschoben.
+    pub fn move_wt(&self, hwnd: Hwnd, rect: Rect) {
+        self.0.lock().unwrap().wt.iter_mut().filter(|(w, _)| w.hwnd == hwnd).for_each(|(_, r)| *r = rect);
     }
     /// Fenster, die minimiert werden sollten, in dieser Reihenfolge.
     pub fn minimized(&self) -> Vec<Hwnd> {
@@ -170,6 +179,10 @@ impl Desktop for FakeDesktop {
     }
     fn set_corners(&self, hwnd: Hwnd, _: Corners) -> Result<bool> {
         self.0.lock().unwrap().corners.push(hwnd);
+        Ok(true)
+    }
+    fn set_shadow(&self, hwnd: Hwnd, on: bool) -> Result<bool> {
+        self.0.lock().unwrap().shadows.push((hwnd, on));
         Ok(true)
     }
     fn set_border(&self, hwnd: Hwnd, rgb: u32) -> Result<bool> {

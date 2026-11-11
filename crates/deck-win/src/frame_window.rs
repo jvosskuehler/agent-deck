@@ -37,12 +37,13 @@ unsafe extern "system" fn wndproc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
 /// Ein unsichtbares, durchklickbares, nie aktives Topmost-Popup der Klasse `class`
 /// anlegen (Stil-Bits siehe Modulkopf), dazu `extra` Stil-Bits.
 pub(crate) fn create_click_through(class: PCWSTR, extra: WINDOW_EX_STYLE) -> Result<HWND> {
-    let ex = WS_EX_LAYERED
-        | WS_EX_TRANSPARENT
-        | WS_EX_NOACTIVATE
-        | WS_EX_TOOLWINDOW
-        | WS_EX_TOPMOST
-        | extra;
+    create_layer(class, WS_EX_TOPMOST | extra)
+}
+
+/// Wie [`create_click_through`], aber ohne „immer im Vordergrund“: für ein Fenster, das
+/// HINTER anderen liegen soll (der Gruppenschatten, [`crate::shadow_window`]).
+pub(crate) fn create_layer(class: PCWSTR, extra: WINDOW_EX_STYLE) -> Result<HWND> {
+    let ex = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | extra;
     // SAFETY: statische Klassennamen, Prozedur eine echte extern-Funktion. Die zweite
     // Registrierung derselben Klasse scheitert harmlos (ERROR_CLASS_ALREADY_EXISTS).
     unsafe {

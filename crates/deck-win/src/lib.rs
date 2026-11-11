@@ -42,6 +42,7 @@ pub mod monitor;
 pub mod proc_env;
 pub mod proc_scan;
 pub mod procs;
+pub mod shadow_window;
 pub mod taskbar;
 pub mod tcp_listen;
 pub mod which;

@@ -31,6 +31,10 @@ pub trait Desktop: Send + Sync {
     fn resting_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         self.window_rect(hwnd)
     }
+    /// Der sichtbare Rahmen ohne den unsichtbaren Greifrand.
+    fn frame_rect(&self, hwnd: Hwnd) -> Option<Rect> {
+        self.window_rect(hwnd)
+    }
     /// Sichtbare Fenster von oben nach unten, wie sie übereinander liegen.
     fn z_order(&self) -> Vec<Hwnd>;
     fn monitors(&self) -> Vec<Monitor>;
@@ -53,6 +57,10 @@ pub trait Desktop: Send + Sync {
     /// Fenster minimieren; die Tastatur bleibt, wo sie ist, außer es war selbst vorn.
     fn minimize(&self, hwnd: Hwnd) -> Result<bool>;
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool>;
+    /// Den Schatten von Windows ab- oder anstellen; `Ok(false)` = geht hier nicht.
+    fn set_shadow(&self, _hwnd: Hwnd, _on: bool) -> Result<bool> {
+        Ok(false)
+    }
     /// Fensterrand deckend in `rgb` (`0xRRGGBB`); `Ok(false)` = geht hier nicht.
     fn set_border(&self, _hwnd: Hwnd, _rgb: u32) -> Result<bool> {
         Ok(false)
@@ -101,6 +109,9 @@ impl Desktop for Win32Desktop {
     fn resting_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         arrange::resting_rect(hwnd)
     }
+    fn frame_rect(&self, hwnd: Hwnd) -> Option<Rect> {
+        arrange::visible_rect(hwnd).or_else(|| arrange::window_rect(hwnd))
+    }
     fn z_order(&self) -> Vec<Hwnd> {
         window::visible_top_level()
     }
@@ -136,6 +147,9 @@ impl Desktop for Win32Desktop {
     }
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool> {
         focus::set_corners(hwnd, corners)
+    }
+    fn set_shadow(&self, hwnd: Hwnd, on: bool) -> Result<bool> {
+        arrange::set_shadow(hwnd, on)
     }
     fn set_border(&self, hwnd: Hwnd, rgb: u32) -> Result<bool> {
         focus::set_border_color(hwnd, rgb)
