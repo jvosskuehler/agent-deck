@@ -123,6 +123,35 @@ pub fn tile(desktop: &dyn Desktop, slots: &[String]) -> usize {
     placed
 }
 
+/// Die Kachel, die [`tile`] einem weiteren Fenster dieses Blocks geben wird, samt
+/// Skalierung: dort lässt der Host es gleich aufgehen. `slots` sind die lebenden Agenten
+/// in der Reihenfolge, in der gekachelt wird; `ahead` zählt angeforderte Fenster, die
+/// noch nicht stehen und vor diesem an die Reihe kommen. Liegt noch keines offen, gilt
+/// die Hauptanzeige: dort öffnet Windows ein Fenster ohne Vorgabe.
+pub fn next_tile(desktop: &dyn Desktop, slots: &[String], ahead: usize) -> Option<(Rect, f64)> {
+    let lying: Vec<Hwnd> = desktop
+        .class_windows(WINDOW_CLASS)
+        .into_iter()
+        .filter(|w| !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .map(|w| w.hwnd)
+        .collect();
+    let first = slots.iter().find_map(|s| hwnd_of(desktop, s).filter(|h| lying.contains(h)));
+    let (area, scale) = match first {
+        Some(h) => {
+            let (cx, cy) = desktop.window_rect(h)?.center();
+            (desktop.work_area(cx, cy)?, desktop.scale_of(h))
+        }
+        None => desktop.monitors().into_iter().find(|m| m.primary).map(|m| (m.work, m.scale))?,
+    };
+    let n = lying.len() + ahead + 1;
+    let grid = tile_grid(
+        n as i64,
+        (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
+        max_cols_for(i64::from(area.width()), scale),
+    );
+    grid.last().map(|cell| (tile_rect(*cell, scale), scale))
+}
+
 /// Arbeitsfläche und Skalierung des Monitors unter dem Punkt `pos` (Mauszeiger). Steht
 /// der Zeiger in einer Lücke zwischen Monitoren, gilt der nächstgelegene, wie
 /// `MonitorFromPoint(MONITOR_DEFAULTTONEAREST)` in der Python-Fassung. `None` nur ohne
@@ -348,6 +377,21 @@ mod tests {
         // Arbeitsfläche der Attrappe: 1920 breit, Faktor 1 = drei Fenster nebeneinander.
         assert_eq!(screen_cols(&d, &rows), 3);
         assert_eq!(screen_cols(&d, &[]), 0);
+    }
+
+    #[test]
+    fn the_next_window_gets_the_tile_the_grid_will_give_it() {
+        let d = FakeDesktop::default();
+        let none: Vec<String> = Vec::new();
+        // Leerer Block: die ganze Arbeitsfläche der Hauptanzeige.
+        assert_eq!(next_tile(&d, &none, 0), Some((Rect::new(0, 0, 1919, 1039), 1.0)));
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 1919, 1039), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), true);
+        let slots: Vec<String> = vec!["A1".into(), "A2".into()];
+        // Das minimierte A2 kachelt nicht mit: zwei Spalten, das neue rechts.
+        assert_eq!(next_tile(&d, &slots, 0), Some((Rect::new(960, 0, 1919, 1039), 1.0)));
+        // Ein zweites, gleich hinterher angefordertes: drei Spalten, ganz rechts.
+        assert_eq!(next_tile(&d, &slots, 1), Some((Rect::new(1280, 0, 1919, 1039), 1.0)));
     }
 
     #[test]

@@ -234,9 +234,68 @@ pub fn decode_spec(spec: &str) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Kommandozeile für einen neuen Agenten in einem eigenen Fenster.
-pub fn wt_argv(wt_exe: &str, slot: &str, cwd: &str, shell: &str, script: &str, spec: &str, profile: Option<&str>) -> Vec<String> {
-    let mut argv: Vec<String> = vec![wt_exe.into(), "-w".into(), window_name(slot), "new-tab".into()];
+/// Rand eines Windows-Terminal-Fensters um das Zeichenraster (Titelleiste, Innenabstand,
+/// Rollbalken), Pixel bei 100 %. Gemessen 11.11.2026 an WT 1.24: sichtbare Größe =
+/// Zeichen × Zelle + dieser Rand, unabhängig von der Schrift.
+pub const CHROME_DIP: (f64, f64) = (36.0, 58.0);
+/// Zeichenzelle (Pixel bei 100 %), solange noch kein Fenster vermessen ist. Bewusst
+/// groß: ein zu klein geöffnetes Fenster wächst unauffällig in seine Kachel, ein zu
+/// großes läge kurz über dem Nachbarn.
+pub const CELL_DIP_DEFAULT: (f64, f64) = (10.0, 22.0);
+
+/// Wo ein neues Agentenfenster aufgehen soll (`wt --pos --size`): linke obere Ecke in
+/// Bildschirmpixeln, Größe in Zeichen (Pixel nimmt wt.exe nicht).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spot {
+    pub x: i64,
+    pub y: i64,
+    pub cols: i64,
+    pub rows: i64,
+}
+
+fn sane_scale(scale: f64) -> f64 {
+    if scale.is_finite() && scale > 0.1 { scale } else { 1.0 }
+}
+
+/// Die Kachel `(x, y, w, h)` in Pixeln als [`Spot`]: so viele ganze Zeichen, wie bei
+/// Zellgröße `cell` (Pixel bei 100 %) und Skalierung `scale` hineinpassen.
+pub fn spot((x, y, w, h): (i64, i64, i64, i64), scale: f64, cell: (f64, f64)) -> Spot {
+    let s = sane_scale(scale);
+    let fit = |px: i64, chrome: f64, cell: f64, min: i64| (((px as f64 / s - chrome) / cell.max(1.0) + 1e-6).floor() as i64).max(min);
+    Spot { x, y, cols: fit(w, CHROME_DIP.0, cell.0, 20), rows: fit(h, CHROME_DIP.1, cell.1, 5) }
+}
+
+/// Zellgröße (Pixel bei 100 %) aus einem Fenster, das mit `spot` aufging und sichtbar
+/// `(w, h)` Pixel groß wurde. `None`, wenn das Ergebnis keine Schrift sein kann: dann
+/// hat jemand das Fenster schon gezogen, oder Windows Terminal hat es eingepasst.
+pub fn learn_cell(spot: &Spot, (w, h): (i64, i64), scale: f64) -> Option<(f64, f64)> {
+    let s = sane_scale(scale);
+    let cw = (w as f64 / s - CHROME_DIP.0) / spot.cols.max(1) as f64;
+    let ch = (h as f64 / s - CHROME_DIP.1) / spot.rows.max(1) as f64;
+    ((4.0..=24.0).contains(&cw) && (8.0..=48.0).contains(&ch)).then_some((cw, ch))
+}
+
+/// Kommandozeile für einen neuen Agenten in einem eigenen Fenster. Mit `spot` geht es
+/// gleich an seinem Platz im Raster auf, statt irgendwo und dann dorthin zu springen.
+#[allow(clippy::too_many_arguments)]
+pub fn wt_argv(
+    wt_exe: &str,
+    slot: &str,
+    cwd: &str,
+    shell: &str,
+    script: &str,
+    spec: &str,
+    profile: Option<&str>,
+    spot: Option<&Spot>,
+) -> Vec<String> {
+    let mut argv: Vec<String> = vec![wt_exe.into(), "-w".into(), window_name(slot)];
+    if let Some(s) = spot {
+        // Mit `=`: eine negative Koordinate (Monitor links der Hauptanzeige) läse wt.exe
+        // sonst als Schalter.
+        argv.push(format!("--pos={},{}", s.x, s.y));
+        argv.push(format!("--size={},{}", s.cols, s.rows));
+    }
+    argv.push("new-tab".into());
     if let Some(p) = profile.filter(|p| !p.is_empty()) {
         argv.extend(["-p".into(), p.into()]);
     }

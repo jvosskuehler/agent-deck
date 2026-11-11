@@ -259,7 +259,8 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
     r.deck.store.bindings.insert("A".into(), "repo".into());
     r.deck.create_agent("A", 100.0);
     let argv = r.launcher.0.lock().unwrap().last().cloned().unwrap();
-    assert_eq!(&argv[..4], ["wt.exe", "-w", "deck-A1", "new-tab"]);
+    // Geht gleich an seinem Platz auf: leerer Block = ganze Arbeitsfläche der Hauptanzeige.
+    assert_eq!(&argv[..6], ["wt.exe", "-w", "deck-A1", "--pos=0,0", "--size=188,44", "new-tab"]);
     assert!(argv.contains(&"--suppressApplicationTitle".to_string()));
 
     r.wt_agent("A1", 4242);

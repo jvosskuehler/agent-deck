@@ -60,7 +60,7 @@ fn the_launch_spec_survives_wt_and_powershell() {
 #[test]
 fn every_agent_gets_its_own_window() {
     for slot in ["A1", "A2"] {
-        let argv = wt::wt_argv("wt.exe", slot, r"C:\r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE));
+        let argv = wt::wt_argv("wt.exe", slot, r"C:\r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), None);
         assert_eq!(argv[..4], ["wt.exe", "-w", &format!("deck-{slot}"), "new-tab"]);
         assert!(!argv.iter().any(|a| a == "split-pane"));
         let after = |flag: &str| argv[argv.iter().position(|a| a == flag).unwrap() + 1].clone();
@@ -69,7 +69,31 @@ fn every_agent_gets_its_own_window() {
         assert_eq!(after("-p"), wt::PROFILE);
         assert_eq!(argv[argv.len() - 2..], ["-Spec", "SPEC"]);
     }
-    assert!(!wt::wt_argv("wt.exe", "A1", "C:\\", "pwsh.exe", "s", "S", None).iter().any(|a| a == "-p"));
+    assert!(!wt::wt_argv("wt.exe", "A1", "C:\\", "pwsh.exe", "s", "S", None, None).iter().any(|a| a == "-p"));
+}
+
+#[test]
+fn a_new_window_opens_where_its_tile_will_be() {
+    // Gemessen an WT 1.24 bei 150 %: 80 × 20 Zeichen = 1174 × 647, 120 × 40 = 1734 × 1207.
+    let cell = (14.0 / 1.5, 28.0 / 1.5);
+    let s = wt::spot((-1920, 0, 1174, 647), 1.5, cell);
+    assert_eq!(s, wt::Spot { x: -1920, y: 0, cols: 80, rows: 20 });
+    assert_eq!(wt::spot((0, 0, 1187, 674), 1.5, cell).cols, 80, "ein angebrochenes Zeichen zählt nicht");
+    let argv = wt::wt_argv("wt.exe", "A2", r"C:\r", "pwsh.exe", "s.ps1", "SPEC", None, Some(&s));
+    assert_eq!(argv[..6], ["wt.exe", "-w", "deck-A2", "--pos=-1920,0", "--size=80,20", "new-tab"]);
+}
+
+#[test]
+fn the_cell_size_is_learned_from_a_window_that_opened_untouched() {
+    let asked = wt::Spot { x: 0, y: 0, cols: 120, rows: 40 };
+    let (cw, ch) = wt::learn_cell(&asked, (1734, 1207), 1.5).unwrap();
+    assert!((cw - 14.0 / 1.5).abs() < 1e-9 && (ch - 28.0 / 1.5).abs() < 1e-9);
+    // Ohne Messung lieber zu klein als zu groß.
+    let guess = wt::spot((0, 0, 1734, 1207), 1.5, wt::CELL_DIP_DEFAULT);
+    assert!(guess.cols <= 120 && guess.rows <= 40);
+    // Schon in die Kachel gezogen oder eingepasst: keine Schrift, nichts lernen.
+    assert_eq!(wt::learn_cell(&asked, (300, 200), 1.5), None);
+    assert_eq!(wt::learn_cell(&asked, (9000, 1207), 1.5), None);
 }
 
 #[test]

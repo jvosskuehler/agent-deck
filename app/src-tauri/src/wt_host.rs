@@ -4,7 +4,7 @@
 //! | Frage / Kommando | Windows Terminal |
 //! |---|---|
 //! | welche Slots leben | `.wtpid`-Dateien mit lebender Shell |
-//! | [`WtHost::create_agent`] | `wt.exe -w deck-<Slot> new-tab`, danach kacheln |
+//! | [`WtHost::create_agent`] | `wt.exe -w deck-<Slot> new-tab` an seinem Platz im Raster, danach kacheln |
 //! | [`WtHost::focus_pane`] | Fenster mit dem Slot als Titel nach vorn |
 //! | [`WtHost::send_text`] / [`WtHost::key`] | Eingabepuffer der Konsole (über `deck-console`) |
 //! | [`WtHost::close_agent`] | Prozessbaum der Pane-Shell beenden |
@@ -37,6 +37,9 @@ const PENDING_TTL_S: f64 = 30.0;
 const ALIVE_CACHE_S: f64 = 0.3;
 /// So lange gilt die gemessene Fensterlage (s). Ein Blick kostet ein EnumWindows.
 const SCREEN_CACHE_S: f64 = 0.5;
+/// Hier merkt sich das Deck die vermessene Zeichenzelle der Agentenfenster (neben
+/// `wt_hosts.json`), damit auch das erste Fenster nach einem Neustart passt.
+const CELL_FILE: &str = "wt_cell.json";
 
 /// Die Buchstaben, die in Windows Terminal leben, geteilt mit dem Fokus-Rahmen.
 pub type HostMap = Arc<RwLock<BTreeMap<String, String>>>;
@@ -75,6 +78,10 @@ pub struct WtHost {
     /// Zuletzt gemessene Fensterlage je Block (Zeitpunkt, Reihen, Spalten des Monitors).
     screen: HashMap<String, (f64, Vec<Vec<String>>, u32)>,
     frame_hold: FrameHold,
+    /// Angeforderte Fenster, die mit Vorgabe aufgehen: daran wird die Zelle vermessen.
+    spots: HashMap<String, wt::Spot>,
+    /// Zeichenzelle der Agentenfenster, Pixel bei 100 % ([`wt::learn_cell`]).
+    cell: (f64, f64),
     clock: fn() -> f64,
 }
 
@@ -95,6 +102,10 @@ impl WtHost {
             Some(Value::Object(m)) => m.into_iter().filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string()))).collect(),
             _ => BTreeMap::new(),
         };
+        let num = |v: &Value, k: &str| v.get(k).and_then(Value::as_f64).filter(|n| n.is_finite() && *n >= 1.0);
+        let cell = load_json(&setup.hosts_file.with_file_name(CELL_FILE))
+            .and_then(|v| Some((num(&v, "w")?, num(&v, "h")?)))
+            .unwrap_or(wt::CELL_DIP_DEFAULT);
         WtHost {
             setup,
             fx,
@@ -107,6 +118,8 @@ impl WtHost {
             tiler: WtTiler::default(),
             screen: HashMap::new(),
             frame_hold: FrameHold::default(),
+            spots: HashMap::new(),
+            cell,
             clock,
         }
     }
@@ -176,6 +189,7 @@ impl WtHost {
         self.alive = out.clone();
         self.alive_ts = now;
         self.pending.retain(|n, t| !out.contains_key(n) && now - *t <= PENDING_TTL_S);
+        self.measure_cell(&out);
         // Neu kacheln, sobald ein Agent dazukommt oder geht. Die PID-Datei schreibt die
         // Shell IM Fenster: es steht also schon, wenn der Slot hier auftaucht.
         let names: Vec<String> = out.keys().cloned().collect();
@@ -195,6 +209,37 @@ impl WtHost {
             }
         }
         out
+    }
+
+    /// Ein eben aufgegangenes Fenster vermessen, bevor das Raster es anfasst: aus der
+    /// angeforderten Zeichenzahl und seiner Größe folgt die Zelle, und das nächste
+    /// Fenster geht pixelgenau in Kachelgröße auf.
+    fn measure_cell(&mut self, alive: &BTreeMap<String, u32>) {
+        let fresh: Vec<String> = self.spots.keys().filter(|s| alive.contains_key(*s)).cloned().collect();
+        for slot in fresh {
+            let Some(spot) = self.spots.remove(&slot) else { continue };
+            let d = self.fx.desktop.as_ref();
+            let Some(h) = wt_tiles::hwnd_of(d, &slot) else { continue };
+            let Some(r) = d.frame_rect(h) else { continue };
+            let Some(cell) = wt::learn_cell(&spot, (i64::from(r.width()), i64::from(r.height())), d.scale_of(h)) else { continue };
+            if cell != self.cell {
+                self.cell = cell;
+                let _ = save_json(&self.setup.hosts_file.with_file_name(CELL_FILE), &serde_json::json!({"w": cell.0, "h": cell.1}));
+            }
+        }
+        let pending = &self.pending;
+        self.spots.retain(|n, _| pending.contains_key(n));
+    }
+
+    /// Wo das nächste Fenster dieses Blocks aufgehen soll: in der Kachel, die ihm das
+    /// Raster gleich gibt ([`wt_tiles::next_tile`]). `None` = ohne Vorgabe öffnen.
+    fn next_spot(&mut self, win: &str) -> Option<wt::Spot> {
+        let live = self.terminals(win);
+        let mut order: Vec<String> = self.screen_rows(win).0.concat();
+        order.extend(live.into_iter().filter(|s| !order.contains(s)).collect::<Vec<_>>());
+        let ahead = self.pending.keys().filter(|n| wt::split_slot(n).is_some_and(|(w, _)| w == win)).count();
+        let (r, scale) = wt_tiles::next_tile(self.fx.desktop.as_ref(), &order, ahead)?;
+        Some(wt::spot((i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height())), scale, self.cell))
     }
 
     pub fn terminals(&mut self, win: &str) -> Vec<String> {
@@ -298,10 +343,15 @@ impl WtHost {
                 return false;
             }
         };
+        let spot = self.next_spot(win);
         self.pending.insert(name.clone(), (self.clock)());
+        if let Some(sp) = spot {
+            self.spots.insert(name.clone(), sp);
+        }
         let s = &self.setup;
         let spec = wt::launch_spec(&name, &s.state_dir.to_string_lossy(), &argv);
-        let line = wt::wt_argv(&s.wt_exe, &name, &folder, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref());
+        let line =
+            wt::wt_argv(&s.wt_exe, &name, &folder, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref(), spot.as_ref());
         let launcher = self.fx.launcher.clone();
         self.worker.run(move || {
             launcher.launch(&line);
