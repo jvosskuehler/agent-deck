@@ -29,6 +29,9 @@ struct Desk {
     light: Option<bool>,
     restored: Vec<Hwnd>,
     minimized: Vec<Hwnd>,
+    raised: Vec<Hwnd>,
+    /// Fenster von oben nach unten.
+    z: Vec<Hwnd>,
     monitors: Vec<Monitor>,
     idle_s: f64,
 }
@@ -45,7 +48,11 @@ impl FakeDesktop {
         self.0.lock().unwrap().titles.push((hwnd, title.into()));
     }
     pub fn set_foreground(&self, hwnd: Hwnd, title: &str, class: &str) {
-        self.0.lock().unwrap().fg = Some(WindowInfo { hwnd, title: title.into(), class: class.into(), pid: 1 });
+        let mut d = self.0.lock().unwrap();
+        d.fg = Some(WindowInfo { hwnd, title: title.into(), class: class.into(), pid: 1 });
+        // Wer aktiv wird, liegt obenauf.
+        d.z.retain(|h| *h != hwnd);
+        d.z.insert(0, hwnd);
     }
     /// Sekunden seit der letzten Eingabe (ohne Aufruf 0: gerade getippt).
     pub fn set_input_idle(&self, secs: f64) {
@@ -76,6 +83,10 @@ impl FakeDesktop {
     }
     pub fn restored(&self) -> Vec<Hwnd> {
         self.0.lock().unwrap().restored.clone()
+    }
+    /// Fenster, die ohne Tastatur nach oben gelegt wurden, in dieser Reihenfolge.
+    pub fn raised(&self) -> Vec<Hwnd> {
+        self.0.lock().unwrap().raised.clone()
     }
     /// Fenster, die minimiert werden sollten, in dieser Reihenfolge.
     pub fn minimized(&self) -> Vec<Hwnd> {
@@ -126,6 +137,16 @@ impl Desktop for FakeDesktop {
     }
     fn input_idle_s(&self) -> f64 {
         self.0.lock().unwrap().idle_s
+    }
+    fn z_order(&self) -> Vec<Hwnd> {
+        self.0.lock().unwrap().z.clone()
+    }
+    fn raise(&self, hwnd: Hwnd) -> Result<()> {
+        let mut d = self.0.lock().unwrap();
+        d.raised.push(hwnd);
+        d.z.retain(|h| *h != hwnd);
+        d.z.insert(0, hwnd);
+        Ok(())
     }
     fn focus(&self, hwnd: Hwnd) -> Result<bool> {
         self.0.lock().unwrap().focused.push(hwnd);

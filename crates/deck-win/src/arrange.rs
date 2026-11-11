@@ -4,10 +4,14 @@
 //! ist nur das Handwerk.
 
 use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+use windows::Win32::Graphics::Dwm::{
+    DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_TRANSITIONS_FORCEDISABLED, DwmGetWindowAttribute,
+    DwmSetWindowAttribute,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowRect, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE,
-    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow,
+    GetForegroundWindow, GetWindowPlacement, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST,
+    SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    SWP_NOZORDER, SetWindowPos, ShowWindow, WINDOWPLACEMENT,
 };
 
 use crate::guard;
@@ -50,6 +54,42 @@ pub fn window_rect(hwnd: Hwnd) -> Option<Rect> {
     // SAFETY: Zeiger auf lokale Variable.
     unsafe { GetWindowRect(hwnd.h(), &mut r) }.ok()?;
     Some(r.into())
+}
+
+/// Wo das Fenster liegt oder, ist es minimiert, wieder liegen wird (der Platz, den Windows
+/// sich für das Wiederherstellen merkt). Damit hat auch ein verstecktes Fenster eine Lage.
+pub fn resting_rect(hwnd: Hwnd) -> Option<Rect> {
+    if !is_minimized(hwnd) {
+        return window_rect(hwnd);
+    }
+    let mut p = WINDOWPLACEMENT { length: size_of::<WINDOWPLACEMENT>() as u32, ..Default::default() };
+    // SAFETY: Zeiger auf lokale Variable mit gesetzter Länge.
+    unsafe { GetWindowPlacement(hwnd.h(), &mut p) }.ok()?;
+    Some(p.rcNormalPosition.into())
+}
+
+/// Das Fenster über alle anderen legen, OHNE ihm die Tastatur zu geben (Taste „alle nach
+/// vorn“). Kurz „immer im Vordergrund“ und gleich wieder zurück: nur so hebt Windows ein
+/// fremdes Fenster über das aktive, ohne es zu aktivieren.
+pub fn raise_window(hwnd: Hwnd) -> Result<()> {
+    guard::check("raise_window")?;
+    let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+    // SAFETY: Handles als Werte; Windows prüft sie selbst.
+    unsafe {
+        let _ = SetWindowPos(hwnd.h(), Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
+        SetWindowPos(hwnd.h(), Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags).map_err(|e| Error::win("SetWindowPos", e))
+    }
+}
+
+/// Die Animation beim Minimieren und Wiederherstellen für dieses Fenster abstellen. Wer
+/// alle Agenten auf einmal ein- und ausblendet, will sie nicht einzeln in die Taskleiste
+/// fliegen sehen. Scheitert das, bleibt eben die Animation.
+fn no_transitions(hwnd: Hwnd) {
+    let on: u32 = 1;
+    // SAFETY: Zeiger auf einen lokalen u32, Größe passend.
+    let _ = unsafe {
+        DwmSetWindowAttribute(hwnd.h(), DWMWA_TRANSITIONS_FORCEDISABLED, (&raw const on).cast(), size_of::<u32>() as u32)
+    };
 }
 
 /// Der SICHTBARE Rand (DWM, ohne Greifrand). `None` ohne DWM-Auskunft.
@@ -137,6 +177,7 @@ pub fn restore_window(hwnd: Hwnd) -> Result<bool> {
     if !is_minimized(hwnd) {
         return Ok(false);
     }
+    no_transitions(hwnd);
     // SAFETY: Handle als Wert; Windows prüft es selbst.
     let _ = unsafe { ShowWindow(hwnd.h(), SW_SHOWNOACTIVATE) };
     Ok(true)
@@ -151,6 +192,7 @@ pub fn minimize_window(hwnd: Hwnd) -> Result<bool> {
     if is_minimized(hwnd) {
         return Ok(false);
     }
+    no_transitions(hwnd);
     // SAFETY: Handle als Wert; Windows prüft es selbst.
     unsafe {
         let cmd = if GetForegroundWindow() == hwnd.h() { SW_MINIMIZE } else { SW_SHOWMINNOACTIVE };

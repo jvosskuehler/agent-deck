@@ -6,7 +6,6 @@ use deck_core::agent_flags::flags;
 use deck_core::attention::next_slot;
 use deck_core::claude::settings::{MODEL_CHOICES, effort_label, read_values};
 use deck_core::config::MODE_START;
-use deck_core::front::focus_target;
 use deck_core::slot_state::{clear_state, read_all, write_state};
 use deck_core::status_model::mode_steps;
 use deck_win::Hwnd;
@@ -71,15 +70,17 @@ impl Deck {
     }
 
     /// Taste „alle nach vorn“ (`config::FRONT_HOTKEYS`): jedes Agentenfenster in Windows
-    /// Terminal als Raster auf den Monitor unter `cursor`, Fokus auf den, der am längsten
-    /// wartet. Steht man schon bei einem Agenten und liegen alle offen, verschwinden sie
-    /// wieder (minimiert), und es geht zurück in das Fenster, aus dem man kam
-    /// (`deck_core::front`). So lassen sie sich ein- und ausblenden.
+    /// Terminal als Raster auf den Monitor unter `cursor`, über alle anderen Fenster,
+    /// aber ohne Tastatur: die bleibt, wo sie war. Liegen sie schon alle offen und obenauf
+    /// (man steht bei einem Agenten oder noch im Fenster von vor dem Holen, die Agenten
+    /// darüber), verschwinden sie wieder (minimiert), und es geht zurück in das Fenster,
+    /// aus dem man kam (`deck_core::front`). So lassen sie sich ein- und ausblenden.
     pub fn bring_all_front(&mut self, cursor: Option<(i32, i32)>) {
         let slots = self.shown_slots.clone();
         let fg = self.desktop.foreground().filter(|w| w.pid != std::process::id());
         let on_agent = fg.is_some() && self.wt.slot_in_front().is_some();
-        let hide = on_agent && self.wt.all_open(&slots);
+        let on_top = on_agent || fg.as_ref().is_some_and(|w| self.wt.all_above(&slots, w.hwnd));
+        let hide = on_top && self.wt.all_open(&slots);
         let desktop = self.desktop.clone();
         // Ein Agent ist kein Ausgangspunkt: er wird beim Verstecken selbst minimiert.
         let origin = fg.filter(|_| !on_agent).map(|w| w.hwnd.0);
@@ -88,9 +89,7 @@ impl Deck {
             self.wt.hide_all(&slots, back.map(Hwnd));
             return;
         }
-        let states = read_all(&self.paths.state_dir);
-        let target = focus_target(&states, &slots, self.active_slot.as_deref());
-        self.wt.front_all(&slots, target, cursor);
+        self.wt.front_all(&slots, cursor);
     }
 
     /// Einen Agenten schließen; hing ein worktree daran, wird er mit abgeräumt.

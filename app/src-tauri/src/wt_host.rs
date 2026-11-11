@@ -18,6 +18,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use deck_core::paths::{load_json, save_json};
@@ -40,6 +41,27 @@ const SCREEN_CACHE_S: f64 = 0.5;
 /// Die Buchstaben, die in Windows Terminal leben, geteilt mit dem Fokus-Rahmen.
 pub type HostMap = Arc<RwLock<BTreeMap<String, String>>>;
 
+/// Gesetzt, solange das Deck mehrere Agentenfenster hintereinander anfasst (alle holen,
+/// alle verstecken, Block nach vorn). Der Fokus-Rahmen wartet so lange: sonst spränge er
+/// sichtbar von Fenster zu Fenster, bis das letzte vorn liegt.
+pub type FrameHold = Arc<AtomicBool>;
+
+/// Hält [`FrameHold`] bis zum Ende des Auftrags, auch wenn der abstürzt.
+struct Holding(FrameHold);
+
+impl Holding {
+    fn start(hold: &FrameHold) -> Holding {
+        hold.store(true, Ordering::SeqCst);
+        Holding(hold.clone())
+    }
+}
+
+impl Drop for Holding {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 pub struct WtHost {
     setup: WtSetup,
     fx: WtEffects,
@@ -52,8 +74,7 @@ pub struct WtHost {
     tiler: WtTiler,
     /// Zuletzt gemessene Fensterlage je Block (Zeitpunkt, Reihen, Spalten des Monitors).
     screen: HashMap<String, (f64, Vec<Vec<String>>, u32)>,
-    /// Lage der Fenster, bevor die Taste „alle nach vorn“ sie versteckt hat.
-    hidden_order: Vec<String>,
+    frame_hold: FrameHold,
     clock: fn() -> f64,
 }
 
@@ -85,13 +106,17 @@ impl WtHost {
             last_fg: None,
             tiler: WtTiler::default(),
             screen: HashMap::new(),
-            hidden_order: Vec::new(),
+            frame_hold: FrameHold::default(),
             clock,
         }
     }
 
     pub fn host_map(&self) -> HostMap {
         self.hosts.clone()
+    }
+
+    pub fn frame_hold(&self) -> FrameHold {
+        self.frame_hold.clone()
     }
 
     fn hosts(&self) -> BTreeMap<String, String> {
@@ -305,8 +330,9 @@ impl WtHost {
         if slots.is_empty() {
             return false;
         }
-        let d = self.fx.desktop.clone();
+        let (d, hold) = (self.fx.desktop.clone(), self.frame_hold.clone());
         self.worker.run(move || {
+            let _hold = Holding::start(&hold);
             let mut hwnds = Vec::new();
             for s in &slots {
                 if let Some(h) = wt_tiles::hwnd_of(d.as_ref(), s)
@@ -324,18 +350,17 @@ impl WtHost {
 
     /// Taste „alle nach vorn“ ([`wt_tiles::bring_front`]) für die lebenden unter `slots`.
     /// `false` = keiner lebt.
-    pub fn front_all(&mut self, slots: &[String], target: Option<String>, cursor: Option<(i32, i32)>) -> bool {
+    pub fn front_all(&mut self, slots: &[String], cursor: Option<(i32, i32)>) -> bool {
         let alive = self.alive_slots();
-        // Versteckte haben keine Lage mehr. Damit jedes Fenster an seinen Platz von vor
-        // dem Verstecken zurückkommt, gilt die dort gemerkte Reihenfolge zuerst.
-        let hidden = std::mem::take(&mut self.hidden_order);
-        let mut slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
-        slots.sort_by_key(|s| hidden.iter().position(|h| h == s).unwrap_or(usize::MAX));
+        let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
         if slots.is_empty() {
             return false;
         }
-        let d = self.fx.desktop.clone();
-        self.worker.run(move || wt_tiles::bring_front(d.as_ref(), &slots, target.as_deref(), cursor));
+        let (d, hold) = (self.fx.desktop.clone(), self.frame_hold.clone());
+        self.worker.run(move || {
+            let _hold = Holding::start(&hold);
+            wt_tiles::bring_front(d.as_ref(), &slots, cursor);
+        });
         true
     }
 
@@ -346,14 +371,22 @@ impl WtHost {
         wt_tiles::all_open(self.fx.desktop.as_ref(), &slots)
     }
 
+    /// Liegen alle lebenden unter `slots` über dem Fenster `over` ([`wt_tiles::all_above`])?
+    pub fn all_above(&mut self, slots: &[String], over: deck_win::Hwnd) -> bool {
+        let alive = self.alive_slots();
+        let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
+        wt_tiles::all_above(self.fx.desktop.as_ref(), &slots, over)
+    }
+
     /// Taste „alle nach vorn“, zweiter Druck ([`wt_tiles::hide`]): zurück nach `back`
-    /// und die Agentenfenster minimieren. Ihre Lage wird gemerkt, [`Self::front_all`]
-    /// legt sie danach wieder so hin.
+    /// und die Agentenfenster minimieren.
     pub fn hide_all(&mut self, slots: &[String], back: Option<deck_win::Hwnd>) {
         let slots = slots.to_vec();
-        self.hidden_order = wt_tiles::screen_rows(self.fx.desktop.as_ref(), &slots).concat();
-        let d = self.fx.desktop.clone();
-        self.worker.run(move || wt_tiles::hide(d.as_ref(), &slots, back));
+        let (d, hold) = (self.fx.desktop.clone(), self.frame_hold.clone());
+        self.worker.run(move || {
+            let _hold = Holding::start(&hold);
+            wt_tiles::hide(d.as_ref(), &slots, back);
+        });
     }
 
     fn input(&mut self, slot: &str, steps: Vec<Step>) -> bool {

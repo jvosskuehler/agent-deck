@@ -120,7 +120,8 @@ pub fn monitor_under(desktop: &dyn Desktop, pos: Option<(i32, i32)>) -> Option<(
 /// der sie gerade auf dem Bildschirm liegen.
 ///
 /// Anders als [`tile`] auch die minimierten: sie werden wiederhergestellt, denn wer alle
-/// holt, meint alle. Ein Raster statt eines je Block, weil sich zwei Blöcke auf demselben
+/// holt, meint alle. Ihre Lage ist der Platz, an den sie zurückkehren würden
+/// (`resting_rect`): versteckte Fenster kommen so in der Ordnung von vorher wieder. Ein Raster statt eines je Block, weil sich zwei Blöcke auf demselben
 /// Monitor sonst überdecken. Ohne `here` bleiben die Fenster liegen, wo sie sind.
 /// Liefert `(Slot, Fenster)` in Raster-Reihenfolge; nach vorn holt der Aufrufer.
 pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>) -> Vec<(String, Hwnd)> {
@@ -134,11 +135,12 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
     }
     // Reihenfolge im Raster = so, wie die Fenster gerade liegen (zeilenweise von links
     // oben): wer sie von Hand sortiert hat, findet jedes am gewohnten Platz wieder.
-    // Minimierte haben keine Lage, sie kommen in Slot-Reihenfolge dahinter.
+    // Das gilt auch für minimierte, über den Platz, den Windows sich für sie merkt; das
+    // Deck selbst merkt sich nichts und findet die Ordnung auch nach einem Neustart.
     let lying: Vec<(String, arrange::Rect)> = slots
         .iter()
-        .filter_map(|s| found.get(s).filter(|(_, m)| !m).map(|(h, _)| (s, *h)))
-        .filter_map(|(s, h)| desktop.window_rect(h).map(|r| (s.clone(), r)))
+        .filter_map(|s| found.get(s).map(|(h, _)| (s, *h)))
+        .filter_map(|(s, h)| desktop.resting_rect(h).map(|r| (s.clone(), r)))
         .map(|(s, r)| (s, (i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height()))))
         .collect();
     let mut names: Vec<String> = arrange::screen_rows(&lying).into_iter().flatten().collect();
@@ -169,18 +171,28 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
 }
 
 /// Taste „alle nach vorn“: [`gather`] auf den Monitor unter `cursor`, dann alle Fenster
-/// nach vorn, `target` zuletzt, damit er obenauf liegt und die Tastatur hat.
-pub fn bring_front(desktop: &dyn Desktop, slots: &[String], target: Option<&str>, cursor: Option<(i32, i32)>) {
+/// über die anderen legen. Die Tastatur bekommt KEINES: sie bleibt, wo sie war, und kein
+/// Fokus-Rahmen springt an. Wer tippen will, klickt in das Terminal, das er meint.
+pub fn bring_front(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32, i32)>) {
     let placed = gather(desktop, slots, monitor_under(desktop, cursor));
-    let top = placed.iter().find(|(s, _)| Some(s.as_str()) == target).map(|(_, h)| *h);
     for (_, h) in placed.iter().rev() {
-        if Some(*h) != top {
-            let _ = desktop.focus(*h);
-        }
+        let _ = desktop.raise(*h);
     }
-    if let Some(h) = top {
-        let _ = desktop.focus(h);
-    }
+}
+
+/// Liegen die Fenster all dieser Agenten über dem Fenster `over`? So sieht es direkt nach
+/// dem Holen aus (die Tastatur blieb im alten Fenster, die Agenten liegen darüber). Wer
+/// danach in ein anderes Fenster geht, legt es über sie, und die Antwort ist `false`.
+pub fn all_above(desktop: &dyn Desktop, slots: &[String], over: Hwnd) -> bool {
+    let z = desktop.z_order();
+    let Some(base) = z.iter().position(|h| *h == over) else { return false };
+    let agents: Vec<Hwnd> = desktop
+        .class_windows(WINDOW_CLASS)
+        .into_iter()
+        .filter(|w| slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .map(|w| w.hwnd)
+        .collect();
+    !agents.is_empty() && agents.iter().all(|a| z.iter().position(|h| h == a).is_some_and(|p| p < base))
 }
 
 /// Liegen die Fenster all dieser Agenten offen, also keines minimiert? Dann versteckt
@@ -237,8 +249,7 @@ mod tests {
         d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), false);
         let here = monitor_under(&d, Some((2000, 100)));
         assert_eq!(here, Some((Rect::new(1920, 0, 4320, 1160), 1.0)));
-        let got = gather(&d, &["B1".into(), "A1".into(), "A2".into()], here);
-        // Das minimierte B1 hat keine Lage und kommt hinter die liegenden.
+        let got = gather(&d, &["A1".into(), "A2".into(), "B1".into()], here);
         assert_eq!(got, [("A1".into(), Hwnd(11)), ("A2".into(), Hwnd(12)), ("B1".into(), Hwnd(21))]);
         assert_eq!(d.restored(), [Hwnd(21)]);
         assert_eq!(
@@ -252,12 +263,12 @@ mod tests {
     }
 
     #[test]
-    fn gather_keeps_the_order_the_windows_lie_in_and_puts_minimized_last() {
+    fn gather_keeps_the_order_the_windows_lie_in_and_a_minimized_one_returns_to_its_place() {
         let d = FakeDesktop::default();
         d.add_wt(Hwnd(11), "A1", Rect::new(800, 0, 1600, 500), false);
         d.add_wt(Hwnd(12), "A2", Rect::new(0, 500, 800, 1000), false);
         d.add_wt(Hwnd(13), "A3", Rect::new(0, 0, 800, 500), false);
-        d.add_wt(Hwnd(14), "A4", Rect::new(0, 0, 10, 10), true);
+        d.add_wt(Hwnd(14), "A4", Rect::new(800, 500, 1600, 1000), true);
         let slots: Vec<String> = ["A4", "A1", "A2", "A3"].map(String::from).into();
         let got = gather(&d, &slots, monitor_under(&d, Some((10, 10))));
         let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
@@ -266,14 +277,21 @@ mod tests {
     }
 
     #[test]
-    fn the_target_comes_to_the_front_last_and_so_lies_on_top() {
+    fn fetching_lays_all_agents_on_top_and_gives_none_the_keyboard() {
         let d = FakeDesktop::default();
         d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 800, 600), false);
         d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), false);
         d.add_wt(Hwnd(13), "A3", Rect::new(0, 0, 800, 600), false);
-        bring_front(&d, &["A1".into(), "A2".into(), "A3".into()], Some("A2"), Some((10, 10)));
-        assert_eq!(d.focused(), [Hwnd(13), Hwnd(11), Hwnd(12)]);
+        d.set_foreground(Hwnd(500), "Editor", "Notepad");
+        let slots: Vec<String> = vec!["A1".into(), "A2".into(), "A3".into()];
+        assert!(!all_above(&d, &slots, Hwnd(500)), "der Editor liegt noch obenauf");
+        bring_front(&d, &slots, Some((10, 10)));
+        assert!(d.focused().is_empty(), "keines bekommt die Tastatur");
+        assert_eq!(d.raised(), [Hwnd(13), Hwnd(12), Hwnd(11)]);
         assert_eq!(d.placed().len(), 3);
+        assert!(all_above(&d, &slots, Hwnd(500)));
+        d.set_foreground(Hwnd(500), "Editor", "Notepad");
+        assert!(!all_above(&d, &slots, Hwnd(500)), "zurück im Editor: er liegt wieder darüber");
     }
 
     #[test]

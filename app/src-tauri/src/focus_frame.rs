@@ -25,7 +25,7 @@ use deck_win::frame_fx::Design;
 use deck_win::taskbar::TaskbarGroup;
 
 use crate::applog::note;
-use crate::wt_host::{HostMap, WtHost};
+use crate::wt_host::{FrameHold, HostMap, WtHost};
 
 /// So oft wird geschaut, welches Fenster vorn ist.
 const WATCH: Duration = Duration::from_millis(60);
@@ -49,6 +49,8 @@ pub struct FrameWatch {
     pub night: bool,
     /// Ist gerade Winterzeit? Gefragt wird bei jedem Fokuswechsel.
     pub winter: Box<dyn Fn() -> bool>,
+    /// Solange gesetzt, bleibt der Rahmen, wo er ist ([`FrameHold`]).
+    pub hold: FrameHold,
     rng: u64,
 }
 
@@ -67,6 +69,7 @@ impl FrameWatch {
             seed: 0,
             night: false,
             winter: Box::new(|| false),
+            hold: FrameHold::default(),
             rng: seed | 1,
         }
     }
@@ -117,6 +120,9 @@ impl FrameWatch {
 
     /// Einmal hinschauen. `true`, wenn sich das Ziel geändert hat.
     pub fn step(&mut self) -> bool {
+        if self.hold.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
         let fg = self.desktop.foreground();
         let fg_hwnd = fg.as_ref().map(|w| w.hwnd);
         if fg_hwnd != self.last_fg {
@@ -141,7 +147,13 @@ impl FrameWatch {
 
 /// Den Rahmen-Thread starten. Fehlt die Grafikkarte, gibt es eben keinen Rahmen (einmal
 /// ins Log), das Deck läuft weiter. `season` ist die Einstellung `frame_season`.
-pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGroup>, season: Option<serde_json::Value>) {
+pub fn start(
+    desktop: Arc<dyn Desktop>,
+    hosts: HostMap,
+    hold: FrameHold,
+    group: Option<TaskbarGroup>,
+    season: Option<serde_json::Value>,
+) {
     let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
     std::thread::Builder::new()
         .name("focus-frame".into())
@@ -154,6 +166,7 @@ pub fn start(desktop: Arc<dyn Desktop>, hosts: HostMap, group: Option<TaskbarGro
                 }
             };
             let mut watch = FrameWatch::new(desktop, hosts, group, seed);
+            watch.hold = hold;
             watch.winter =
                 Box::new(move || deck_core::season::winter_frames(season.as_ref(), deck_win::clock::local_date()));
             if (watch.winter)() {
@@ -223,6 +236,22 @@ mod tests {
         assert_ne!(w.design, first, "nie zweimal dasselbe Design hintereinander");
         assert_eq!(d.cornered(), vec![Hwnd(5)], "nur Agentenfenster werden eckig");
         assert_eq!(d.bordered(), vec![(Hwnd(5), 0xFAF4ED)], "Rand in Papierfarbe, ohne Auskunft hell");
+    }
+
+    #[test]
+    fn while_the_deck_shuffles_windows_the_frame_stays_and_then_takes_the_last_one() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        d.add_wt(Hwnd(6), "A2", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        w.hold.store(true, std::sync::atomic::Ordering::SeqCst);
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        assert!(!w.step());
+        assert_eq!(w.target, None, "Zwischenstation: kein Rahmen");
+        d.set_foreground(Hwnd(6), "A2", WINDOW_CLASS);
+        w.hold.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(w.step());
+        assert_eq!(w.target, Some(Hwnd(6)));
     }
 
     #[test]

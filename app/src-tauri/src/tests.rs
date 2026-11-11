@@ -291,18 +291,41 @@ fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
     r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
     let before = r.desk.focused().len();
     r.deck.bring_all_front(Some((10, 10)));
-    assert_eq!(r.desk.focused()[before..], [Hwnd(31), Hwnd(32)], "der Wartende zuletzt, also oben");
+    assert_eq!(r.desk.raised().len(), 2, "beide liegen obenauf");
+    assert_eq!(r.desk.focused().len(), before, "die Tastatur bleibt im Editor");
     assert_eq!(r.desk.restored(), [Hwnd(31)]);
-    r.desk.set_foreground(Hwnd(32), "D2", deck_core::wt::WINDOW_CLASS);
+
+    // Zweiter Druck, noch im Editor, die Agenten darüber: verstecken.
     r.deck.bring_all_front(Some((10, 10)));
     assert_eq!(r.desk.focused().last(), Some(&Hwnd(500)), "zurück ins Ausgangsfenster");
     assert_eq!(r.desk.minimized(), [Hwnd(31), Hwnd(32)], "und die Agenten sind versteckt");
 
-    // Dritter Druck: wieder holen, jedes an seinen Platz von vorher.
+    // Dritter Druck: wieder holen.
+    r.deck.bring_all_front(Some((10, 10)));
+    assert_eq!(r.desk.restored().len(), 3, "beide wiederhergestellt");
+    assert_eq!(r.desk.raised().len(), 4);
+
+    // Vierter Druck aus einem Agenten heraus (man hat hineingeklickt): auch verstecken.
+    r.desk.set_foreground(Hwnd(32), "D2", deck_core::wt::WINDOW_CLASS);
+    r.deck.bring_all_front(Some((10, 10)));
+    assert_eq!(r.desk.minimized().len(), 4);
+}
+
+#[test]
+fn whoever_went_back_to_another_window_fetches_instead_of_hiding() {
+    let mut r = rig();
+    r.wt_block("D", "x");
+    r.wt_agent("D1", 71);
+    r.desk.add_wt(Hwnd(31), "D1", Rect::new(0, 0, 800, 600), false);
+    r.deck.tick(100.0);
+    r.desk.add_title(Hwnd(500), "Editor");
     r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
     r.deck.bring_all_front(Some((10, 10)));
-    assert_eq!(r.desk.restored(), [Hwnd(31), Hwnd(31), Hwnd(32)]);
-    assert_eq!(r.desk.focused().last(), Some(&Hwnd(32)));
+    // Klick in den Editor: er liegt wieder über dem Agenten.
+    r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
+    r.deck.bring_all_front(Some((10, 10)));
+    assert!(r.desk.minimized().is_empty());
+    assert_eq!(r.desk.raised(), [Hwnd(31), Hwnd(31)]);
 }
 
 #[test]

@@ -26,6 +26,13 @@ pub trait Desktop: Send + Sync {
     fn is_minimized(&self, hwnd: Hwnd) -> bool;
     fn class_windows(&self, class: &str) -> Vec<ClassWindow>;
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect>;
+    /// Wie `window_rect`, für ein minimiertes Fenster aber der Platz, an den es
+    /// zurückkehrt.
+    fn resting_rect(&self, hwnd: Hwnd) -> Option<Rect> {
+        self.window_rect(hwnd)
+    }
+    /// Sichtbare Fenster von oben nach unten, wie sie übereinander liegen.
+    fn z_order(&self) -> Vec<Hwnd>;
     fn monitors(&self) -> Vec<Monitor>;
     fn work_area(&self, x: i32, y: i32) -> Option<Rect>;
     fn scale_of(&self, hwnd: Hwnd) -> f64;
@@ -38,6 +45,8 @@ pub trait Desktop: Send + Sync {
     }
     // ── verändern ──
     fn focus(&self, hwnd: Hwnd) -> Result<bool>;
+    /// Über alle anderen legen, ohne die Tastatur zu geben.
+    fn raise(&self, hwnd: Hwnd) -> Result<()>;
     fn place(&self, hwnd: Hwnd, visible: Rect) -> Result<()>;
     /// Minimiertes Fenster wiederherstellen, ohne es zu aktivieren.
     fn restore(&self, hwnd: Hwnd) -> Result<bool>;
@@ -89,6 +98,12 @@ impl Desktop for Win32Desktop {
     fn window_rect(&self, hwnd: Hwnd) -> Option<Rect> {
         arrange::window_rect(hwnd)
     }
+    fn resting_rect(&self, hwnd: Hwnd) -> Option<Rect> {
+        arrange::resting_rect(hwnd)
+    }
+    fn z_order(&self) -> Vec<Hwnd> {
+        window::visible_top_level()
+    }
     fn monitors(&self) -> Vec<Monitor> {
         monitor::monitors()
     }
@@ -106,6 +121,9 @@ impl Desktop for Win32Desktop {
     }
     fn focus(&self, hwnd: Hwnd) -> Result<bool> {
         focus::focus_window(hwnd)
+    }
+    fn raise(&self, hwnd: Hwnd) -> Result<()> {
+        arrange::raise_window(hwnd)
     }
     fn place(&self, hwnd: Hwnd, visible: Rect) -> Result<()> {
         arrange::place_window(hwnd, visible)

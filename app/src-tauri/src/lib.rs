@@ -98,6 +98,7 @@ pub fn run() {
     let setup = wt_setup::real_setup(&paths.app_dir, &paths.state_dir, paths.wt_agent_script());
     let wt = WtHost::new(setup, fx, Worker::spawn("wt-host"), now);
     let host_map = wt.host_map();
+    let frame_hold = wt.frame_hold();
     let agent_group = deck_win::taskbar::TaskbarGroup {
         app_id: deck_core::wt::TASKBAR_APP_ID.into(),
         icon: paths.agent_icon(),
@@ -177,7 +178,7 @@ pub fn run() {
             poll::start(handle);
             hotkey::start(handle, combo);
             hotkey::start_front(handle, front_combos);
-            focus_frame::start(desktop, host_map, Some(agent_group), frame_season);
+            focus_frame::start(desktop, host_map, frame_hold, Some(agent_group), frame_season);
             Ok(())
         })
         .build(tauri::generate_context!());
