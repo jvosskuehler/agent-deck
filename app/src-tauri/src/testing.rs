@@ -150,6 +150,20 @@ impl Desktop for FakeDesktop {
     fn z_order(&self) -> Vec<Hwnd> {
         self.0.lock().unwrap().z.clone()
     }
+    /// Die Z-Ordnung, dahinter die Agentenfenster, die noch nie vorn lagen. Ein fremdes
+    /// Fenster füllt den ganzen Schirm, minimierte Agenten fehlen.
+    fn solid_windows(&self) -> Vec<(Hwnd, Rect)> {
+        let d = self.0.lock().unwrap();
+        let mut order = d.z.clone();
+        order.extend(d.wt.iter().map(|(w, _)| w.hwnd).filter(|h| !d.z.contains(h)));
+        order
+            .into_iter()
+            .filter_map(|h| match d.wt.iter().find(|(w, _)| w.hwnd == h) {
+                Some((w, r)) => (!w.minimized).then_some((h, *r)),
+                None => Some((h, Rect::new(0, 0, 1920, 1080))),
+            })
+            .collect()
+    }
     fn raise(&self, hwnd: Hwnd) -> Result<()> {
         let mut d = self.0.lock().unwrap();
         d.raised.push(hwnd);

@@ -9,18 +9,19 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use windows::Win32::Graphics::Dwm::{
-    DWMNCRP_DISABLED, DWMNCRP_USEWINDOWSTYLE, DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_NCRENDERING_POLICY,
+    DWMNCRP_DISABLED, DWMNCRP_USEWINDOWSTYLE, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DWMWA_NCRENDERING_POLICY,
     DWMWA_TRANSITIONS_FORCEDISABLED, DwmGetWindowAttribute, DwmSetWindowAttribute,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetForegroundWindow, GetWindowPlacement, GetWindowRect, HWND_NOTOPMOST, HWND_TOPMOST,
-    SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_NOZORDER, SetWindowPos, ShowWindow, WINDOWPLACEMENT,
+    GWL_EXSTYLE, GetClientRect, GetForegroundWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
+    HWND_NOTOPMOST, HWND_TOPMOST, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, ShowWindow, WINDOWPLACEMENT, WS_EX_TOPMOST,
+    WS_EX_TRANSPARENT,
 };
 
 use crate::guard;
 use crate::types::{Error, Hwnd, Rect, Result};
-use crate::window::{class_of, is_maximized, is_minimized, title_of, visible_top_level};
+use crate::window::{class_of, is_maximized, is_minimized, pid_of, title_of, visible_top_level};
 
 /// Ein Fenster einer bestimmten Klasse (Windows Terminal).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +50,30 @@ pub fn class_windows(class: &str) -> Vec<ClassWindow> {
             title: title_of(hwnd),
             minimized: is_minimized(hwnd),
         })
+        .collect()
+}
+
+/// Die Fenster, die ein anderes verdecken können, von vorn nach hinten, mit ihrem
+/// sichtbaren Rahmen (Taste „alle nach vorn“: liegt etwas über den Agenten?). Nicht
+/// dabei: minimierte, die eigenen des Decks (Rahmen, Schatten, Panel), verborgene
+/// („cloaked“: andere virtuelle Desktops, schlafende Apps), Durchklick-Ebenen und
+/// alles, was „immer im Vordergrund“ ist. Über Letzteres kommt ohnehin kein Fenster,
+/// es zählte also ewig als Verdecker.
+pub fn solid_windows() -> Vec<(Hwnd, Rect)> {
+    let own = std::process::id();
+    visible_top_level()
+        .into_iter()
+        .filter(|&h| !is_minimized(h) && pid_of(h) != Some(own))
+        .filter(|&h| {
+            // SAFETY: reine Abfragen; Zeiger auf lokale Variable mit passender Größe.
+            unsafe {
+                let ex = GetWindowLongPtrW(h.h(), GWL_EXSTYLE) as u32;
+                let mut cloaked = 0u32;
+                let _ = DwmGetWindowAttribute(h.h(), DWMWA_CLOAKED, (&raw mut cloaked).cast(), size_of::<u32>() as u32);
+                ex & (WS_EX_TOPMOST.0 | WS_EX_TRANSPARENT.0) == 0 && cloaked == 0
+            }
+        })
+        .filter_map(|h| visible_rect(h).or_else(|| window_rect(h)).filter(|r| !r.is_empty()).map(|r| (h, r)))
         .collect()
 }
 

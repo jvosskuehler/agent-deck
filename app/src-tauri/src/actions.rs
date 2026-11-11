@@ -71,16 +71,16 @@ impl Deck {
 
     /// Taste „alle nach vorn“ (`config::FRONT_HOTKEYS`): jedes Agentenfenster in Windows
     /// Terminal als Raster auf den Monitor unter `cursor`, über alle anderen Fenster,
-    /// aber ohne Tastatur: die bleibt, wo sie war. Liegen sie schon alle offen und obenauf
-    /// (man steht bei einem Agenten oder noch im Fenster von vor dem Holen, die Agenten
-    /// darüber), verschwinden sie wieder (minimiert), und es geht zurück in das Fenster,
-    /// aus dem man kam (`deck_core::front`). So lassen sie sich ein- und ausblenden.
+    /// aber ohne Tastatur: die bleibt, wo sie war. Liegen sie schon alle offen und frei
+    /// (kein fremdes Fenster verdeckt eines, egal wer die Tastatur hat), verschwinden sie
+    /// wieder (minimiert), und es geht zurück in das Fenster, aus dem man kam
+    /// (`deck_core::front`). Verdeckt sie etwas, etwa ein Browser, den ein Agent geöffnet
+    /// hat, holt die Taste sie erst nach vorn. So lassen sie sich ein- und ausblenden.
     pub fn bring_all_front(&mut self, cursor: Option<(i32, i32)>) {
         let slots = self.shown_slots.clone();
         let fg = self.desktop.foreground().filter(|w| w.pid != std::process::id());
         let on_agent = fg.is_some() && self.wt.slot_in_front().is_some();
-        let on_top = on_agent || fg.as_ref().is_some_and(|w| self.wt.all_above(&slots, w.hwnd));
-        let hide = on_top && self.wt.all_open(&slots);
+        let hide = self.wt.all_open(&slots) && self.wt.coverer(&slots).is_none();
         let desktop = self.desktop.clone();
         // Ein Agent ist kein Ausgangspunkt: er wird beim Verstecken selbst minimiert.
         let origin = fg.filter(|_| !on_agent).map(|w| w.hwnd.0);

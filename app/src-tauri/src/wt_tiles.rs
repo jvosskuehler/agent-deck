@@ -231,19 +231,33 @@ pub fn bring_front(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32,
     }
 }
 
-/// Liegen die Fenster all dieser Agenten über dem Fenster `over`? So sieht es direkt nach
-/// dem Holen aus (die Tastatur blieb im alten Fenster, die Agenten liegen darüber). Wer
-/// danach in ein anderes Fenster geht, legt es über sie, und die Antwort ist `false`.
-pub fn all_above(desktop: &dyn Desktop, slots: &[String], over: Hwnd) -> bool {
-    let z = desktop.z_order();
-    let Some(base) = z.iter().position(|h| *h == over) else { return false };
+/// Ab so vielen Pixeln Überlappung in beiden Richtungen gilt ein Fenster als verdeckt;
+/// darunter ist es nur ein Schatten oder Rand des Nachbarn.
+const COVER_MIN_PX: i32 = 16;
+
+/// Das vorderste fremde Fenster, das über einem dieser Agenten liegt und ihn verdeckt.
+/// `None` = alle offenen Agenten liegen frei. Egal, wem die Tastatur gehört: ein Fenster,
+/// das sich ungefragt davorgelegt hat (ein Browser, den ein Agent öffnete), zählt genauso
+/// wie eines, in das man selbst gegangen ist. Agenten untereinander zählen nicht.
+pub fn coverer(desktop: &dyn Desktop, slots: &[String]) -> Option<Hwnd> {
     let agents: Vec<Hwnd> = desktop
         .class_windows(WINDOW_CLASS)
         .into_iter()
-        .filter(|w| slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .filter(|w| !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
         .map(|w| w.hwnd)
         .collect();
-    !agents.is_empty() && agents.iter().all(|a| z.iter().position(|h| h == a).is_some_and(|p| p < base))
+    let mut above: Vec<(Hwnd, Rect)> = Vec::new();
+    for (h, r) in desktop.solid_windows() {
+        if !agents.contains(&h) {
+            above.push((h, r));
+            continue;
+        }
+        let hit = above.iter().find(|(_, a)| a.intersect(&r).is_some_and(|i| i.width() >= COVER_MIN_PX && i.height() >= COVER_MIN_PX));
+        if let Some((over, _)) = hit {
+            return Some(*over);
+        }
+    }
+    None
 }
 
 /// Liegen die Fenster all dieser Agenten offen, also keines minimiert? Dann versteckt
@@ -335,14 +349,14 @@ mod tests {
         d.add_wt(Hwnd(13), "A3", Rect::new(0, 0, 800, 600), false);
         d.set_foreground(Hwnd(500), "Editor", "Notepad");
         let slots: Vec<String> = vec!["A1".into(), "A2".into(), "A3".into()];
-        assert!(!all_above(&d, &slots, Hwnd(500)), "der Editor liegt noch obenauf");
+        assert_eq!(coverer(&d, &slots), Some(Hwnd(500)), "der Editor liegt noch obenauf");
         bring_front(&d, &slots, Some((10, 10)));
         assert!(d.focused().is_empty(), "keines bekommt die Tastatur");
         assert_eq!(d.raised(), [Hwnd(13), Hwnd(12), Hwnd(11)]);
         assert_eq!(d.placed().len(), 3);
-        assert!(all_above(&d, &slots, Hwnd(500)));
+        assert_eq!(coverer(&d, &slots), None);
         d.set_foreground(Hwnd(500), "Editor", "Notepad");
-        assert!(!all_above(&d, &slots, Hwnd(500)), "zurück im Editor: er liegt wieder darüber");
+        assert_eq!(coverer(&d, &slots), Some(Hwnd(500)), "zurück im Editor: er liegt wieder darüber");
     }
 
     #[test]

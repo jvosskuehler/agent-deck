@@ -421,11 +421,11 @@ impl WtHost {
         wt_tiles::all_open(self.fx.desktop.as_ref(), &slots)
     }
 
-    /// Liegen alle lebenden unter `slots` über dem Fenster `over` ([`wt_tiles::all_above`])?
-    pub fn all_above(&mut self, slots: &[String], over: deck_win::Hwnd) -> bool {
+    /// Das fremde Fenster, das einen der lebenden unter `slots` verdeckt ([`wt_tiles::coverer`]).
+    pub fn coverer(&mut self, slots: &[String]) -> Option<deck_win::Hwnd> {
         let alive = self.alive_slots();
         let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
-        wt_tiles::all_above(self.fx.desktop.as_ref(), &slots, over)
+        wt_tiles::coverer(self.fx.desktop.as_ref(), &slots)
     }
 
     /// Taste „alle nach vorn“, zweiter Druck ([`wt_tiles::hide`]): zurück nach `back`

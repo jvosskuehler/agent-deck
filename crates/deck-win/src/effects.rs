@@ -37,6 +37,11 @@ pub trait Desktop: Send + Sync {
     }
     /// Sichtbare Fenster von oben nach unten, wie sie übereinander liegen.
     fn z_order(&self) -> Vec<Hwnd>;
+    /// Fenster, die ein anderes verdecken können, von vorn nach hinten
+    /// ([`arrange::solid_windows`]).
+    fn solid_windows(&self) -> Vec<(Hwnd, Rect)> {
+        Vec::new()
+    }
     fn monitors(&self) -> Vec<Monitor>;
     fn work_area(&self, x: i32, y: i32) -> Option<Rect>;
     fn scale_of(&self, hwnd: Hwnd) -> f64;
@@ -114,6 +119,9 @@ impl Desktop for Win32Desktop {
     }
     fn z_order(&self) -> Vec<Hwnd> {
         window::visible_top_level()
+    }
+    fn solid_windows(&self) -> Vec<(Hwnd, Rect)> {
+        arrange::solid_windows()
     }
     fn monitors(&self) -> Vec<Monitor> {
         monitor::monitors()
