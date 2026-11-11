@@ -6,7 +6,8 @@
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow,
+    GetForegroundWindow, GetWindowRect, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, ShowWindow,
 };
 
 use crate::guard;
@@ -138,6 +139,23 @@ pub fn restore_window(hwnd: Hwnd) -> Result<bool> {
     }
     // SAFETY: Handle als Wert; Windows prüft es selbst.
     let _ = unsafe { ShowWindow(hwnd.h(), SW_SHOWNOACTIVATE) };
+    Ok(true)
+}
+
+/// Ein Fenster minimieren (Taste „alle nach vorn“, zweiter Druck). `Ok(true)` = es lag
+/// offen. Liegt es im Hintergrund, bleibt das aktive Fenster aktiv
+/// (`SW_SHOWMINNOACTIVE`). Ist es selbst das aktive, reicht Windows die Tastatur an das
+/// nächste Fenster weiter (`SW_MINIMIZE`); sonst tippte man in ein verstecktes Terminal.
+pub fn minimize_window(hwnd: Hwnd) -> Result<bool> {
+    guard::check("minimize_window")?;
+    if is_minimized(hwnd) {
+        return Ok(false);
+    }
+    // SAFETY: Handle als Wert; Windows prüft es selbst.
+    unsafe {
+        let cmd = if GetForegroundWindow() == hwnd.h() { SW_MINIMIZE } else { SW_SHOWMINNOACTIVE };
+        let _ = ShowWindow(hwnd.h(), cmd);
+    }
     Ok(true)
 }
 

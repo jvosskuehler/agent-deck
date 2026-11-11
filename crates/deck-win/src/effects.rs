@@ -41,6 +41,8 @@ pub trait Desktop: Send + Sync {
     fn place(&self, hwnd: Hwnd, visible: Rect) -> Result<()>;
     /// Minimiertes Fenster wiederherstellen, ohne es zu aktivieren.
     fn restore(&self, hwnd: Hwnd) -> Result<bool>;
+    /// Fenster minimieren; die Tastatur bleibt, wo sie ist, außer es war selbst vorn.
+    fn minimize(&self, hwnd: Hwnd) -> Result<bool>;
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool>;
     /// Fensterrand deckend in `rgb` (`0xRRGGBB`); `Ok(false)` = geht hier nicht.
     fn set_border(&self, _hwnd: Hwnd, _rgb: u32) -> Result<bool> {
@@ -110,6 +112,9 @@ impl Desktop for Win32Desktop {
     }
     fn restore(&self, hwnd: Hwnd) -> Result<bool> {
         arrange::restore_window(hwnd)
+    }
+    fn minimize(&self, hwnd: Hwnd) -> Result<bool> {
+        arrange::minimize_window(hwnd)
     }
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool> {
         focus::set_corners(hwnd, corners)

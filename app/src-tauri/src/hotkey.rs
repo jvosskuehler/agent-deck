@@ -3,8 +3,8 @@
 //! - Sprung-Taste (`config::JUMP_HOTKEY`, heute Strg+<): zum Agenten, der am längsten auf
 //!   dich wartet (`attention::next_slot`). Überschreibbar über `jump_hotkey`.
 //! - Alle nach vorn (`config::FRONT_HOTKEYS`, heute Strg+Shift+< und F20 = Drehregler am
-//!   Makropad): jedes Agentenfenster als Raster unter die Maus, nochmal = zurück
-//!   (`deck_core::front`). Überschreibbar über `front_hotkeys` (Text oder Liste).
+//!   Makropad): jedes Agentenfenster als Raster unter die Maus, nochmal = alle
+//!   verstecken und zurück (`deck_core::front`). Überschreibbar über `front_hotkeys` (Text oder Liste).
 //!
 //! Leer schaltet eine Taste ab. Ist eine Kombination belegt (etwa vom noch laufenden
 //! Python-Deck), versucht es ihr Thread eine Weile und gibt dann auf; das Deck läuft ohne

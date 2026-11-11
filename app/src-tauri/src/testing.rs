@@ -28,6 +28,7 @@ struct Desk {
     grouped: Vec<(Hwnd, String)>,
     light: Option<bool>,
     restored: Vec<Hwnd>,
+    minimized: Vec<Hwnd>,
     monitors: Vec<Monitor>,
     idle_s: f64,
 }
@@ -75,6 +76,10 @@ impl FakeDesktop {
     }
     pub fn restored(&self) -> Vec<Hwnd> {
         self.0.lock().unwrap().restored.clone()
+    }
+    /// Fenster, die minimiert werden sollten, in dieser Reihenfolge.
+    pub fn minimized(&self) -> Vec<Hwnd> {
+        self.0.lock().unwrap().minimized.clone()
     }
     /// Einen weiteren Monitor dazustellen (ohne Aufruf gibt es nur den 1920er bei 0,0).
     pub fn add_monitor(&self, rect: Rect, work: Rect, scale: f64) {
@@ -131,7 +136,15 @@ impl Desktop for FakeDesktop {
         Ok(())
     }
     fn restore(&self, hwnd: Hwnd) -> Result<bool> {
-        self.0.lock().unwrap().restored.push(hwnd);
+        let mut d = self.0.lock().unwrap();
+        d.restored.push(hwnd);
+        d.wt.iter_mut().filter(|(w, _)| w.hwnd == hwnd).for_each(|(w, _)| w.minimized = false);
+        Ok(true)
+    }
+    fn minimize(&self, hwnd: Hwnd) -> Result<bool> {
+        let mut d = self.0.lock().unwrap();
+        d.minimized.push(hwnd);
+        d.wt.iter_mut().filter(|(w, _)| w.hwnd == hwnd).for_each(|(w, _)| w.minimized = true);
         Ok(true)
     }
     fn set_corners(&self, hwnd: Hwnd, _: Corners) -> Result<bool> {

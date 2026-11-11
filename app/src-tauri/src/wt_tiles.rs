@@ -116,12 +116,13 @@ pub fn monitor_under(desktop: &dyn Desktop, pos: Option<(i32, i32)>) -> Option<(
 }
 
 /// Taste „alle nach vorn“: die Fenster dieser Agenten, über alle Blöcke hinweg, als EIN
-/// Raster in Slot-Reihenfolge auf die Fläche `here` legen (Monitor unter der Maus).
+/// Raster auf die Fläche `here` legen (Monitor unter der Maus), in der Reihenfolge, in
+/// der sie gerade auf dem Bildschirm liegen.
 ///
 /// Anders als [`tile`] auch die minimierten: sie werden wiederhergestellt, denn wer alle
 /// holt, meint alle. Ein Raster statt eines je Block, weil sich zwei Blöcke auf demselben
 /// Monitor sonst überdecken. Ohne `here` bleiben die Fenster liegen, wo sie sind.
-/// Liefert `(Slot, Fenster)` in Slot-Reihenfolge; nach vorn holt der Aufrufer.
+/// Liefert `(Slot, Fenster)` in Raster-Reihenfolge; nach vorn holt der Aufrufer.
 pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>) -> Vec<(String, Hwnd)> {
     let mut found: HashMap<String, (Hwnd, bool)> = HashMap::new();
     for w in desktop.class_windows(WINDOW_CLASS) {
@@ -131,8 +132,23 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
             found.entry(slot).or_insert((w.hwnd, w.minimized));
         }
     }
+    // Reihenfolge im Raster = so, wie die Fenster gerade liegen (zeilenweise von links
+    // oben): wer sie von Hand sortiert hat, findet jedes am gewohnten Platz wieder.
+    // Minimierte haben keine Lage, sie kommen in Slot-Reihenfolge dahinter.
+    let lying: Vec<(String, arrange::Rect)> = slots
+        .iter()
+        .filter_map(|s| found.get(s).filter(|(_, m)| !m).map(|(h, _)| (s, *h)))
+        .filter_map(|(s, h)| desktop.window_rect(h).map(|r| (s.clone(), r)))
+        .map(|(s, r)| (s, (i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height()))))
+        .collect();
+    let mut names: Vec<String> = arrange::screen_rows(&lying).into_iter().flatten().collect();
+    for s in slots {
+        if !names.contains(s) {
+            names.push(s.clone());
+        }
+    }
     let order: Vec<(String, Hwnd, bool)> =
-        slots.iter().filter_map(|s| found.get(s).map(|(h, m)| (s.clone(), *h, *m))).collect();
+        names.iter().filter_map(|s| found.get(s).map(|(h, m)| (s.clone(), *h, *m))).collect();
     for (_, hwnd, minimized) in &order {
         if *minimized {
             let _ = desktop.restore(*hwnd);
@@ -167,10 +183,50 @@ pub fn bring_front(desktop: &dyn Desktop, slots: &[String], target: Option<&str>
     }
 }
 
+/// Liegen die Fenster all dieser Agenten offen, also keines minimiert? Dann versteckt
+/// der nächste Druck der Taste sie, sonst holt er sie. Ohne ein einziges Fenster `false`.
+pub fn all_open(desktop: &dyn Desktop, slots: &[String]) -> bool {
+    let wins: Vec<bool> = desktop
+        .class_windows(WINDOW_CLASS)
+        .into_iter()
+        .filter(|w| slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .map(|w| w.minimized)
+        .collect();
+    !wins.is_empty() && wins.iter().all(|m| !m)
+}
+
+/// Taste „alle nach vorn“, zweiter Druck: erst zurück in das Fenster `back`, aus dem man
+/// kam, dann die Fenster dieser Agenten minimieren. In dieser Reihenfolge, damit die
+/// Tastatur schon im Ausgangsfenster ist und nicht von Terminal zu Terminal wandert.
+pub fn hide(desktop: &dyn Desktop, slots: &[String], back: Option<Hwnd>) {
+    if let Some(h) = back {
+        let _ = desktop.focus(h);
+    }
+    for w in desktop.class_windows(WINDOW_CLASS) {
+        if !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)) {
+            let _ = desktop.minimize(w.hwnd);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testing::FakeDesktop;
+
+    #[test]
+    fn hiding_goes_back_first_and_then_minimizes_only_the_agents_that_lie_open() {
+        let d = FakeDesktop::default();
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 800, 600), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), true);
+        d.add_wt(Hwnd(14), "Einstellungen", Rect::new(0, 0, 10, 10), false);
+        let slots: Vec<String> = vec!["A1".into(), "A2".into()];
+        assert!(!all_open(&d, &slots), "A2 ist minimiert");
+        assert!(!all_open(&d, &["C1".into()]), "kein Fenster");
+        hide(&d, &slots, Some(Hwnd(500)));
+        assert_eq!(d.focused(), [Hwnd(500)]);
+        assert_eq!(d.minimized(), [Hwnd(11)]);
+    }
 
     #[test]
     fn gather_lays_all_agents_as_one_grid_under_the_mouse_and_restores_minimized() {
@@ -182,16 +238,31 @@ mod tests {
         let here = monitor_under(&d, Some((2000, 100)));
         assert_eq!(here, Some((Rect::new(1920, 0, 4320, 1160), 1.0)));
         let got = gather(&d, &["B1".into(), "A1".into(), "A2".into()], here);
-        assert_eq!(got, [("B1".into(), Hwnd(21)), ("A1".into(), Hwnd(11)), ("A2".into(), Hwnd(12))]);
+        // Das minimierte B1 hat keine Lage und kommt hinter die liegenden.
+        assert_eq!(got, [("A1".into(), Hwnd(11)), ("A2".into(), Hwnd(12)), ("B1".into(), Hwnd(21))]);
         assert_eq!(d.restored(), [Hwnd(21)]);
         assert_eq!(
             d.placed(),
             [
-                (Hwnd(21), Rect::new(1920, 0, 2720, 1160)),
-                (Hwnd(11), Rect::new(2720, 0, 3520, 1160)),
-                (Hwnd(12), Rect::new(3520, 0, 4320, 1160)),
+                (Hwnd(11), Rect::new(1920, 0, 2720, 1160)),
+                (Hwnd(12), Rect::new(2720, 0, 3520, 1160)),
+                (Hwnd(21), Rect::new(3520, 0, 4320, 1160)),
             ]
         );
+    }
+
+    #[test]
+    fn gather_keeps_the_order_the_windows_lie_in_and_puts_minimized_last() {
+        let d = FakeDesktop::default();
+        d.add_wt(Hwnd(11), "A1", Rect::new(800, 0, 1600, 500), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(0, 500, 800, 1000), false);
+        d.add_wt(Hwnd(13), "A3", Rect::new(0, 0, 800, 500), false);
+        d.add_wt(Hwnd(14), "A4", Rect::new(0, 0, 10, 10), true);
+        let slots: Vec<String> = ["A4", "A1", "A2", "A3"].map(String::from).into();
+        let got = gather(&d, &slots, monitor_under(&d, Some((10, 10))));
+        let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(names, ["A3", "A1", "A2", "A4"]);
+        assert_eq!(d.placed().iter().map(|(h, _)| *h).collect::<Vec<_>>(), [Hwnd(13), Hwnd(11), Hwnd(12), Hwnd(14)]);
     }
 
     #[test]

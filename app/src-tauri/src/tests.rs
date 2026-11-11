@@ -296,6 +296,13 @@ fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
     r.desk.set_foreground(Hwnd(32), "D2", deck_core::wt::WINDOW_CLASS);
     r.deck.bring_all_front(Some((10, 10)));
     assert_eq!(r.desk.focused().last(), Some(&Hwnd(500)), "zurück ins Ausgangsfenster");
+    assert_eq!(r.desk.minimized(), [Hwnd(31), Hwnd(32)], "und die Agenten sind versteckt");
+
+    // Dritter Druck: wieder holen, jedes an seinen Platz von vorher.
+    r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
+    r.deck.bring_all_front(Some((10, 10)));
+    assert_eq!(r.desk.restored(), [Hwnd(31), Hwnd(31), Hwnd(32)]);
+    assert_eq!(r.desk.focused().last(), Some(&Hwnd(32)));
 }
 
 #[test]

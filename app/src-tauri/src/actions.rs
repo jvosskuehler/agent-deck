@@ -72,18 +72,22 @@ impl Deck {
 
     /// Taste „alle nach vorn“ (`config::FRONT_HOTKEYS`): jedes Agentenfenster in Windows
     /// Terminal als Raster auf den Monitor unter `cursor`, Fokus auf den, der am längsten
-    /// wartet. Steht man schon bei einem Agenten, geht es zurück in das Fenster, aus dem
-    /// man kam (`deck_core::front`).
+    /// wartet. Steht man schon bei einem Agenten und liegen alle offen, verschwinden sie
+    /// wieder (minimiert), und es geht zurück in das Fenster, aus dem man kam
+    /// (`deck_core::front`). So lassen sie sich ein- und ausblenden.
     pub fn bring_all_front(&mut self, cursor: Option<(i32, i32)>) {
+        let slots = self.shown_slots.clone();
         let fg = self.desktop.foreground().filter(|w| w.pid != std::process::id());
         let on_agent = fg.is_some() && self.wt.slot_in_front().is_some();
+        let hide = on_agent && self.wt.all_open(&slots);
         let desktop = self.desktop.clone();
-        let back = self.front_toggle.press(fg.map(|w| w.hwnd.0), on_agent, |h| desktop.is_alive(Hwnd(h)));
-        if let Some(h) = back {
-            let _ = self.desktop.focus(Hwnd(h));
+        // Ein Agent ist kein Ausgangspunkt: er wird beim Verstecken selbst minimiert.
+        let origin = fg.filter(|_| !on_agent).map(|w| w.hwnd.0);
+        let back = self.front_toggle.press(origin, hide, |h| desktop.is_alive(Hwnd(h)));
+        if hide {
+            self.wt.hide_all(&slots, back.map(Hwnd));
             return;
         }
-        let slots = self.shown_slots.clone();
         let states = read_all(&self.paths.state_dir);
         let target = focus_target(&states, &slots, self.active_slot.as_deref());
         self.wt.front_all(&slots, target, cursor);

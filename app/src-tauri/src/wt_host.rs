@@ -52,6 +52,8 @@ pub struct WtHost {
     tiler: WtTiler,
     /// Zuletzt gemessene Fensterlage je Block (Zeitpunkt, Reihen, Spalten des Monitors).
     screen: HashMap<String, (f64, Vec<Vec<String>>, u32)>,
+    /// Lage der Fenster, bevor die Taste „alle nach vorn“ sie versteckt hat.
+    hidden_order: Vec<String>,
     clock: fn() -> f64,
 }
 
@@ -83,6 +85,7 @@ impl WtHost {
             last_fg: None,
             tiler: WtTiler::default(),
             screen: HashMap::new(),
+            hidden_order: Vec::new(),
             clock,
         }
     }
@@ -323,13 +326,34 @@ impl WtHost {
     /// `false` = keiner lebt.
     pub fn front_all(&mut self, slots: &[String], target: Option<String>, cursor: Option<(i32, i32)>) -> bool {
         let alive = self.alive_slots();
-        let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
+        // Versteckte haben keine Lage mehr. Damit jedes Fenster an seinen Platz von vor
+        // dem Verstecken zurückkommt, gilt die dort gemerkte Reihenfolge zuerst.
+        let hidden = std::mem::take(&mut self.hidden_order);
+        let mut slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
+        slots.sort_by_key(|s| hidden.iter().position(|h| h == s).unwrap_or(usize::MAX));
         if slots.is_empty() {
             return false;
         }
         let d = self.fx.desktop.clone();
         self.worker.run(move || wt_tiles::bring_front(d.as_ref(), &slots, target.as_deref(), cursor));
         true
+    }
+
+    /// Liegen alle lebenden unter `slots` offen ([`wt_tiles::all_open`])?
+    pub fn all_open(&mut self, slots: &[String]) -> bool {
+        let alive = self.alive_slots();
+        let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
+        wt_tiles::all_open(self.fx.desktop.as_ref(), &slots)
+    }
+
+    /// Taste „alle nach vorn“, zweiter Druck ([`wt_tiles::hide`]): zurück nach `back`
+    /// und die Agentenfenster minimieren. Ihre Lage wird gemerkt, [`Self::front_all`]
+    /// legt sie danach wieder so hin.
+    pub fn hide_all(&mut self, slots: &[String], back: Option<deck_win::Hwnd>) {
+        let slots = slots.to_vec();
+        self.hidden_order = wt_tiles::screen_rows(self.fx.desktop.as_ref(), &slots).concat();
+        let d = self.fx.desktop.clone();
+        self.worker.run(move || wt_tiles::hide(d.as_ref(), &slots, back));
     }
 
     fn input(&mut self, slot: &str, steps: Vec<Step>) -> bool {

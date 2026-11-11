@@ -8,8 +8,9 @@
 //!   die Sprung-Taste), sonst der zuletzt gewählte, sonst der erste. Anders als die
 //!   Sprung-Taste geht es nicht reihum: wer alle holt, will beim dringendsten landen.
 //! - WOHIN ein zweiter Druck führt ([`BackToggle`]): zurück in das Fenster, aus dem man
-//!   kam, wie Win+D für den Desktop. Die Agenten bleiben dabei liegen, statt minimiert zu
-//!   werden: minimierte lässt das automatische Kacheln außen vor.
+//!   kam, wie Win+D für den Desktop. Die Agenten werden dabei minimiert (seit
+//!   11.11.2026), damit der Bildschirm für anderes frei ist; der nächste Druck stellt sie
+//!   wieder her, in der Lage von vorher.
 
 use std::collections::HashMap;
 
@@ -60,12 +61,12 @@ pub struct BackToggle {
 }
 
 impl BackToggle {
-    /// `fg` = Vordergrundfenster (`None` = keins oder eines des Decks selbst, dorthin will
-    /// niemand zurück), `on_agent` = es ist ein Agent. Antwort: das Fenster, in das
-    /// zurückgesprungen wird, oder `None` = alle nach vorn holen.
+    /// `fg` = Vordergrundfenster (`None` = keins, eines des Decks selbst oder ein Agent,
+    /// dorthin will niemand zurück), `on_agent` = man steht bei einem Agenten und die
+    /// Agenten werden jetzt versteckt. Antwort: das Fenster, in das zurückgesprungen wird.
     ///
-    /// Zurück geht es nur, wenn man gerade bei einem Agenten steht UND das gemerkte
-    /// Fenster noch lebt. Steht man woanders, ist das der neue Ausgangspunkt.
+    /// Zurück geht es nur beim Verstecken UND wenn das gemerkte Fenster noch lebt. Sonst
+    /// ist `fg` der neue Ausgangspunkt.
     pub fn press(&mut self, fg: Option<isize>, on_agent: bool, alive: impl Fn(isize) -> bool) -> Option<isize> {
         if on_agent {
             return self.back_to.take().filter(|h| alive(*h));
