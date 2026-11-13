@@ -31,6 +31,8 @@ die Oberfläche animiert das Gleiten im Fenster (`deck://dock`).
 | `deck://tooltip-hide` | – | Tooltip ausblenden |
 | `deck://settings` | `SettingsView` | Einstellungen haben sich geändert (auch von außen) |
 | `deck://ticket` | `TicketView` | Ticket-Dialog für einen Slot geöffnet |
+| `deck://glow` | `GlowView` | Fenster „Glow einstellen“ geöffnet oder Glow geändert |
+| `deck://ping` | `null` | alle 5 s an Panel und Griff; die Seite antwortet mit `ui_pong` (`ui_watch.rs`) |
 
 Beim Start ruft jede Ansicht zusätzlich einmal den passenden `get_*`-Befehl, damit sie
 nicht auf das erste Ereignis warten muss.
@@ -56,13 +58,19 @@ nicht auf das erste Ereignis warten muss.
 | `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
 | `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen) |
 | `panel_hold` | `hold: boolean` | – | Karte oder Block wird gezogen: Panel bleibt offen (höchstens 60 s) |
-| `panel_drag` | `mode`: `move` \| `zoom`, `x`, `y` (Stelle des Drucks, CSS-Pixel) | – | Nur frei schwebend: Rust folgt dem Zeiger, bis die Taste los ist, verschiebt bzw. zoomt und merkt sich das Ergebnis |
+| `panel_drag` | `mode`: `move` \| `zoom` \| `slide`, `x`, `y` (Stelle des Drucks, CSS-Pixel) | – | Rust folgt dem Zeiger, bis die Taste los ist, und merkt sich das Ergebnis. `move`/`zoom` nur frei schwebend (verschieben bzw. zoomen), `slide` nur angedockt: der Streifen an der Bildschirmkante schiebt das Deck die Kante entlang (`dock_along`) |
 | `focus_block` | `letter` | – | Klick auf den Repo-Namen: Fenster des Blocks nach vorn (wie `show_window` in Python) |
 | `tooltip_content_size` | `width`, `height` (CSS-Pixel, inkl. 8 px Rand) | – | Größe des Tooltip-Fensters anpassen |
+| `dialog_content_size` | `height` (CSS-Pixel) | – | Ein Dialog meldet seine Inhaltshöhe, sein Fenster wächst bzw. schrumpft mit (höchstens Arbeitsbereich des Monitors). Bisher nur „Glow einstellen“ |
 | `get_ticket` | – | `TicketView` oder `null` | Inhalt des Ticket-Dialogs |
 | `submit_ticket` | `ticket`: Text oder `null` | – | zuweisen (leer = abbrechen) bzw. abbrechen; schließt den Dialog |
+| `get_glow` | – | `GlowView` | Inhalt des Fensters „Glow einstellen“ |
+| `set_glow` | `glow`: `GlowSettings` | `GlowView` | beide Glows setzen (Rust holt sie in die Grenzen), wirkt sofort am Fokus-Rahmen, gespeichert in `deck_settings.json` `glow` |
+| `open_glow` | – | – | Fenster „Glow einstellen“ öffnen (wie Strg+Alt+G) |
+| `open_keys` | – | – | Fenster „Tastenkürzel“ öffnen (Inhalt aus `SettingsView.shortcuts`) |
 | `kill_orphan` | `id` (`OrphanView.id`) | – | „Läuft noch ohne Fenster“: diese Zeile beenden. Kehrt sofort zurück; die Zeile steht bis zum Ende auf `busy`, ein Fehler danach in `error` |
 | `kill_all_orphans` | – | – | „Alle beenden“: jede Zeile wie `kill_orphan` |
+| `ui_pong` | – | – | Antwort auf `deck://ping`; schweigt die Seite des sichtbaren Fensters oder der Hauptthread 60 s, startet das Deck neu (`deck_core::liveness`) |
 
 ### Was die Oberfläche bereits so umsetzt (Stand 06.11.)
 

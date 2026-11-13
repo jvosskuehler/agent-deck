@@ -5,6 +5,8 @@
 
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
+import type { GlowSettings } from "../bindings/GlowSettings";
+import type { GlowView } from "../bindings/GlowView";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
 import type { TooltipView } from "../bindings/TooltipView";
@@ -17,6 +19,10 @@ export interface EventPayloads {
   "deck://tooltip-hide": null;
   "deck://settings": SettingsView;
   "deck://ticket": TicketView;
+  /** Fenster „Glow einstellen“: neuer Stand (nach set_glow oder beim Öffnen). */
+  "deck://glow": GlowView;
+  /** Lebenszeichen-Frage an Panel und Griff; Antwort `ui_pong`. */
+  "deck://ping": null;
 }
 
 export type EventName = keyof EventPayloads;
@@ -30,7 +36,7 @@ export interface ScreenRect {
 }
 
 /** Was das freie Panel beim Ziehen tut: verschieben oder an der Ecke zoomen. */
-export type PanelDragMode = "move" | "zoom";
+export type PanelDragMode = "move" | "zoom" | "slide";
 
 export type SettingKey = keyof SettingsView;
 
@@ -63,14 +69,26 @@ export interface Commands {
   focus_block: { args: { letter: string }; ret: void };
   /** Der Tooltip meldet seine Größe, damit Rust ihn auf dem Monitor halten kann. */
   tooltip_content_size: { args: { width: number; height: number }; ret: void };
+  /** Ein Dialog (z. B. „Glow einstellen“) meldet seine Inhaltshöhe; das Fenster wächst mit. */
+  dialog_content_size: { args: { height: number }; ret: void };
   /** Inhalt des Ticket-Dialogs (null, solange keiner geöffnet wurde). */
   get_ticket: { args: Record<string, never>; ret: TicketView | null };
   /** Ticket zuweisen (Text) oder abbrechen (null); schließt den Dialog. */
   submit_ticket: { args: { ticket: string | null }; ret: void };
+  /** Inhalt des Fensters „Glow einstellen“. */
+  get_glow: { args: Record<string, never>; ret: GlowView };
+  /** Beide Glows setzen; wirkt sofort am Fokus-Rahmen, Antwort ist der gespeicherte Stand. */
+  set_glow: { args: { glow: GlowSettings }; ret: GlowView };
+  /** Fenster „Tastenkürzel“ öffnen (Inhalt aus SettingsView.shortcuts). */
+  open_keys: { args: Record<string, never>; ret: void };
+  /** Fenster „Glow einstellen“ öffnen (wie Strg+Alt+G). */
+  open_glow: { args: Record<string, never>; ret: void };
   /** „Läuft noch ohne Fenster“: eine Zeile beenden (Baum, mit Nachweis; Fehler stehen in der Zeile). */
   kill_orphan: { args: { id: string }; ret: void };
   /** „Alle beenden“. */
   kill_all_orphans: { args: Record<string, never>; ret: void };
+  /** Antwort auf `deck://ping`: diese Seite lebt (Rust erkennt das Fenster selbst). */
+  ui_pong: { args: Record<string, never>; ret: void };
 }
 
 export type CommandName = keyof Commands;

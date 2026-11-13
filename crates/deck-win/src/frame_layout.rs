@@ -72,9 +72,9 @@ mod tests {
 
     #[test]
     fn the_glow_margin_scales_with_the_monitor() {
-        assert_eq!(margin_px(1.0), 36);
-        assert_eq!(margin_px(1.5), 54);
-        assert_eq!(margin_px(1.25), 45);
+        assert_eq!(margin_px(1.0), 60);
+        assert_eq!(margin_px(1.5), 90);
+        assert_eq!(margin_px(1.25), 75);
     }
 
     #[test]
@@ -83,10 +83,10 @@ mod tests {
         let l = FrameLayout::new(win, MON, 1.0).unwrap();
         assert_eq!(
             l.frame,
-            Rect::new(0, 64, 846, 736),
+            Rect::new(0, 40, 870, 760),
             "links an den Monitor gestutzt"
         );
-        assert_eq!(l.win_in_frame(), [10.0, 36.0, 810.0, 636.0]);
+        assert_eq!(l.win_in_frame(), [10.0, 60.0, 810.0, 660.0]);
     }
 
     #[test]

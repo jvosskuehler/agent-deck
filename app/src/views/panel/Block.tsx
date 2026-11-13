@@ -1,5 +1,4 @@
-// Ein Repo-Block: Kopf (Repo-Name als Griff), links die Schiene, die Kopf und Karten zu
-// einer Gruppe bindet, darunter das Kartenraster mit der ＋-Karte.
+// Ein Repo-Block: Kopf (Repo-Name als Griff), darunter das Kartenraster mit der ＋-Karte.
 //
 // Der Kopf meint den ganzen Block (connect.py): Klick holt seine Fenster nach vorn,
 // Rechtsklick öffnet das native Menü (Block vergessen). Ein ✕ für den ganzen Block gibt
@@ -82,7 +81,6 @@ export const Block = forwardRef<HTMLElement, Props>(function Block(props, ref) {
       data-tile-drag={drag.dragging || undefined}
       style={style}
     >
-      <span className="block-rail" aria-hidden="true" />
       <div
         className="block-head"
         onContextMenu={(e) => {

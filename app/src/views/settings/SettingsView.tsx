@@ -105,6 +105,12 @@ export function SettingsView() {
         <div className="set-section-head">
           <h2 className="set-h2">{t(lang, "deck")}</h2>
           <span className="set-spacer" />
+          <button type="button" className="tool-btn" onClick={commands.openKeys}>
+            {t(lang, "shortcuts")}
+          </button>
+          <button type="button" className="tool-btn" onClick={commands.openGlow}>
+            {t(lang, "openGlow")}
+          </button>
           <button type="button" className="tool-btn" onClick={restartPanel}>
             {t(lang, "restartPanel")}
           </button>
@@ -128,6 +134,7 @@ export function SettingsView() {
           onChange={(v) => save("autoCompact", v === "on")}
         />
       </section>
+
     </div>
   );
 

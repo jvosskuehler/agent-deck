@@ -1,8 +1,9 @@
-//! KI-Kurzzusammenfassung und erkannte Bezüge eines Chats, im Hintergrund (Python
+//! Lagebild und erkannte Bezüge eines Chats, im Hintergrund (Python
 //! `claude/summarize.py` `generate`/`_run_claude` und `ui/uithread.py` `_ensure_chat_info`).
 //!
 //! Je Anfrage ein Thread: erst Ticket und PR (billig, reine Regex, sofort gemeldet),
-//! dann die Zusammenfassung (teuer: `claude -p --safe-mode --model haiku`, ~8 s Start).
+//! dann das Lagebild (teuer: `claude -p --safe-mode --model sonnet`, ~8 s Start plus
+//! die Antwort).
 //! Ob überhaupt neu gefragt wird, entscheidet der Cache in `deck-core`
 //! (`summary_cache::plan_summary`); hier sind nur Prozess, Begrenzung und Rückruf.
 //!
@@ -22,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use deck_core::claude::refs::Refs;
 use deck_core::claude::summary_cache::{
-    SummaryGates, SummaryPlan, cached_refs, cached_summary, ensure_refs, finish_summary, plan_summary,
+    SummaryGates, SummaryPlan, cached_brief, cached_refs, cached_summary, ensure_refs, finish_summary, plan_summary,
     projects_dir, prune, summary_dir,
 };
 use deck_core::i18n::Lang;
@@ -91,7 +92,8 @@ impl ClaudeRunner for ClaudeCli {
     }
 }
 
-/// Stellschrauben (Python-Vorgaben: Haiku, 60 s, Gates aus `deck-core`).
+/// Stellschrauben (Modell und Gates aus `deck-core`; 120 s, Sonnet liest bis zu 24 000
+/// Zeichen Verlauf).
 #[derive(Debug, Clone)]
 pub struct SummaryConfig {
     /// `~/.claude/projects`: die Transcripts.
@@ -114,7 +116,7 @@ impl SummaryConfig {
             projects: projects_dir(),
             cache_dir: summary_dir(state_dir),
             model: deck_core::config::HOVER_SUMMARY_MODEL.into(),
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_secs(120),
             gates: SummaryGates::default(),
             project_key: Some(deck_core::config::JIRA_PROJECT_KEY.into()),
             detect_refs: deck_core::config::TICKET_AUTODETECT,
@@ -198,6 +200,11 @@ impl SummaryService {
     /// Nur der Cache, ohne Transcript und ohne Prozess (für den Hover sofort).
     pub fn cached_summary(&self, session_id: &str) -> Option<String> {
         cached_summary(&self.cfg.cache_dir, session_id)
+    }
+
+    /// Das ganze Lagebild aus dem Cache und wann es entstand (Unix-Sekunden).
+    pub fn cached_brief(&self, session_id: &str) -> Option<(deck_core::claude::briefing::Briefing, f64)> {
+        cached_brief(&self.cfg.cache_dir, session_id)
     }
 
     /// Nur die schon erkannten Bezüge.

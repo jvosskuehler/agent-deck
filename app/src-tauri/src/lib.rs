@@ -14,7 +14,9 @@ pub mod dock;
 pub mod dock_drag;
 pub mod focus_frame;
 pub mod group_shadow;
+pub mod glow;
 pub mod hotkey;
+pub mod instance_guard;
 pub mod launcher;
 pub mod menu;
 pub mod native;
@@ -23,10 +25,12 @@ pub mod poll;
 pub mod refs_files;
 pub mod services;
 pub mod settings;
+pub mod speechmike;
 pub mod state;
 pub mod ticket;
 pub mod ticket_dialog;
 pub mod tooltip;
+pub mod ui_watch;
 pub mod ui_windows;
 pub mod window_sync;
 pub mod worker;
@@ -87,6 +91,9 @@ pub fn run() {
         prev(info);
     }));
     note(format!("--- Start agent-deck {} (pid {}), Log {} ---", env!("CARGO_PKG_VERSION"), std::process::id(), log.display()));
+    // Hängt ein laufendes Deck, übernimmt dieser Start, statt sein Signal an die tote
+    // Instanz weiterzugeben (Einzelinstanz-Sperre) und still zu enden.
+    instance_guard::take_over_if_stuck(&paths.app_dir);
     app_paths::prepare(&paths);
     let desktop: Arc<dyn Desktop> = Arc::new(Win32Desktop);
     let procs: Arc<dyn Processes> = Arc::new(Win32Processes);
@@ -121,9 +128,15 @@ pub fn run() {
     };
     let front_combos = deck_core::front::combos(deck.store.settings.get("front_hotkeys"), &FRONT_HOTKEYS);
     let frame_season = deck.store.settings.get("frame_season").cloned();
+    let glow_combo = deck_core::shortcuts::single(&deck.store.settings, "glow_hotkey", deck_core::config::GLOW_HOTKEY);
+    let new_agent_combo =
+        deck_core::shortcuts::single(&deck.store.settings, "new_agent_hotkey", deck_core::config::NEW_AGENT_HOTKEY);
+    let glow = glow::GlowState::new(deck_core::glow::GlowSettings::from_settings(&deck.store.settings));
     // Gemeinsamer Schatten für bündig liegende Agenten; `false` lässt jedem seinen eigenen.
     let group_shadow = deck.store.settings.get("group_shadow").and_then(serde_json::Value::as_bool).unwrap_or(true);
+    let speechmike_voice = deck_core::speechmike::enabled(&deck.store.settings);
     let english = deck.lang.is_english();
+    let watch_dir = paths.app_dir.clone();
     let state = Arc::new(AppState {
         deck: Mutex::new(deck),
         dock: Mutex::new(dock_ctl),
@@ -133,6 +146,7 @@ pub fn run() {
         restarting: AtomicBool::new(false),
         ticket_slot: Mutex::new(None),
         desktop: desktop.clone(),
+        glow: glow.clone(),
     });
 
     let app = tauri::Builder::default()
@@ -161,6 +175,7 @@ pub fn run() {
             commands::reorder_blocks,
             commands::hover_tile,
             commands::tooltip_content_size,
+            commands::dialog_content_size,
             commands::open_usage_page,
             commands::open_settings,
             commands::set_setting,
@@ -168,11 +183,16 @@ pub fn run() {
             commands::focus_block,
             commands::get_ticket,
             commands::submit_ticket,
+            commands::get_glow,
+            commands::set_glow,
+            commands::open_glow,
+            commands::open_keys,
             commands::show_block_menu,
             commands::panel_hold,
             commands::panel_drag,
             orphans::kill_orphan,
             orphans::kill_all_orphans,
+            ui_watch::ui_pong,
         ])
         .setup(move |app| {
             let handle = app.handle();
@@ -181,7 +201,13 @@ pub fn run() {
             poll::start(handle);
             hotkey::start(handle, combo);
             hotkey::start_front(handle, front_combos);
-            focus_frame::start(desktop, host_map, frame_hold, Some(agent_group), frame_season, group_shadow);
+            hotkey::start_glow(handle, glow_combo);
+            hotkey::start_new_agent(handle, new_agent_combo);
+            if speechmike_voice {
+                speechmike::start();
+            }
+            focus_frame::start(glow, desktop, host_map, frame_hold, Some(agent_group), frame_season, group_shadow);
+            ui_watch::start(handle, watch_dir);
             Ok(())
         })
         .build(tauri::generate_context!());

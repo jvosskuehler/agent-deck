@@ -24,6 +24,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::marker::marks_shell;
+use super::rules::is_deck_exe;
 use super::model::{Key, ProcDetails, ProcRow, Saved, ShellId, ShellRecord, Tracked, filetime_to_unix};
 use crate::wt::same_start;
 
@@ -210,9 +211,14 @@ impl Tracker {
     /// Zu welcher Agenten-Shell gehört dieser (noch nicht gemerkte) Prozess?
     fn owner(&self, p: &ProcRow, start: u64, alive: &Alive, memo: &mut HashMap<u32, Option<Key>>) -> Option<Key> {
         let mut visited = Vec::new();
-        let (mut pid, mut ppid, mut cur_start) = (p.pid, p.ppid, start);
+        let (mut pid, mut ppid, mut cur_start, mut exe) = (p.pid, p.ppid, start, p.exe.as_str());
         let mut result = None;
         for _ in 0..MAX_DEPTH {
+            // Das Deck und alles darunter gehört keinem Agenten, auch wenn es aus einem
+            // Agentenfenster gestartet wurde: sonst bietet „Alle beenden“ seine WebView an.
+            if is_deck_exe(exe) {
+                break;
+            }
             if self.is_shell((pid, cur_start)) {
                 result = Some((pid, cur_start));
                 break;
@@ -233,7 +239,7 @@ impl Tracker {
                 // Ein lebender Elter, der vor dem Kind da war, IST der Elter: zwei
                 // gleichzeitig lebende Prozesse haben nie dieselbe PID.
                 Some((q, qs)) if *qs <= cur_start => {
-                    (pid, ppid, cur_start) = (q.pid, q.ppid, *qs);
+                    (pid, ppid, cur_start, exe) = (q.pid, q.ppid, *qs, q.exe.as_str());
                 }
                 _ => {
                     result = self.dead_parent(ppid, cur_start);

@@ -160,3 +160,42 @@ body:has(.settings) {
   background: var(--hl-low);
   color: var(--ink);
 }
+
+/* ── Tastenkürzel (nur zum Ansehen) ──────────────────────────────────── */
+
+.set-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.set-key-row {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.set-key-row dt,
+.set-key-row dd {
+  margin: 0;
+}
+
+.set-key-row dd {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+.set-kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  border: 1px solid var(--hl-med);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--card);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink);
+}

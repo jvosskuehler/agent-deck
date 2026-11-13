@@ -4,6 +4,7 @@
 // drei Agenten, einer davon getrennt. Die Texte entsprechen
 // denen der Vorlagen in docs/design-refs, damit Screenshots vergleichbar sind.
 
+import type { GlowSettings } from "../../bindings/GlowSettings";
 import type { BlockView } from "../../bindings/BlockView";
 import type { CacheStage } from "../../bindings/CacheStage";
 import type { CacheView } from "../../bindings/CacheView";
@@ -69,7 +70,7 @@ function cache(text: string, stage: CacheStage): CacheView {
 const HOME: TileSeed[] = [
   { slot: "B1", status: "waiting", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen", ticket: ref("ORPH-4062", "assigned"), pr: ref("#355", "statusline"), cache: cache("6 min", "low") },
   { slot: "B2", status: "thinking", model: "Opus 5.5", effort: "ultracode", mode: "bypass", title: "ORPH-3773 Rechtekonzept Integrationstests", ticket: ref("ORPH-3773", "branch") },
-  { slot: "B3", status: "done", model: "Fable 5.1", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", ticket: ref("ORPH-4116", "folder"), pr: ref("#1234", "statusline"), cache: cache("42 min", "warm") },
+  { slot: "B3", status: "done", model: "Fable 5.2", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", ticket: ref("ORPH-4116", "folder"), pr: ref("#1234", "statusline"), cache: cache("42 min", "warm") },
   { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-3192 Mehrfach-RDS auf der Test-VM", ticket: ref("ORPH-3192", "assigned"), cache: cache("kalt", "cold") },
   { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", ticket: ref("ORPH-4116", "chat"), pr: ref("#347", "chat"), cache: cache("kalt", "cold") },
   { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", cache: cache("18 min", "warm") },
@@ -77,7 +78,7 @@ const HOME: TileSeed[] = [
 
 const REPO: TileSeed[] = [
   { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Rechtstexte als PDF", ticket: ref("ORPH-4107", "assigned") },
-  { slot: "A2", status: "idle", model: "Fable 5.1", effort: "high", mode: "plan", title: "Plan für /sessions", ticket: ref("ORPH-4062", "worktree") },
+  { slot: "A2", status: "idle", model: "Fable 5.2", effort: "high", mode: "plan", title: "Plan für /sessions", ticket: ref("ORPH-4062", "worktree") },
   { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Gruppen-Claim für AD FS", ticket: ref("ORPH-4105", "assigned") },
 ];
 
@@ -99,7 +100,7 @@ function tile(seed: TileSeed, lang: Lang, selected: string, now: number): TileVi
 /** Zusatzblock für ?blocks=3, damit sich Blöcke ziehen lassen. */
 const EXTRA: TileSeed[] = [
   { slot: "C1", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Update-Kanal prüfen" },
-  { slot: "C2", status: "done", model: "Fable 5.1", effort: "medium", mode: "plan", title: "PR 347 Review", pr: ref("#347", "statusline") },
+  { slot: "C2", status: "done", model: "Fable 5.2", effort: "medium", mode: "plan", title: "PR 347 Review", pr: ref("#347", "statusline") },
 ];
 
 export function initialBlocks(lang: Lang, now: number, extra = false): BlockView[] {
@@ -120,6 +121,7 @@ export function usage(lang: Lang): UsageView {
     primary: [
       { label: "Session", percent: 34, color: "#6ee7a8", resets: "16:40" },
       { label: de ? "Woche" : "Week", percent: 61, color: "#ffc48a", resets: de ? "Mo 09:00" : "Mon 09:00" },
+      { label: "Fable", percent: 43, color: "#6ee7a8", resets: de ? "Mo 09:00" : "Mon 09:00" },
     ],
     extra: [{ label: de ? "Woche Opus" : "Week Opus", percent: 22, color: "#6ee7a8", resets: de ? "Mo 09:00" : "Mon 09:00" }],
     stale: false,
@@ -167,6 +169,27 @@ export function initialSettings(): SettingsView {
     language: "german",
     dockEdge: "top",
     autoCompact: true,
+    shortcuts: [
+      { keys: "Strg+<", action: "Zum Agenten, der am längsten wartet" },
+      { keys: "Strg+Shift+<", action: "Alle Agenten nach vorn, nochmal: zurück" },
+      { keys: "Strg+Alt+G", action: "Glow einstellen" },
+      { keys: "Alt+V", action: "Bild aus der Zwischenablage einfügen" },
+    ],
+  };
+}
+
+/** Vorgaben wie `deck_core::glow`. */
+export function initialGlow(): GlowSettings {
+  return {
+    light: { kind: "weichlicht", animation: "still", color: "#D9775A", outer: "", intensity: 1.2, width: 1, speed: 1 },
+    dark: { kind: "weichlicht", animation: "still", color: "#F5B847", outer: "#F08A3C", intensity: 1, width: 1, speed: 1 },
+    savedLight: [],
+    savedDark: [
+      {
+        name: "Ecklicht · Umlauf · 12.11. 14:05",
+        style: { kind: "ecklicht", animation: "umlauf", color: "#C4A7E7", outer: "#8A7BE0", intensity: 1.3, width: 0.8, speed: 1 },
+      },
+    ],
   };
 }
 

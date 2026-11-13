@@ -172,14 +172,16 @@ impl Services {
         s.request(session_id, Some(cwd).filter(|c| !c.is_empty()), lang, summarize && HOVER_SUMMARY, cb);
     }
 
-    /// Chat-Infos offener Agenten vorab holen, gedrosselt (alle 5 s).
-    pub fn prefetch(&mut self, now: f64, sessions: &[(String, String)], lang: Lang) {
+    /// Chat-Infos offener Agenten vorab holen, gedrosselt (alle 5 s). Das Lagebild nur
+    /// für die Sessions in `settled`: solange ein Agent arbeitet, ändert sich sein Stand
+    /// mit jedem Werkzeugaufruf, gefragt wird, wenn er fertig ist oder wartet.
+    pub fn prefetch(&mut self, now: f64, sessions: &[(String, String)], settled: &[String], lang: Lang) {
         if now - self.last_prefetch < PREFETCH_EVERY_S {
             return;
         }
         self.last_prefetch = now;
         for (sid, cwd) in sessions {
-            self.request_info(sid, cwd, lang, self.prefetch_summaries);
+            self.request_info(sid, cwd, lang, self.prefetch_summaries && settled.contains(sid));
         }
     }
 
@@ -212,7 +214,7 @@ mod tests {
         assert!(s.usage_view(Lang::German).is_none());
         assert!(s.sweep(&SweepView::default()).is_empty());
         assert_eq!(s.summary("abc"), None);
-        s.prefetch(100.0, &[("abc".into(), String::new())], Lang::German);
+        s.prefetch(100.0, &[("abc".into(), String::new())], &["abc".into()], Lang::German);
         assert!(s.detected_refs(&[]).is_empty());
         assert!(s.branches(&["C:/Repos/agent-deck".into()], 100.0).is_empty(), "ohne Dateisystem kein Branch");
         s.set_jira_prefix("ORPH");

@@ -1,6 +1,7 @@
 //! Hover-Zusammenfassung, Ticket- und PR-Nummer aus dem Chat (Python
 //! `test_claude_summarize.py`). Bei der Erkennung sind Falsch-Positive das Problem.
 
+use deck_core::claude::briefing;
 use deck_core::claude::refs::*;
 use deck_core::claude::summarize::*;
 use deck_core::claude::summary_cache::*;
@@ -33,44 +34,10 @@ fn only_typed_questions_and_answer_text_count_as_turns() {
 }
 
 #[test]
-fn the_digest_keeps_the_topic_and_the_latest_turns() {
-    assert_eq!(build_digest(&[], 3500, 600), "");
-    let mut turns = vec![t("user", "Taaaaa")];
-    turns.extend((1..6).map(|i| t("user", &format!("u{i}"))));
-    turns.push(t("assistant", "letzte Antwort"));
-    let d = build_digest(&turns, 60, 600);
-    let lines: Vec<&str> = d.lines().collect();
-    assert!(lines[0].starts_with("User: T"));
-    assert!(lines.contains(&"…"));
-    assert_eq!(*lines.last().unwrap(), "Assistant: letzte Antwort");
-}
-
-#[test]
-fn the_digest_has_no_gap_when_everything_fits_and_caps_each_turn() {
-    let d = build_digest(&[t("user", "Thema"), t("assistant", "ok"), t("user", "weiter")], 3500, 600);
-    assert_eq!(d.lines().collect::<Vec<_>>(), ["User: Thema", "Assistant: ok", "User: weiter"]);
-    let d = build_digest(&[t("user", &"x".repeat(900))], 3500, 100);
-    assert!(d.starts_with("User: ") && d.ends_with('…') && d.chars().count() <= 120);
-}
-
-#[test]
-fn the_model_answer_becomes_one_clean_line() {
-    assert_eq!(clean_summary("  Bottom-Bar bauen  ", 200), "Bottom-Bar bauen");
-    assert_eq!(clean_summary("\"Feature X umsetzen\"", 200), "Feature X umsetzen");
-    assert_eq!(clean_summary("„Deutsches Zitat“", 200), "Deutsches Zitat");
-    assert_eq!(clean_summary("Zusammenfassung: Y machen", 200), "Y machen");
-    assert_eq!(clean_summary("erste Zeile\nzweite", 200), "erste Zeile");
-    assert_eq!(clean_summary("a\n\n  b", 200), "a");
-    assert_eq!(clean_summary("", 200), "");
-    let long = clean_summary(&"z".repeat(300), 50);
-    assert!(long.ends_with('…') && long.chars().count() == 51);
-}
-
-#[test]
 fn the_instruction_follows_the_language_with_german_fallback() {
-    assert!(instruction("english").contains("English sentence"));
-    assert!(instruction("german").contains("deutschen Satz"));
-    assert_eq!(instruction("klingon"), instruction("german"));
+    assert!(briefing::instruction("english").contains("Waiting on you:"));
+    assert!(briefing::instruction("german").contains("Wartet auf dich:"));
+    assert_eq!(briefing::instruction("klingon"), briefing::instruction("german"));
 }
 
 #[test]
@@ -254,20 +221,98 @@ fn injected_user_lines_are_no_typed_turns_but_pasted_text_blocks_are() {
 }
 
 #[test]
-fn a_summary_is_regenerated_only_on_growth_after_cooldown_or_language_change() {
+fn a_briefing_is_regenerated_only_on_growth_after_cooldown_or_language_change() {
     let projects = tempfile::tempdir().unwrap();
     let cache = tempfile::tempdir().unwrap();
     write_transcript(projects.path(), "C:/r", "s1", &[("user", "Baue das Deck neu"), ("assistant", "ok")]);
     let gates = SummaryGates::default();
     let plan = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1000.0, gates);
     let SummaryPlan::Generate { prompt, size, cached } = plan else { panic!("ohne Cache muss erzeugt werden") };
-    assert!(prompt.starts_with(instruction("german")) && prompt.ends_with("User: Baue das Deck neu\nAssistant: ok"));
+    assert!(prompt.starts_with(briefing::instruction("german")) && prompt.ends_with("--- Chat ---\nUser: Baue das Deck neu\nAssistant: ok"));
     assert_eq!(cached, None);
-    assert_eq!(finish_summary(cache.path(), "s1", Some("\"Deck neu bauen\"\n"), size, "german", 1000.0, None).as_deref(), Some("Deck neu bauen"));
+    let answer = "Ziel: Deck neu bauen\nStand: Noch nichts.\nWartet auf dich: Tauri oder Electron?\nNächster Schritt: Du entscheidest.";
+    let short = "Deck neu bauen\nWartet auf dich: Tauri oder Electron?";
+    assert_eq!(finish_summary(cache.path(), "s1", Some(answer), size, "german", 1000.0, None).as_deref(), Some(short));
     let again = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 5000.0, gates);
-    assert_eq!(again, SummaryPlan::Cached(Some("Deck neu bauen".into())));
+    assert_eq!(again, SummaryPlan::Cached(Some(short.into())));
+    let (brief, ts) = cached_brief(cache.path(), "s1").unwrap();
+    assert_eq!((brief.state.as_str(), brief.next.as_str(), ts), ("Noch nichts.", "Du entscheidest.", 1000.0));
     let english = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "english", 1001.0, gates);
     assert!(matches!(english, SummaryPlan::Generate { .. }));
+    // Verfehlt die Antwort das Format oder scheitert der Aufruf, bleibt der alte Stand.
     assert_eq!(finish_summary(cache.path(), "s1", None, size, "english", 1001.0, Some("alt".into())).as_deref(), Some("alt"));
-    assert_eq!(cached_summary(cache.path(), "s1").as_deref(), Some("Deck neu bauen"));
+    assert_eq!(finish_summary(cache.path(), "s1", Some("Es geht ums Deck."), size, "english", 1001.0, Some("alt".into())).as_deref(), Some("alt"));
+    assert_eq!(cached_summary(cache.path(), "s1").as_deref(), Some(short));
+}
+
+#[test]
+fn a_grown_transcript_updates_the_previous_briefing_and_an_old_one_line_summary_is_replaced() {
+    let projects = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let p = write_transcript(projects.path(), "C:/r", "s1", &[("user", "Baue das Deck neu"), ("assistant", "ok")]);
+    // Ein Cache aus der Zeit der Ein-Satz-Zusammenfassung: gleiche Größe, trotzdem neu.
+    let size = std::fs::metadata(&p).unwrap().len();
+    save_json(&cache.path().join("s1.json"), &json!({"summary": "Deck neu bauen", "size": size, "ts": 900.0, "lang": "german"})).unwrap();
+    let gates = SummaryGates::default();
+    let plan = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1000.0, gates);
+    let SummaryPlan::Generate { prompt, size, cached } = plan else { panic!("altes Format muss neu erzeugt werden") };
+    assert!(!prompt.contains("Bisheriges Lagebild"));
+    finish_summary(cache.path(), "s1", Some("Ziel: Deck neu bauen\nStand: Plan steht.\nWartet auf dich: nichts\nNächster Schritt: Agent baut."), size, "german", 1000.0, cached);
+    // Der Verlauf wächst: das bisherige Lagebild geht mit in den Prompt.
+    let more: Vec<(&str, &str)> = std::iter::repeat_n(("user", "weiter so, das sieht gut aus"), 12).collect();
+    let mut turns = vec![("user", "Baue das Deck neu"), ("assistant", "ok")];
+    turns.extend(more);
+    write_transcript(projects.path(), "C:/r", "s1", &turns);
+    let plan = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1010.0, gates);
+    assert_eq!(plan, SummaryPlan::Cached(Some("Deck neu bauen".into())), "gewachsen, aber der letzte Lauf ist zu frisch");
+    let SummaryPlan::Generate { prompt, .. } = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1100.0, gates) else {
+        panic!("gewachsen und abgekühlt")
+    };
+    assert!(prompt.contains("Bisheriges Lagebild:\nZiel: Deck neu bauen\nStand: Plan steht.\nWartet auf dich: nichts\nNächster Schritt: Agent baut.\n\n--- Chat ---"));
+}
+
+#[test]
+fn the_model_answer_becomes_four_fields_whatever_decoration_it_adds() {
+    let b = briefing::parse("Hier das Lagebild:\n**Ziel:** Login reparieren\n- Stand: Fix gebaut,\n  Tests grün.\nWartet auf dich: Nichts.\nNaechster Schritt: PR öffnen").unwrap();
+    assert_eq!((b.goal.as_str(), b.state.as_str(), b.next.as_str()), ("Login reparieren", "Fix gebaut, Tests grün.", "PR öffnen"));
+    assert!(!b.waits());
+    assert_eq!(b.short("german"), "Login reparieren");
+    let e = briefing::parse("Goal: fix login\nStatus: done, tests pass\nWaiting on you: merge or wait for review?\nNext step: you decide").unwrap();
+    assert_eq!(e.short("english"), "fix login\nWaiting on you: merge or wait for review?");
+    assert_eq!(briefing::parse("Es geht um den Login."), None, "ohne Etiketten kein Lagebild");
+    assert_eq!(briefing::parse("Ziel: nur das"), None, "ohne Stand kein Lagebild");
+}
+
+#[test]
+fn the_digest_keeps_every_typed_message_the_latest_answers_and_the_recent_tool_calls() {
+    let user = |t: &str| json!({"type": "user", "message": {"content": t}});
+    let agent = |t: &str, tools: &[(&str, serde_json::Value)]| {
+        let mut blocks = vec![json!({"type": "text", "text": t})];
+        blocks.extend(tools.iter().map(|(n, i)| json!({"type": "tool_use", "name": n, "input": i})));
+        json!({"type": "assistant", "message": {"content": blocks}})
+    };
+    assert_eq!(briefing::build_digest(&[], 24_000), "");
+    let records = vec![
+        user("Reparier den Login"),
+        agent("Ich schaue nach.", &[("Read", json!({"file_path": r"C:\\r\\src\\login.rs"})), ("Bash", json!({"command": "cargo test\n--all", "description": "Tests laufen lassen"}))]),
+        json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ok"}]}}),
+        json!({"type": "assistant", "isSidechain": true, "message": {"content": [{"type": "text", "text": "Subagent"}]}}),
+        agent("Gefunden und gefixt.", &[("Edit", json!({"file_path": "src/login.rs"}))]),
+        user("Danke, bitte committen"),
+    ];
+    let d = briefing::build_digest(&records, 24_000);
+    assert_eq!(
+        d.lines().collect::<Vec<_>>(),
+        [
+            "User: Reparier den Login",
+            "Assistant: Ich schaue nach.",
+            "Tools: Read login.rs; Bash Tests laufen lassen",
+            "Assistant: Gefunden und gefixt.",
+            "Tools: Edit login.rs",
+            "User: Danke, bitte committen",
+        ]
+    );
+    // Wird es eng, bleiben die erste Nachricht und das Ende; dazwischen steht die Lücke.
+    let tight = briefing::build_digest(&records, 80);
+    assert_eq!(tight.lines().collect::<Vec<_>>(), ["User: Reparier den Login", "…", "Tools: Edit login.rs", "User: Danke, bitte committen"]);
 }

@@ -9,7 +9,8 @@
 // Passt das Panel nicht auf den Monitor oder hat der Nutzer an der Ecke gezogen, zoomt
 // Rust die ganze Webview (DockView.zoom); gemessen und gemeldet wird weiter die
 // natürliche Größe. Frei schwebend (Kante „off“) zieht ein Druck auf leere Fläche das
-// Panel mit, die Ecke unten rechts zoomt; beides führt Rust aus (panel_drag).
+// Panel mit, die Ecke unten rechts zoomt; angedockt schiebt der Streifen an der
+// Bildschirmkante das Deck die Kante entlang. Alles führt Rust aus (panel_drag).
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import type { DeckView } from "../../bindings/DeckView";
@@ -130,6 +131,21 @@ export function PanelView() {
           style={panelStyle}
           onPointerDown={edge === "off" ? startMove : undefined}
         >
+          {edge !== "off" && (
+            <span
+              className="panel-slide"
+              data-edge={edge}
+              title={t(lang, "slideGrip")}
+              aria-hidden="true"
+              onPointerDown={(e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                tip.cancel();
+                commands.panelDrag("slide", e.clientX, e.clientY);
+              }}
+            />
+          )}
           <div className="blocks">
             {letters.map((letter) => {
               const block = byLetter.get(letter);

@@ -6,7 +6,8 @@ import type { LimitView } from "./LimitView";
  */
 export type UsageView = { 
 /**
- * Die zwei Hauptlimits, die immer in der Leiste stehen.
+ * Die Limits in der Leiste: Session und Woche immer, dahinter die Wochenlimits
+ * einzelner Modelle („Fable“).
  */
 primary: Array<LimitView>, 
 /**

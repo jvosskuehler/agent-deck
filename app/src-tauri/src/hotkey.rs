@@ -6,6 +6,12 @@
 //!   Makropad): jedes Agentenfenster als Raster unter die Maus, nochmal = alle
 //!   verstecken und zurück (`deck_core::front`). Überschreibbar über `front_hotkeys` (Text oder Liste).
 //!
+//! - Glow einstellen (`config::GLOW_HOTKEY`, heute Strg+Alt+G): öffnet das Fenster dafür
+//!   (`crate::glow`). Überschreibbar über `glow_hotkey`.
+//! - Neuer Agent (`config::NEW_AGENT_HOTKEY`, heute Strg+Alt+N): wie das ＋ im Deck, im
+//!   Block des zuletzt benutzten Agenten (`Deck::create_agent_here`). Überschreibbar über
+//!   `new_agent_hotkey`.
+//!
 //! Leer schaltet eine Taste ab. Ist eine Kombination belegt (etwa vom noch laufenden
 //! Python-Deck), versucht es ihr Thread eine Weile und gibt dann auf; das Deck läuft ohne
 //! sie weiter.
@@ -30,6 +36,16 @@ pub fn start_front(app: &AppHandle, combos: Vec<String>) {
             lock(&shared(app).deck).bring_all_front(crate::native::cursor());
         });
     }
+}
+
+/// Fenster „Glow einstellen“.
+pub fn start_glow(app: &AppHandle, combo: String) {
+    listen(app, combo, "Glow-Taste", crate::glow::open);
+}
+
+/// Neuer Agent.
+pub fn start_new_agent(app: &AppHandle, combo: String) {
+    listen(app, combo, "Neuer-Agent-Taste", |app| lock(&shared(app).deck).create_agent_here(crate::now()));
 }
 
 fn listen(app: &AppHandle, combo: String, label: &'static str, press: fn(&AppHandle)) {

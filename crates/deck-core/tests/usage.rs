@@ -192,11 +192,14 @@ fn the_view_always_has_session_and_week_and_shows_extra_limits_only_with_signal(
     let mut limits = parse_usage(&sample(), DE);
     limits.push(Limit { kind: "weekly_opus".into(), group: "weekly".into(), label: "Opus (Woche)".into(), percent: Some(30), ..Default::default() });
     let v = usage_view(&snap(limits, None, Some(now)), now, DE);
-    assert_eq!(v.primary.iter().map(|l| (l.label.as_str(), l.percent)).collect::<Vec<_>>(), [("Session", Some(91.0)), ("Woche", Some(15.0))]);
+    assert_eq!(v.primary.iter().map(|l| (l.label.as_str(), l.percent)).collect::<Vec<_>>(), [("Session", Some(91.0)), ("Woche", Some(15.0)), ("Fable", Some(0.0))],
+        "das Wochenlimit eines Modells steht mit in der Leiste, unter dem Modellnamen, auch bei 0 %"
+    );
     assert_eq!(v.primary[0].resets, "1 Std. 5 Min.");
     assert_eq!(v.primary[0].color, RED);
     assert_eq!(v.extra.iter().map(|l| l.label.as_str()).collect::<Vec<_>>(), ["Opus (Woche)"]);
     assert!(!v.stale && v.error.is_none() && v.as_of.is_empty());
+
     let empty = usage_view(&UsageSnapshot::default(), now, DE);
     assert_eq!(empty.primary.iter().map(|l| (l.label.as_str(), l.percent, l.color.as_str())).collect::<Vec<_>>(), [("Session", None, GRAY), ("Woche", None, GRAY)]);
     let old = usage_view(&snap(vec![], Some("Rate-Limit"), Some(now - 3600.0)), now, DE);

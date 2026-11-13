@@ -35,8 +35,9 @@ pub const USAGE_POLL_SECONDS: u32 = 120;
 
 /// KI-Kurzzusammenfassung im Hover statt der letzten Frage.
 pub const HOVER_SUMMARY: bool = true;
-/// Modell der Zusammenfassung (günstig und schnell genügt).
-pub const HOVER_SUMMARY_MODEL: &str = "haiku";
+/// Modell des Lagebilds. Sonnet: es muss aus einem langen Verlauf Stand und offene
+/// Frage richtig herauslesen, ein Satz von Haiku traf das zu selten.
+pub const HOVER_SUMMARY_MODEL: &str = "sonnet";
 /// Zusammenfassungen offener Agenten vorab erzeugen, damit der Hover sofort steht.
 pub const HOVER_SUMMARY_PREFETCH: bool = true;
 
@@ -79,3 +80,12 @@ pub const WT_DISK_SWEEP_INTERVAL_S: f64 = 60.0;
 /// So lange (s) muss ein `.wt`-worktree ununterbrochen ohne Agenten gesehen werden,
 /// bevor er fällt (bei 60 s Takt: zwei unabhängige Sichtungen).
 pub const WT_DISK_ORPHAN_GRACE_S: f64 = 90.0;
+
+/// Fenster „Glow einstellen“ (`glow.rs`): G wie Glow. Strg+Alt ist auf der deutschen
+/// Tastatur AltGr, AltGr+G tippt aber nichts. Überschreibbar per `glow_hotkey`, leer = aus.
+pub const GLOW_HOTKEY: &str = "ctrl+alt+g";
+
+/// Neuer Agent (`actions.rs`, `create_agent_here`): N wie neu, wie das ＋ im Deck.
+/// AltGr+N tippt auf der deutschen Tastatur nichts. Überschreibbar per `new_agent_hotkey`,
+/// leer = aus.
+pub const NEW_AGENT_HOTKEY: &str = "ctrl+alt+n";

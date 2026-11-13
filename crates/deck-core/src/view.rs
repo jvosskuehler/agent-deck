@@ -168,7 +168,8 @@ pub struct LimitView {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct UsageView {
-    /// Die zwei Hauptlimits, die immer in der Leiste stehen.
+    /// Die Limits in der Leiste: Session und Woche immer, dahinter die Wochenlimits
+    /// einzelner Modelle („Fable“).
     pub primary: Vec<LimitView>,
     /// Weitere Limits, nur im Tooltip.
     pub extra: Vec<LimitView>,
@@ -285,6 +286,8 @@ pub struct SettingsView {
     /// Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
     /// abläuft (`deck_settings.json` `auto_compact`, Standard an).
     pub auto_compact: bool,
+    /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
+    pub shortcuts: Vec<crate::shortcuts::ShortcutRow>,
 }
 
 /// Inhalt des Dialogs „Ticket zuweisen“ (Kontextmenü einer Kachel). Ein Feld, die

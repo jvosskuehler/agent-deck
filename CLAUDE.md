@@ -134,6 +134,11 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
 - **Ein halb ausgefahrenes Deck ist der eine unzulässige Zustand.** Die Ein-/Ausklapp-
   Animation hat genau einen Ausgang, eine Deadline und landet im Zweifel ganz offen.
 - **Der „gesehen“-Merker hält über den Poll hinaus** (in der Datei steht weiter `done`).
+- **Ein Deck, das lebt, aber nichts zeigt, blockiert jeden Neustart** (Einzelinstanz-Sperre
+  reicht das Signal an die tote Instanz weiter; 11.11.2026). Der Herzschlag merkt das nicht,
+  ihn schreibt der Poll-Thread. Darum `ui_watch` (Hauptthread und Seite des sichtbaren
+  Fensters, `ui-alive.json`, Selbst-Neustart nach 60 s) und `instance_guard` (ein neuer Start
+  beendet eine hängende Instanz). Im Log: „Oberfläche hängt: …“ bzw. „Vorgänger-Deck … hing“.
 
 ## Konventionen
 

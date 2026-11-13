@@ -61,7 +61,7 @@ fn the_launch_spec_survives_wt_and_powershell() {
 fn every_agent_gets_its_own_window() {
     for slot in ["A1", "A2"] {
         let argv = wt::wt_argv("wt.exe", slot, r"C:\r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), None);
-        assert_eq!(argv[..4], ["wt.exe", "-w", &format!("deck-{slot}"), "new-tab"]);
+        assert_eq!(argv[..5], ["wt.exe", "-w", &format!("deck-{slot}"), "--focus", "new-tab"]);
         assert!(!argv.iter().any(|a| a == "split-pane"));
         let after = |flag: &str| argv[argv.iter().position(|a| a == flag).unwrap() + 1].clone();
         assert_eq!(after("--title"), slot);
@@ -74,26 +74,38 @@ fn every_agent_gets_its_own_window() {
 
 #[test]
 fn a_new_window_opens_where_its_tile_will_be() {
-    // Gemessen an WT 1.24 bei 150 %: 80 × 20 Zeichen = 1174 × 647, 120 × 40 = 1734 × 1207.
+    // Gemessen an WT 1.24 bei 150 % im Fokus-Modus: 80 × 20 Zeichen = 1174 × 587,
+    // 120 × 40 = 1734 × 1147.
     let cell = (14.0 / 1.5, 28.0 / 1.5);
-    let s = wt::spot((-1920, 0, 1174, 647), 1.5, cell);
+    let s = wt::spot((-1920, 0, 1174, 587), 1.5, cell);
     assert_eq!(s, wt::Spot { x: -1920, y: 0, cols: 80, rows: 20 });
-    assert_eq!(wt::spot((0, 0, 1187, 674), 1.5, cell).cols, 80, "ein angebrochenes Zeichen zählt nicht");
+    assert_eq!(wt::spot((0, 0, 1187, 614), 1.5, cell).cols, 80, "ein angebrochenes Zeichen zählt nicht");
     let argv = wt::wt_argv("wt.exe", "A2", r"C:\r", "pwsh.exe", "s.ps1", "SPEC", None, Some(&s));
-    assert_eq!(argv[..6], ["wt.exe", "-w", "deck-A2", "--pos=-1920,0", "--size=80,20", "new-tab"]);
+    assert_eq!(argv[..7], ["wt.exe", "-w", "deck-A2", "--focus", "--pos=-1920,0", "--size=80,20", "new-tab"]);
 }
 
 #[test]
 fn the_cell_size_is_learned_from_a_window_that_opened_untouched() {
     let asked = wt::Spot { x: 0, y: 0, cols: 120, rows: 40 };
-    let (cw, ch) = wt::learn_cell(&asked, (1734, 1207), 1.5).unwrap();
+    let (cw, ch) = wt::learn_cell(&asked, (1734, 1147), 1.5).unwrap();
     assert!((cw - 14.0 / 1.5).abs() < 1e-9 && (ch - 28.0 / 1.5).abs() < 1e-9);
     // Ohne Messung lieber zu klein als zu groß.
-    let guess = wt::spot((0, 0, 1734, 1207), 1.5, wt::CELL_DIP_DEFAULT);
+    let guess = wt::spot((0, 0, 1734, 1147), 1.5, wt::CELL_DIP_DEFAULT);
     assert!(guess.cols <= 120 && guess.rows <= 40);
     // Schon in die Kachel gezogen oder eingepasst: keine Schrift, nichts lernen.
     assert_eq!(wt::learn_cell(&asked, (300, 200), 1.5), None);
-    assert_eq!(wt::learn_cell(&asked, (9000, 1207), 1.5), None);
+    assert_eq!(wt::learn_cell(&asked, (9000, 1147), 1.5), None);
+}
+
+#[test]
+fn a_report_from_before_the_shell_started_belongs_to_the_predecessor() {
+    // 2026-11-11 12:00:00 UTC als FILETIME und als Unix-Zeit.
+    let start = wt::filetime_unix(134_073_504_000_000_000);
+    assert_eq!(start, 1_762_876_800.0);
+    assert!(wt::inherited(Some(start - 3600.0), start), "der Vorgänger meldete vor einer Stunde");
+    assert!(!wt::inherited(Some(start + 4.0), start), "der erste Hook der neuen Session");
+    assert!(!wt::inherited(Some(start - 0.5), start), "innerhalb der Ungenauigkeit der Startzeit");
+    assert!(!wt::inherited(None, start), "ohne Zeitstempel nichts wegwerfen");
 }
 
 #[test]

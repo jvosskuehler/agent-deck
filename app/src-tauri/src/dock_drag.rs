@@ -6,10 +6,14 @@
 //! dann dem Zeiger, bis die Taste los ist. So läuft die Bewegung in Bildschirmpixeln,
 //! unabhängig von Zoom und Skalierung der Webview, und das Panel wird nie aktiviert.
 //! Am Ende werden Lage bzw. Zoom in `deck_settings.json` gemerkt.
+//!
+//! Angedockt gibt es einen Zug: der Streifen an der Bildschirmkante des offenen Panels
+//! schiebt das Deck die Kante entlang (`slide`). Gemerkt wird `dock_along`; der Griff
+//! steht danach mittig unter der neuen Lage.
 
 use std::time::{Duration, Instant};
 
-use deck_core::dock::{Area, Edge};
+use deck_core::dock::{Area, Edge, HANDLE_LONG};
 use deck_core::zoom::zoom_from_drag;
 use serde_json::{Value, json};
 use tauri::AppHandle;
@@ -30,6 +34,8 @@ pub enum DragMode {
     Move,
     /// An der Ecke zoomen.
     Zoom,
+    /// Das angedockte Panel die Kante entlang schieben.
+    Slide,
 }
 
 impl DragMode {
@@ -37,12 +43,14 @@ impl DragMode {
         match s {
             "move" => Some(DragMode::Move),
             "zoom" => Some(DragMode::Zoom),
+            "slide" => Some(DragMode::Slide),
             _ => None,
         }
     }
 }
 
-/// Ziehen beginnen. Nur frei schwebend; läuft schon ein Zug, passiert nichts.
+/// Ziehen beginnen. `Move` und `Zoom` nur frei schwebend, `Slide` nur angedockt; läuft
+/// schon ein Zug, passiert nichts.
 /// `grab` ist die Stelle des Drucks im Panel (CSS-Pixel, `clientX/Y`): daraus wird der
 /// Griffpunkt auf dem Bildschirm, nicht aus der Zeigerposition beim Eintreffen des
 /// Befehls. Bis dahin ist der Zeiger oft schon ein Stück gewandert, und das Panel hinge
@@ -52,13 +60,15 @@ pub fn begin(app: &AppHandle, mode: DragMode, grab: Option<(f64, f64)>) {
     let Some(now) = native::cursor() else { return };
     let (rect, zoom0, start) = {
         let mut ctl = lock(&s.dock);
-        if ctl.edge != Edge::Off || ctl.dragging {
+        if (ctl.edge == Edge::Off) == (mode == DragMode::Slide) || ctl.dragging {
             return;
         }
         let p = ctl.place(s.desktop.as_ref());
         ctl.dragging = true;
-        // Die Lage steht ab jetzt fest, auch wenn sie bisher nur die Vorgabe war.
-        ctl.free = Some((p.rect.left, p.rect.top));
+        if mode != DragMode::Slide {
+            // Die Lage steht ab jetzt fest, auch wenn sie bisher nur die Vorgabe war.
+            ctl.free = Some((p.rect.left, p.rect.top));
+        }
         let k = p.scale * p.zoom;
         let start = grab.map_or(now, |(x, y)| (p.rect.left + (x * k).round() as i32, p.rect.top + (y * k).round() as i32));
         (p.rect, p.zoom, start)
@@ -95,7 +105,23 @@ fn step(app: &AppHandle, mode: DragMode, rect: Area, zoom0: f64, delta: (i32, i3
             ctl.zoom_user = zoom_from_drag(zoom0, (rect.width(), rect.height()), delta);
             relayout(app, &s, &mut ctl);
         }
+        DragMode::Slide => {
+            // Die Panelmitte folgt dem Zeiger; `along` ist der Anfang des Griffs, der
+            // mittig darunter steht. Geklemmt wird beim Legen (`panel_rect`).
+            let (center, d) = if ctl.edge.vertical() {
+                ((rect.top + rect.bottom) / 2, delta.1)
+            } else {
+                ((rect.left + rect.right) / 2, delta.0)
+            };
+            let scale = ctl.place(s.desktop.as_ref()).scale;
+            ctl.along = Some(center + d - handle_len(scale) / 2);
+            relayout(app, &s, &mut ctl);
+        }
     }
+}
+
+fn handle_len(scale: f64) -> i32 {
+    (HANDLE_LONG * scale).round() as i32
 }
 
 /// Zug zu Ende: auf die Arbeitsfläche klemmen und merken.
@@ -105,8 +131,16 @@ fn finish(app: &AppHandle, mode: DragMode) {
         let mut ctl = lock(&s.dock);
         ctl.dragging = false;
         let p = relayout(app, &s, &mut ctl);
-        ctl.free = Some((p.rect.left, p.rect.top));
+        if mode == DragMode::Slide {
+            // Aus der geklemmten Lage zurückrechnen: sonst merkte sich ein Zug über den
+            // Rand hinaus einen Wert weit draußen.
+            let center = if ctl.edge.vertical() { (p.rect.top + p.rect.bottom) / 2 } else { (p.rect.left + p.rect.right) / 2 };
+            ctl.along = Some(center - handle_len(p.scale) / 2);
+        } else {
+            ctl.free = Some((p.rect.left, p.rect.top));
+        }
         match mode {
+            DragMode::Slide => ("dock_along", json!(ctl.along)),
             DragMode::Move => ("panel_pos", json!([p.rect.left, p.rect.top])),
             DragMode::Zoom => ("panel_zoom", Value::from((ctl.zoom_user * 1000.0).round() / 1000.0)),
         }

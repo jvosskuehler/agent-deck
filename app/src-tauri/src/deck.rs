@@ -140,7 +140,8 @@ impl Deck {
         self.auto_compact(now);
         // Ticket/PR und Zusammenfassung offener Agenten im Hintergrund vorwärmen.
         let sessions = self.sessions();
-        self.services.prefetch(now, &sessions, self.lang);
+        let settled = self.settled_sessions();
+        self.services.prefetch(now, &sessions, &settled, self.lang);
         view
     }
 
@@ -152,6 +153,17 @@ impl Deck {
             .filter_map(|s| self.states.get(s))
             .map(|st| (field(st, "session_id"), field(st, "cwd")))
             .filter(|(sid, _)| !sid.is_empty())
+            .collect()
+    }
+
+    /// Sessions der angezeigten Agenten, die gerade nicht arbeiten (fertig, wartend,
+    /// untätig): für sie lohnt ein neues Lagebild.
+    fn settled_sessions(&self) -> Vec<String> {
+        self.shown_slots
+            .iter()
+            .filter_map(|s| self.states.get(s))
+            .filter(|st| !deck_core::prompt_cache::WORKING.contains(&st.get("status").and_then(|v| v.as_str()).unwrap_or("")))
+            .filter_map(|st| st.get("session_id").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(String::from))
             .collect()
     }
 
@@ -181,6 +193,25 @@ impl Deck {
         self.live = read_live(dir);
         self.found = read_found_tickets(dir);
         self.worktrees = read_found_worktrees(dir);
+        self.drop_inherited();
+    }
+
+    /// Meldungen des Vorgängers im selben Slot wegwerfen (`wt::inherited`): der Agent ist
+    /// neu, was in seinen Dateien steht, ist älter als seine Shell.
+    fn drop_inherited(&mut self) {
+        let ts = |st: Option<&SlotState>| st.and_then(|s| deck_core::field::number(s.get("ts")));
+        for (slot, start) in self.wt.started() {
+            if deck_core::wt::inherited(ts(self.states.get(&slot)), start) {
+                deck_core::slot_state::clear_state(&self.paths.state_dir, &slot);
+                self.states.remove(&slot);
+                self.slot_mode.remove(&slot);
+                self.mode_ts.remove(&slot);
+            }
+            if deck_core::wt::inherited(ts(self.live.get(&slot)), start) {
+                let _ = std::fs::remove_file(deck_core::paths::live_path(&self.paths.state_dir, &slot));
+                self.live.remove(&slot);
+            }
+        }
     }
 
     /// Shift+Tab-Reihenfolge der Agenten. Steht Bypass als Startmodus in settings.json,

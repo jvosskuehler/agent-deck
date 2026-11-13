@@ -2,6 +2,7 @@
 //! (Chat und worktree aus den Werkzeugaufrufen) und die Hover-Zusammenfassung.
 
 pub mod hook_setup;
+pub mod briefing;
 pub mod refs;
 pub mod settings;
 pub mod summarize;

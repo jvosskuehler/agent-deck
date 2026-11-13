@@ -1,7 +1,8 @@
 // Der Inhalt des Hover-Tooltips: ganz oben klein die Herkunft (Repo · Fenster · Slot,
 // bei einem worktree „↳ wt/…“, wie hover.py), dann Ticket und PR (violett, je mit
 // Herkunft: zugewiesen, Branch, Ordner, Claude Code, Titel, Chat; Geratenes gedimmt),
-// darunter die KI-Zusammenfassung; solange sie rechnet, gedämpft die letzte Frage.
+// darunter die Kurzform des Lagebilds (Ziel, in einer zweiten Zeile die offene Frage,
+// wenn der Agent auf eine Antwort wartet); solange es rechnet, gedämpft die letzte Frage.
 
 import { forwardRef } from "react";
 import type { TooltipView } from "../../bindings/TooltipView";
@@ -35,7 +36,13 @@ export const TooltipCard = forwardRef<HTMLDivElement, { tip: TooltipView }>(func
       {body && (
         <div className={pending ? "tip-body tip-body--pending" : "tip-body"}>
           {pending && <span className="tip-pulse" aria-hidden="true" />}
-          {body}
+          {pending
+            ? body
+            : body.split("\n").map((line, i) => (
+                <div key={i} className={i > 0 ? "tip-line tip-line--waiting" : "tip-line"}>
+                  {line}
+                </div>
+              ))}
         </div>
       )}
     </div>

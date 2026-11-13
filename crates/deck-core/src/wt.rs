@@ -234,10 +234,11 @@ pub fn decode_spec(spec: &str) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// Rand eines Windows-Terminal-Fensters um das Zeichenraster (Titelleiste, Innenabstand,
-/// Rollbalken), Pixel bei 100 %. Gemessen 11.11.2026 an WT 1.24: sichtbare Größe =
-/// Zeichen × Zelle + dieser Rand, unabhängig von der Schrift.
-pub const CHROME_DIP: (f64, f64) = (36.0, 58.0);
+/// Rand eines Agentenfensters um das Zeichenraster (Innenabstand, Platz des Rollbalkens,
+/// Fensterrand), Pixel bei 100 %. Gemessen 11.11.2026 an WT 1.24 im Fokus-Modus:
+/// sichtbare Größe = Zeichen × Zelle + dieser Rand, unabhängig von der Schrift. Mit
+/// Kopfzeile wären es 58 statt 18 in der Höhe.
+pub const CHROME_DIP: (f64, f64) = (36.0, 18.0);
 /// Zeichenzelle (Pixel bei 100 %), solange noch kein Fenster vermessen ist. Bewusst
 /// groß: ein zu klein geöffnetes Fenster wächst unauffällig in seine Kachel, ein zu
 /// großes läge kurz über dem Nachbarn.
@@ -288,7 +289,9 @@ pub fn wt_argv(
     profile: Option<&str>,
     spot: Option<&Spot>,
 ) -> Vec<String> {
-    let mut argv: Vec<String> = vec![wt_exe.into(), "-w".into(), window_name(slot)];
+    // Fokus-Modus: ohne Tab-Zeile und Titelleiste, sie kosten zwei Textzeilen. Schließen,
+    // Anordnen und Nach-vorn-Holen macht das Deck; den Slot nennt die Statuszeile.
+    let mut argv: Vec<String> = vec![wt_exe.into(), "-w".into(), window_name(slot), "--focus".into()];
     if let Some(s) = spot {
         // Mit `=`: eine negative Koordinate (Monitor links der Hauptanzeige) läse wt.exe
         // sonst als Schalter.
@@ -326,6 +329,20 @@ pub fn parse_pidfile(data: &Value) -> Option<(u32, i64)> {
     let pid = int(data.get("pid"))?;
     let created = int(data.get("created"))?;
     (pid > 0).then(|| (u32::try_from(pid).ok(), created)).and_then(|(p, c)| p.map(|p| (p, c)))
+}
+
+/// FILETIME (100-ns-Schritte seit 1601) als Unix-Sekunden, wie `ts` in den Zustandsdateien.
+pub fn filetime_unix(filetime: i64) -> f64 {
+    filetime as f64 / 1e7 - 11_644_473_600.0
+}
+
+/// Stammt eine Meldung mit Zeitstempel `ts` vom Vorgänger im selben Slot, also von vor
+/// dem Start der Shell (`shell_start`, Unix-Sekunden)? Slot-Namen werden recycelt, und
+/// wer einen Agenten am Deck vorbei schließt (Strg+Shift+W, `/exit`), lässt dessen
+/// Dateien liegen: der Nachfolger zeigte sonst Session, Zusammenfassung und letzte
+/// Frage des Vorgängers. Eine Sekunde Spiel, so genau ist die Startzeit nur.
+pub fn inherited(ts: Option<f64>, shell_start: f64) -> bool {
+    ts.is_some_and(|t| t < shell_start - 1.0)
 }
 
 /// Zwei FILETIME-Startzeiten (100-ns-Schritte) gelten als gleich, wenn sie weniger als

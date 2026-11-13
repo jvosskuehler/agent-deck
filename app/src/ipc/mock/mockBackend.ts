@@ -16,7 +16,7 @@ import type { TileView } from "../../bindings/TileView";
 import { langFromSetting, type Lang } from "../../logic/i18n";
 import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRect, Unlisten } from "../contract";
 import type { OrphanView } from "../../bindings/OrphanView";
-import { initialBlocks, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
+import { initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
 
@@ -96,6 +96,8 @@ export function createMockBackend(): Backend {
     for (const b of blocks) for (const t of b.tiles) t.statusLabel = statusText(t.status, lang);
   };
 
+  let glow = initialGlow();
+  const glowView = () => ({ glow, night: params.get("night") === "1", lang });
   let nextSlotNo = 6;
   let tipSlot: string | null = null;
   let summaryTimer = 0;
@@ -183,10 +185,19 @@ export function createMockBackend(): Backend {
     panel_drag: ({ mode }) => console.info("[mock] Panel ziehen", mode),
     focus_block: ({ letter }) => console.info("[mock] Fenster nach vorn", letter),
     tooltip_content_size: () => undefined,
+    dialog_content_size: () => undefined,
     get_ticket: () => ({ slot: "B3", current: "", lang }),
     submit_ticket: ({ ticket }) => console.info("[mock] Ticket", ticket),
     kill_orphan: ({ id }) => killOrphans([id]),
     kill_all_orphans: () => killOrphans(orphans.map((o) => o.id)),
+    ui_pong: () => undefined,
+    get_glow: () => glowView(),
+    set_glow: (a) => {
+      glow = a.glow;
+      return glowView();
+    },
+    open_glow: () => console.info("[mock] Glow einstellen öffnen"),
+    open_keys: () => console.info("[mock] Tastenkürzel öffnen"),
   };
 
   function originOf(slot: string): string[] {

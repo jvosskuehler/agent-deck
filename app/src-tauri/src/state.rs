@@ -29,6 +29,8 @@ pub struct AppState {
     /// Slot, für den der Ticket-Dialog gerade offen ist.
     pub ticket_slot: Mutex<Option<String>>,
     pub desktop: Arc<dyn Desktop>,
+    /// Der eigene Glow des Fokus-Rahmens (`crate::glow`), geteilt mit dem Rahmen-Thread.
+    pub glow: crate::glow::GlowCell,
 }
 
 pub type Shared = Arc<AppState>;

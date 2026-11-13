@@ -43,7 +43,7 @@ use crate::frame_gpu::GpuPipeline;
 use crate::frame_layout::FrameLayout;
 use crate::guard;
 use crate::monitor::monitor_of_window;
-use crate::frame_window::create_click_through;
+use crate::frame_window::{clip_to_work_areas, create_click_through};
 use crate::types::{Error, Hwnd, Rect, Result};
 use crate::window::{is_minimized, is_window};
 
@@ -89,7 +89,8 @@ impl GpuFocusFrame {
     /// Monitors. `night`: das Terminal ist dunkel (Farbe der Schneeflocken im Winter).
     /// `Ok(false)`: nichts zu zeigen (Fenster weg, minimiert, außerhalb), der Rahmen ist
     /// dann versteckt.
-    pub fn draw(&mut self, target: Hwnd, design: Design, seed: i32, t: f64, night: bool) -> Result<bool> {
+    /// `glow` sind die Werte des eigenen Glows (nur für [`Design::Eigen`] gelesen).
+    pub fn draw(&mut self, target: Hwnd, design: Design, seed: i32, t: f64, night: bool, glow: &[[f32; 4]; 4]) -> Result<bool> {
         guard::check("frame_gpu_overlay")?;
         let Some(layout) = layout_of(target) else {
             self.hide();
@@ -98,13 +99,17 @@ impl GpuFocusFrame {
         let frame = layout.frame;
         let (w, h) = (frame.width() as u32, frame.height() as u32);
         let rtv = self.target_view(w, h)?;
-        self.gpu.draw(&rtv, w, h, &layout.params(design, seed, t).with_night(night));
+        let params = layout.params(design, seed, t).with_night(night);
+        let params = if design == Design::Eigen { params.with_glow(glow) } else { params };
+        self.gpu.draw(&rtv, w, h, &params);
         let swap = &self.surface.as_ref().expect("eben angelegt").swap;
         // SAFETY: eigene Swapchain; Present(1) wartet auf den nächsten Bildwechsel.
         unsafe { swap.Present(1, DXGI_PRESENT(0)) }
             .ok()
             .map_err(|e| Error::win("Present", e))?;
         if self.placed != Some(frame) {
+            // Der Hof ragt über das Terminal hinaus; die Taskleiste bleibt frei.
+            clip_to_work_areas(self.hwnd, frame);
             // SAFETY: eigenes Fenster; zeigt es, ohne es zu aktivieren.
             unsafe {
                 SetWindowPos(

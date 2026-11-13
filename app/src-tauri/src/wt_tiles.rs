@@ -12,16 +12,16 @@ use std::collections::HashMap;
 
 use deck_core::arrange::{self, max_cols_for, tile_grid};
 use deck_core::dock::Area;
-use deck_core::group_shadow::seam_px;
+use deck_core::group_shadow::ring_px;
 use deck_core::wt::{WINDOW_CLASS, slot_from_title};
 use deck_win::effects::Desktop;
 use deck_win::{Hwnd, Rect};
 
-/// Die Kachel `(x, y, w, h)` als Fensterfläche: rechts und unten bleibt die Naht frei
-/// (`deck_core::group_shadow`), dort scheint die Nahtfarbe des Gruppenschattens durch.
+/// Die Kachel `(x, y, w, h)` als Fensterfläche: rundum bleibt der feine Statusring frei
+/// (`deck_core::group_shadow`), dort scheint die Farbe des Zustands durch.
 fn tile_rect((x, y, w, h): arrange::Rect, scale: f64) -> Rect {
-    let seam = seam_px(scale);
-    Rect::from_xywh(x as i32, y as i32, (w - seam).max(1) as i32, (h - seam).max(1) as i32)
+    let ring = ring_px(scale);
+    Rect::from_xywh((x + ring) as i32, (y + ring) as i32, (w - 2 * ring).max(1) as i32, (h - 2 * ring).max(1) as i32)
 }
 
 /// Vor dem Legen eines Rasters: den Fenstern den eigenen Schatten nehmen. Ohne ihn
@@ -89,9 +89,11 @@ pub fn screen_cols(desktop: &dyn Desktop, rows: &[Vec<String>]) -> u32 {
     max_cols_for(i64::from(area.width()), desktop.scale_of(hwnd)) as u32
 }
 
-/// Die Fenster dieser Agenten in Slot-Reihenfolge kacheln. Liefert die Zahl der
-/// gelegten Fenster.
-pub fn tile(desktop: &dyn Desktop, slots: &[String]) -> usize {
+/// Die Fenster dieser Agenten in Slot-Reihenfolge kacheln. `room` Kacheln am Ende bleiben
+/// frei für Fenster, die gleich aufgehen ([`next_tile`] gibt sie ihnen): so rücken die
+/// liegenden schon beiseite, bevor das neue erscheint. Liefert die Zahl der gelegten
+/// Fenster.
+pub fn tile(desktop: &dyn Desktop, slots: &[String], room: usize) -> usize {
     let mut found: HashMap<String, Hwnd> = HashMap::new();
     for w in desktop.class_windows(WINDOW_CLASS) {
         if let Some(slot) = slot_from_title(Some(&w.title))
@@ -110,7 +112,7 @@ pub fn tile(desktop: &dyn Desktop, slots: &[String]) -> usize {
     flatten(desktop, &order);
     let cols = max_cols_for(i64::from(area.width()), scale);
     let grid = tile_grid(
-        order.len() as i64,
+        (order.len() + room) as i64,
         (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
         cols,
     );
@@ -170,10 +172,12 @@ pub fn monitor_under(desktop: &dyn Desktop, pos: Option<(i32, i32)>) -> Option<(
 /// der sie gerade auf dem Bildschirm liegen.
 ///
 /// Anders als [`tile`] auch die minimierten: sie werden wiederhergestellt, denn wer alle
-/// holt, meint alle. Ihre Lage ist der Platz, an den sie zurückkehren würden
+/// holt, meint alle. Alles in einem Zug ([`Desktop::show_together`]): Wiederherstellen,
+/// Legen und über die anderen Fenster Heben, damit der Block auf einmal erscheint.
+/// Die Tastatur bekommt keines. Ihre Lage ist der Platz, an den sie zurückkehren würden
 /// (`resting_rect`): versteckte Fenster kommen so in der Ordnung von vorher wieder. Ein Raster statt eines je Block, weil sich zwei Blöcke auf demselben
 /// Monitor sonst überdecken. Ohne `here` bleiben die Fenster liegen, wo sie sind.
-/// Liefert `(Slot, Fenster)` in Raster-Reihenfolge; nach vorn holt der Aufrufer.
+/// Liefert `(Slot, Fenster)` in Raster-Reihenfolge.
 pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>) -> Vec<(String, Hwnd)> {
     let mut found: HashMap<String, (Hwnd, bool)> = HashMap::new();
     for w in desktop.class_windows(WINDOW_CLASS) {
@@ -199,13 +203,8 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
             names.push(s.clone());
         }
     }
-    let order: Vec<(String, Hwnd, bool)> =
-        names.iter().filter_map(|s| found.get(s).map(|(h, m)| (s.clone(), *h, *m))).collect();
-    for (_, hwnd, minimized) in &order {
-        if *minimized {
-            let _ = desktop.restore(*hwnd);
-        }
-    }
+    let order: Vec<(String, Hwnd)> = names.iter().filter_map(|s| found.get(s).map(|(h, _)| (s.clone(), *h))).collect();
+    let mut moves: Vec<(Hwnd, Option<Rect>)> = order.iter().map(|(_, h)| (*h, None)).collect();
     if let Some((area, scale)) = here.filter(|_| !order.is_empty()) {
         let cols = max_cols_for(i64::from(area.width()), scale);
         let grid = tile_grid(
@@ -213,22 +212,39 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
             (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
             cols,
         );
-        flatten(desktop, &order.iter().map(|(_, h, _)| *h).collect::<Vec<_>>());
-        for ((_, hwnd, _), cell) in order.iter().zip(grid) {
-            let _ = desktop.place(*hwnd, tile_rect(cell, scale));
+        flatten(desktop, &order.iter().map(|(_, h)| *h).collect::<Vec<_>>());
+        for ((_, target), cell) in moves.iter_mut().zip(grid) {
+            *target = Some(tile_rect(cell, scale));
         }
     }
-    order.into_iter().map(|(s, h, _)| (s, h)).collect()
+    if !moves.is_empty() {
+        let _ = desktop.show_together(&moves);
+    }
+    order
 }
 
-/// Taste „alle nach vorn“: [`gather`] auf den Monitor unter `cursor`, dann alle Fenster
-/// über die anderen legen. Die Tastatur bekommt KEINES: sie bleibt, wo sie war, und kein
-/// Fokus-Rahmen springt an. Wer tippen will, klickt in das Terminal, das er meint.
+/// Taste „alle nach vorn“: [`gather`] auf den Monitor unter `cursor`. Die Tastatur
+/// bekommt KEINES: sie bleibt, wo sie war, und kein Fokus-Rahmen springt an. Wer tippen
+/// will, klickt in das Terminal, das er meint.
 pub fn bring_front(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32, i32)>) {
-    let placed = gather(desktop, slots, monitor_under(desktop, cursor));
-    for (_, h) in placed.iter().rev() {
-        let _ = desktop.raise(*h);
-    }
+    gather(desktop, slots, monitor_under(desktop, cursor));
+}
+
+/// Liegen alle offenen Fenster dieser Agenten auf dem Monitor unter `cursor` (Mitte des
+/// Fensters auf seiner Arbeitsfläche)? Nur dann versteckt die Taste sie; liegen sie
+/// woanders, holt sie sie herüber, mit einem Druck statt zweien. Ohne Zeiger `true`:
+/// dann bleibt es beim Ein- und Ausblenden.
+pub fn on_cursor_monitor(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32, i32)>) -> bool {
+    let Some((work, _)) = monitor_under(desktop, cursor) else { return true };
+    desktop
+        .class_windows(WINDOW_CLASS)
+        .into_iter()
+        .filter(|w| !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .filter_map(|w| desktop.window_rect(w.hwnd))
+        .all(|r| {
+            let (x, y) = r.center();
+            work.contains(x, y)
+        })
 }
 
 /// Ab so vielen Pixeln Überlappung in beiden Richtungen gilt ein Fenster als verdeckt;
@@ -275,15 +291,21 @@ pub fn all_open(desktop: &dyn Desktop, slots: &[String]) -> bool {
 /// Taste „alle nach vorn“, zweiter Druck: erst zurück in das Fenster `back`, aus dem man
 /// kam, dann die Fenster dieser Agenten minimieren. In dieser Reihenfolge, damit die
 /// Tastatur schon im Ausgangsfenster ist und nicht von Terminal zu Terminal wandert.
+/// Alle in einem Zug ([`Desktop::hide_together`]), damit der Block auf einmal verschwindet.
 pub fn hide(desktop: &dyn Desktop, slots: &[String], back: Option<Hwnd>) {
-    if let Some(h) = back {
-        let _ = desktop.focus(h);
-    }
-    for w in desktop.class_windows(WINDOW_CLASS) {
-        if !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)) {
-            let _ = desktop.minimize(w.hwnd);
+    let open: Vec<Hwnd> = desktop
+        .class_windows(WINDOW_CLASS)
+        .into_iter()
+        .filter(|w| !w.minimized && slot_from_title(Some(&w.title)).is_some_and(|s| slots.contains(&s)))
+        .map(|w| w.hwnd)
+        .collect();
+    if open.is_empty() {
+        if let Some(h) = back {
+            let _ = desktop.focus(h);
         }
+        return;
     }
+    let _ = desktop.hide_together(&open, back);
 }
 
 #[cfg(test)]
@@ -320,9 +342,9 @@ mod tests {
         assert_eq!(
             d.placed(),
             [
-                (Hwnd(11), Rect::new(1920, 0, 2719, 1159)),
-                (Hwnd(12), Rect::new(2720, 0, 3519, 1159)),
-                (Hwnd(21), Rect::new(3520, 0, 4319, 1159)),
+                (Hwnd(11), Rect::new(1921, 1, 2719, 1159)),
+                (Hwnd(12), Rect::new(2721, 1, 3519, 1159)),
+                (Hwnd(21), Rect::new(3521, 1, 4319, 1159)),
             ]
         );
     }
@@ -357,6 +379,21 @@ mod tests {
         assert_eq!(coverer(&d, &slots), None);
         d.set_foreground(Hwnd(500), "Editor", "Notepad");
         assert_eq!(coverer(&d, &slots), Some(Hwnd(500)), "zurück im Editor: er liegt wieder darüber");
+    }
+
+    #[test]
+    fn agents_on_another_monitor_than_the_mouse_are_not_where_the_key_hides_them() {
+        let d = FakeDesktop::default();
+        d.add_monitor(Rect::new(1920, 0, 4320, 1200), Rect::new(1920, 0, 4320, 1160), 1.0);
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 960, 1040), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(960, 0, 1920, 1040), false);
+        d.add_wt(Hwnd(13), "A3", Rect::new(3000, 0, 3800, 600), true);
+        let slots: Vec<String> = vec!["A1".into(), "A2".into(), "A3".into()];
+        assert!(on_cursor_monitor(&d, &slots, Some((500, 500))), "minimierte zählen nicht");
+        assert!(!on_cursor_monitor(&d, &slots, Some((2500, 500))));
+        assert!(on_cursor_monitor(&d, &slots, None), "ohne Zeiger: wie bisher ein- und ausblenden");
+        d.move_wt(Hwnd(12), Rect::new(1800, 0, 2700, 1040));
+        assert!(!on_cursor_monitor(&d, &slots, Some((500, 500))), "eines liegt schon drüben");
     }
 
     #[test]
@@ -398,14 +435,14 @@ mod tests {
         let d = FakeDesktop::default();
         let none: Vec<String> = Vec::new();
         // Leerer Block: die ganze Arbeitsfläche der Hauptanzeige.
-        assert_eq!(next_tile(&d, &none, 0), Some((Rect::new(0, 0, 1919, 1039), 1.0)));
-        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 1919, 1039), false);
+        assert_eq!(next_tile(&d, &none, 0), Some((Rect::new(1, 1, 1919, 1039), 1.0)));
+        d.add_wt(Hwnd(11), "A1", Rect::new(1, 1, 1919, 1039), false);
         d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), true);
         let slots: Vec<String> = vec!["A1".into(), "A2".into()];
         // Das minimierte A2 kachelt nicht mit: zwei Spalten, das neue rechts.
-        assert_eq!(next_tile(&d, &slots, 0), Some((Rect::new(960, 0, 1919, 1039), 1.0)));
+        assert_eq!(next_tile(&d, &slots, 0), Some((Rect::new(961, 1, 1919, 1039), 1.0)));
         // Ein zweites, gleich hinterher angefordertes: drei Spalten, ganz rechts.
-        assert_eq!(next_tile(&d, &slots, 1), Some((Rect::new(1280, 0, 1919, 1039), 1.0)));
+        assert_eq!(next_tile(&d, &slots, 1), Some((Rect::new(1281, 1, 1919, 1039), 1.0)));
     }
 
     #[test]
@@ -425,12 +462,24 @@ mod tests {
         d.add_wt(Hwnd(12), "A2", Rect::new(100, 100, 900, 700), false);
         d.add_wt(Hwnd(13), "A3", Rect::new(100, 100, 900, 700), true);
         d.add_wt(Hwnd(14), "Einstellungen", Rect::new(0, 0, 10, 10), false);
-        let n = tile(&d, &["A1".into(), "A2".into(), "A3".into()]);
+        let n = tile(&d, &["A1".into(), "A2".into(), "A3".into()], 0);
         assert_eq!(n, 2, "minimierte bleiben liegen");
         let placed = d.placed();
-        // Rechts und unten bleibt je Kachel die Naht frei (1 px bei 100 %).
-        assert_eq!(placed[0], (Hwnd(11), Rect::new(0, 0, 959, 1039)));
-        assert_eq!(placed[1], (Hwnd(12), Rect::new(960, 0, 1919, 1039)));
+        // Rundum bleibt je Kachel der Statusring frei (1 px bei 100 %).
+        assert_eq!(placed[0], (Hwnd(11), Rect::new(1, 1, 959, 1039)));
+        assert_eq!(placed[1], (Hwnd(12), Rect::new(961, 1, 1919, 1039)));
         assert_eq!(hwnd_of(&d, "A3"), Some(Hwnd(13)));
+    }
+
+    #[test]
+    fn lying_agents_make_room_before_the_new_window_opens() {
+        let d = FakeDesktop::default();
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 1919, 1039), false);
+        let slots: Vec<String> = vec!["A1".into()];
+        // Die freie Kachel ist genau die, in der das neue Fenster aufgeht.
+        let (spot, _) = next_tile(&d, &slots, 0).unwrap();
+        assert_eq!(tile(&d, &slots, 1), 1);
+        assert_eq!(d.placed()[0], (Hwnd(11), Rect::new(1, 1, 959, 1039)));
+        assert_eq!(spot, Rect::new(961, 1, 1919, 1039), "rechts neben A1, Statusring frei");
     }
 }

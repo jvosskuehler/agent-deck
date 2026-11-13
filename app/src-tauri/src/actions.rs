@@ -11,6 +11,7 @@ use deck_core::status_model::mode_steps;
 use deck_win::Hwnd;
 use serde_json::Value;
 
+use crate::applog::note;
 use crate::deck::{AwaitNew, Deck};
 
 impl Deck {
@@ -60,6 +61,25 @@ impl Deck {
         }
     }
 
+    /// Taste „Neuer Agent“ (`config::NEW_AGENT_HOTKEY`): wie das ＋ im Deck, und zwar im
+    /// Block des zuletzt benutzten Agenten. Gibt es keinen, im Heimat-Block, sonst im
+    /// ersten Block der Anzeige.
+    pub fn create_agent_here(&mut self, now: f64) {
+        let of_slot = |slot: &String| slot.chars().take(1).collect::<String>();
+        let win = self
+            .active_slot
+            .iter()
+            .map(of_slot)
+            .chain(self.home_win.clone())
+            .chain(self.shown_slots.iter().map(of_slot))
+            .chain(self.wt.blocks().into_iter().map(|(w, _)| w))
+            .find(|w| self.wt.has(w));
+        match win {
+            Some(win) => self.create_agent(&win, now),
+            None => note("Neuer-Agent-Taste: kein Block offen, nichts gestartet"),
+        }
+    }
+
     /// Sprung-Taste: das Pane, das am längsten wartet; steht man schon bei einem
     /// Wartenden, der nächste (reihum). Wartet niemand, passiert nichts.
     pub fn jump_to_waiting(&mut self) {
@@ -76,15 +96,24 @@ impl Deck {
     /// wieder (minimiert), und es geht zurück in das Fenster, aus dem man kam
     /// (`deck_core::front`). Verdeckt sie etwas, etwa ein Browser, den ein Agent geöffnet
     /// hat, holt die Taste sie erst nach vorn. So lassen sie sich ein- und ausblenden.
+    /// Liegen sie offen, aber auf einem anderen Monitor als die Maus, zieht die Taste sie
+    /// herüber, statt sie zu verstecken (seit 12.11.2026): ein Druck statt zweien.
     pub fn bring_all_front(&mut self, cursor: Option<(i32, i32)>) {
         let slots = self.shown_slots.clone();
         let fg = self.desktop.foreground().filter(|w| w.pid != std::process::id());
         let on_agent = fg.is_some() && self.wt.slot_in_front().is_some();
-        let hide = self.wt.all_open(&slots) && self.wt.coverer(&slots).is_none();
+        let open = self.wt.all_open(&slots) && self.wt.coverer(&slots).is_none();
+        let moving = open && !self.wt.on_cursor_monitor(&slots, cursor);
+        let hide = open && !moving;
         let desktop = self.desktop.clone();
         // Ein Agent ist kein Ausgangspunkt: er wird beim Verstecken selbst minimiert.
         let origin = fg.filter(|_| !on_agent).map(|w| w.hwnd.0);
-        let back = self.front_toggle.press(origin, hide, |h| desktop.is_alive(Hwnd(h)));
+        // Herüberziehen aus einem Agenten heraus lässt den Rückweg, wie er war.
+        let back = if moving && origin.is_none() {
+            None
+        } else {
+            self.front_toggle.press(origin, hide, |h| desktop.is_alive(Hwnd(h)))
+        };
         if hide {
             self.wt.hide_all(&slots, back.map(Hwnd));
             return;

@@ -70,9 +70,9 @@ impl Rig {
         self.deck.store.bindings.insert(win.into(), repo.into());
     }
     pub(crate) fn wt_agent(&self, slot: &str, pid: u32) {
-        let rec = json!({"pid": pid, "created": 133_000_000_000_000_000i64, "slot": slot});
+        let rec = json!({"pid": pid, "created": 116_444_736_000_000_000i64, "slot": slot});
         fs::write(self.deck.paths.state_dir.join(format!("{slot}.wtpid")), rec.to_string()).unwrap();
-        self.procs.alive.lock().unwrap().insert(pid, 133_000_000_000_000_000);
+        self.procs.alive.lock().unwrap().insert(pid, 116_444_736_000_000_000);
     }
     /// Was in die Konsolen getippt wurde, je Sendung `(pid, Text ohne Pausen)`.
     pub(crate) fn typed(&self) -> Vec<(u32, String)> {
@@ -186,6 +186,22 @@ fn closing_an_agent_forgets_its_traces_so_a_recycled_slot_name_starts_clean() {
 }
 
 #[test]
+fn the_new_agent_key_opens_in_the_block_of_the_last_used_agent() {
+    let mut r = rig();
+    r.wt_block("A", "repo-a");
+    r.wt_block("B", "repo-b");
+    r.deck.active_slot = Some("B2".into());
+    r.deck.create_agent_here(100.0);
+    assert_eq!(r.deck.await_new.as_ref().map(|a| a.win.as_str()), Some("B"));
+
+    // Kein zuletzt benutzter Agent: der erste offene Block.
+    r.deck.active_slot = None;
+    r.deck.await_new = None;
+    r.deck.create_agent_here(101.0);
+    assert_eq!(r.deck.await_new.as_ref().map(|a| a.win.as_str()), Some("A"));
+}
+
+#[test]
 fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
     let mut r = rig();
     r.wt_block("A", "repo");
@@ -260,7 +276,7 @@ fn terminal_agents_open_in_their_own_window_and_take_keys_through_the_console() 
     r.deck.create_agent("A", 100.0);
     let argv = r.launcher.0.lock().unwrap().last().cloned().unwrap();
     // Geht gleich an seinem Platz auf: leerer Block = ganze Arbeitsfläche der Hauptanzeige.
-    assert_eq!(&argv[..6], ["wt.exe", "-w", "deck-A1", "--pos=0,0", "--size=188,44", "new-tab"]);
+    assert_eq!(&argv[..7], ["wt.exe", "-w", "deck-A1", "--focus", "--pos=1,1", "--size=188,46", "new-tab"]);
     assert!(argv.contains(&"--suppressApplicationTitle".to_string()));
 
     r.wt_agent("A1", 4242);
@@ -313,6 +329,38 @@ fn the_front_key_fetches_all_agents_and_a_second_press_goes_back() {
 }
 
 #[test]
+fn with_the_mouse_on_another_monitor_the_key_moves_the_agents_over_in_one_press() {
+    let mut r = rig();
+    r.desk.add_monitor(Rect::new(1920, 0, 4320, 1200), Rect::new(1920, 0, 4320, 1160), 1.0);
+    r.wt_block("D", "x");
+    r.wt_agent("D1", 71);
+    r.wt_agent("D2", 72);
+    r.desk.add_wt(Hwnd(31), "D1", Rect::new(0, 0, 960, 1040), false);
+    r.desk.add_wt(Hwnd(32), "D2", Rect::new(960, 0, 1920, 1040), false);
+    r.deck.tick(100.0);
+    r.desk.add_title(Hwnd(500), "Editor");
+    r.desk.set_foreground(Hwnd(500), "Editor", "Notepad");
+    r.deck.bring_all_front(Some((10, 10)));
+    assert_eq!(r.desk.raised().len(), 2, "erster Druck holt sie nach vorn, links");
+
+    // Die Maus steht rechts: nicht verstecken, sondern herüberziehen.
+    r.deck.bring_all_front(Some((2500, 500)));
+    assert!(r.desk.minimized().is_empty(), "nichts versteckt");
+    let placed = r.desk.placed();
+    let moved: Vec<(Hwnd, Rect)> = placed[placed.len().saturating_sub(2)..].to_vec();
+    assert_eq!(moved.len(), 2);
+    assert!(moved.iter().all(|(_, rc)| rc.left >= 1920), "beide auf dem rechten Monitor: {moved:?}");
+
+    // Liegen sie dort, versteckt der nächste Druck sie wie gewohnt, zurück in den Editor.
+    for (h, rc) in moved {
+        r.desk.move_wt(h, rc);
+    }
+    r.deck.bring_all_front(Some((2500, 500)));
+    assert_eq!(r.desk.minimized(), [Hwnd(31), Hwnd(32)]);
+    assert_eq!(r.desk.focused().last(), Some(&Hwnd(500)), "der Rückweg von vor dem Umzug gilt noch");
+}
+
+#[test]
 fn whoever_went_back_to_another_window_fetches_instead_of_hiding() {
     let mut r = rig();
     r.wt_block("D", "x");
@@ -327,6 +375,27 @@ fn whoever_went_back_to_another_window_fetches_instead_of_hiding() {
     r.deck.bring_all_front(Some((10, 10)));
     assert!(r.desk.minimized().is_empty());
     assert_eq!(r.desk.raised(), [Hwnd(31), Hwnd(31)]);
+}
+
+#[test]
+fn a_new_agent_does_not_inherit_session_and_prompt_of_its_predecessor_in_the_slot() {
+    let mut r = rig();
+    r.wt_block("D", "x");
+    // D1 wurde am Deck vorbei geschlossen: seine Dateien liegen noch da.
+    r.state("D1", json!({"slot": "D1", "status": "done", "ts": 50.0, "session_id": "alt", "prompt": "alte Frage"}));
+    let live = r.deck.paths.state_dir.join("D1.live.json");
+    fs::write(&live, json!({"session_name": "alter Titel", "ts": 55.0}).to_string()).unwrap();
+    // Ein neuer Agent im selben Slot, Shell gestartet bei Unix 1000.
+    let created = 116_444_736_000_000_000i64 + 1000 * 10_000_000;
+    fs::write(r.deck.paths.state_dir.join("D1.wtpid"), json!({"pid": 81, "created": created, "slot": "D1"}).to_string()).unwrap();
+    r.procs.alive.lock().unwrap().insert(81, created as u64);
+    r.deck.tick(1001.0);
+    assert!(r.deck.state_of("D1").is_none(), "nichts vom Vorgänger");
+    assert!(!r.deck.paths.state_dir.join("D1.json").exists() && !live.exists());
+    // Der erste Hook der neuen Session bleibt.
+    r.state("D1", json!({"slot": "D1", "status": "idle", "ts": 1004.0, "session_id": "neu"}));
+    r.deck.tick(1005.0);
+    assert_eq!(r.deck.state_of("D1").and_then(|s| s.get("session_id")).and_then(|v| v.as_str()), Some("neu"));
 }
 
 #[test]

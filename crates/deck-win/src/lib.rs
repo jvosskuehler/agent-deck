@@ -39,12 +39,16 @@ pub mod frame_window;
 pub mod hotkey;
 pub mod idle;
 pub mod monitor;
+pub mod paste_guard;
 pub mod proc_env;
 pub mod proc_scan;
 pub mod procs;
 pub mod shadow_window;
+pub mod speechmike;
 pub mod taskbar;
 pub mod tcp_listen;
+pub mod together;
+pub mod veil;
 pub mod which;
 pub mod window;
 

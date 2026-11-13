@@ -12,8 +12,8 @@ use deck_core::dock::Area;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, HWND_TOPMOST, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE, SWP_NOACTIVATE,
-    SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow,
+    GetCursorPos, GetSystemMetrics, HWND_TOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow,
 };
 
 fn hwnd(raw: isize) -> HWND {
@@ -41,6 +41,13 @@ fn place(raw: isize, r: Area, show: bool) {
     let mut flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER;
     if show {
         flags |= SWP_SHOWWINDOW;
+        // Ein minimiertes Fenster (Win+M, „Alle Fenster minimieren“) liegt bei -32000 und
+        // bleibt dort: `SetWindowPos` holt es nicht zurück, der Griff wäre für immer
+        // unsichtbar (10.11.2026). Erst wiederherstellen, ohne zu aktivieren.
+        // SAFETY: eigenes Fenster.
+        if unsafe { IsIconic(hwnd(raw)) }.as_bool() {
+            let _ = unsafe { ShowWindow(hwnd(raw), SW_SHOWNOACTIVATE) };
+        }
     }
     // SAFETY: eigenes Fenster; SetWindowPos liest nur die übergebenen Werte.
     let _ = unsafe { SetWindowPos(hwnd(raw), Some(HWND_TOPMOST), r.left, r.top, r.width().max(1), r.height().max(1), flags) };

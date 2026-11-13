@@ -49,6 +49,10 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
         let mut d = lock(&s.deck);
         d.modal = modal;
         let v = d.tick(now);
+        // Zustand je Slot für den Statusrand der Agentenfenster.
+        if let Ok(mut m) = crate::group_shadow::statuses().write() {
+            *m = v.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), t.status)).collect();
+        }
         tooltip::refresh(app, &d);
         (v, d.paths.app_dir.clone())
     };

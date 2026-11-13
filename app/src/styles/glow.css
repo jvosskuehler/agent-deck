@@ -1,0 +1,333 @@
+/* Fenster „Glow einstellen“: Bausteine der Einstellungen (settings.css), zwei Spalten
+ * nebeneinander. Die aktive Spalte (das System ist gerade hell bzw. dunkel) trägt eine
+ * Haarlinie und ein Schild „aktiv“. */
+
+/* Das Fenster folgt der Inhaltshöhe (useDialogFit), ein Rollbalken stört nur. Nur wenn
+ * der Inhalt höher als der Bildschirm ist, rollt die Seite noch, per Mausrad. */
+html:has(.glow),
+body:has(.glow) {
+  scrollbar-width: none;
+}
+
+.glow {
+  max-width: none;
+  gap: 14px;
+}
+
+.glow-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.glow-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--hl-med);
+  border-radius: 12px;
+}
+
+.glow-col[data-active] {
+  border-color: var(--hl-high);
+  background: var(--hl-low);
+}
+
+.glow-badge {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--overlay);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ok-ink);
+}
+
+/* Vorschau: ein Stück Terminal auf dem Grund der jeweiligen Seite, ungefähr wie der
+ * Shader. Der echte Rahmen liegt am Agentenfenster. */
+.glow-preview {
+  display: grid;
+  place-items: center;
+  height: 86px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.glow-preview[data-side="light"] {
+  background: #ebe6e3;
+}
+
+.glow-preview[data-side="dark"] {
+  background: #26211e;
+}
+
+.glow-preview-win {
+  width: 62%;
+  height: 46px;
+  border-radius: 2px;
+}
+
+.glow-preview[data-side="light"] .glow-preview-win {
+  background: #faf4ed;
+}
+
+.glow-preview[data-side="dark"] .glow-preview-win {
+  background: #1b1c1d;
+}
+
+/* ── Farbwahl ─────────────────────────────────────────────────────────── */
+
+.glow-color {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.glow-sv {
+  position: relative;
+  height: 120px;
+  border-radius: 8px;
+  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.glow-hue {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.glow-sv-dot,
+.glow-hue-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.glow-hue-dot {
+  top: 50%;
+}
+
+.glow-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.glow-swatch {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--hl-med);
+  border-radius: 8px;
+}
+
+.glow-hex {
+  flex: 1;
+  -webkit-user-select: text;
+  user-select: text;
+  text-transform: uppercase;
+}
+
+.glow-outer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.glow-auto {
+  align-self: flex-start;
+  margin: 0;
+}
+
+.glow-auto:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Glow-Art und Animation ───────────────────────────────────────────── */
+
+.glow-pick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.glow-pick-item {
+  min-width: 0;
+  padding: 5px 4px;
+  border: 1px solid var(--hl-med);
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--subtle);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.glow-pick-item:hover {
+  color: var(--ink);
+  border-color: var(--hl-high);
+}
+
+.glow-pick-item[data-on] {
+  border-color: var(--ink);
+  background: var(--overlay);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* ── Regler ───────────────────────────────────────────────────────────── */
+
+.glow-slider {
+  display: grid;
+  grid-template-columns: 74px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.glow-slider[data-disabled] {
+  opacity: 0.45;
+}
+
+.glow-slider input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.glow-num {
+  font-size: 11px;
+  color: var(--subtle);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Vorlagen ─────────────────────────────────────────────────────────── */
+
+.glow-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.glow-preset {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--hl-med);
+  border-radius: 7px;
+  transition: transform 100ms ease;
+}
+
+.glow-preset:hover {
+  transform: scale(1.12);
+}
+
+.glow-preset[data-on] {
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 3px var(--ink);
+}
+
+/* ── Gemerkt ──────────────────────────────────────────────────────────── */
+
+.glow-saved-empty {
+  font-size: 11px;
+  color: var(--subtle);
+}
+
+.glow-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glow-saved-row {
+  display: grid;
+  grid-template-columns: 44px 1fr 24px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.glow-saved-row[data-on] {
+  background: var(--overlay);
+}
+
+/* Kleine Vorschau auf dem Grund der Seite; Klick stellt den Glow ein. */
+.glow-saved-swatch {
+  display: grid;
+  place-items: center;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--hl-med);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.glow-saved-swatch[data-side="light"] {
+  background: #ebe6e3;
+}
+
+.glow-saved-swatch[data-side="dark"] {
+  background: #26211e;
+}
+
+.glow-saved-swatch span {
+  width: 22px;
+  height: 12px;
+  border-radius: 1px;
+}
+
+.glow-saved-swatch[data-side="light"] span {
+  background: #faf4ed;
+}
+
+.glow-saved-swatch[data-side="dark"] span {
+  background: #1b1c1d;
+}
+
+.glow-saved-swatch:hover {
+  border-color: var(--ink);
+}
+
+.glow-saved-name {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+.glow-saved-del {
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  color: var(--subtle);
+  cursor: pointer;
+}
+
+.glow-saved-del:hover {
+  background: var(--hl-med);
+  color: var(--ink);
+}

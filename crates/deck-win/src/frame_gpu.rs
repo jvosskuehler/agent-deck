@@ -28,8 +28,14 @@ use crate::frame_fx::FrameParams;
 use crate::types::{Error, Result};
 
 /// Der Shader: die Stammdesigns (dieselbe Datei wie im Hilfsprogramm der Python-Fassung),
-/// dahinter die Winter-Designs.
-pub const SHADER: &str = concat!(include_str!("frame.hlsl"), "\n", include_str!("frame_winter.hlsl"));
+/// dahinter die Winter-Designs und der eigene Glow.
+pub const SHADER: &str = concat!(
+    include_str!("frame.hlsl"),
+    "\n",
+    include_str!("frame_winter.hlsl"),
+    "\n",
+    include_str!("frame_eigen.hlsl")
+);
 
 /// Gerät, Shader und Konstantenpuffer.
 pub struct GpuPipeline {
@@ -241,28 +247,103 @@ mod tests {
     fn params(design: Design, t: f64, sc: f64, w: u32, h: u32, night: bool) -> (FrameParams, u32, u32) {
         let m = (MARGIN_PT * sc).ceil() as u32;
         let win = [m as f32, m as f32, (m + w) as f32, (m + h) as f32];
-        (compute(design, 7, t, sc, win, f64::from(w), f64::from(h)).with_night(night), w + 2 * m, h + 2 * m)
+        let p = compute(design, 7, t, sc, win, f64::from(w), f64::from(h)).with_night(night);
+        let p = if design == Design::Eigen { p.with_glow(if night { &GLOW_DARK } else { &GLOW_LIGHT }) } else { p };
+        (p, w + 2 * m, h + 2 * m)
     }
+
+    /// Die Vorgaben aus `deck_core::glow` (deck-win kennt deck-core nicht): Weichlicht, still,
+    /// dunkel Honiggold, hell Terrakotta.
+    const GLOW_DARK: [[f32; 4]; 4] = [[0.961, 0.722, 0.278, 1.0], [1.0, 0.0, 0.0, 0.0], [0.941, 0.541, 0.235, 1.0], [0.0; 4]];
+    const GLOW_LIGHT: [[f32; 4]; 4] = [[0.851, 0.467, 0.353, 1.2], [1.0, 0.0, 0.0, 0.0], [0.851, 0.467, 0.353, 1.0], [0.0; 4]];
 
     #[test]
     fn the_shader_compiles_and_every_design_draws_on_the_edge() {
-        let gpu = GpuPipeline::new().expect("Shader übersetzt (frame.hlsl + frame_winter.hlsl)");
-        for design in Design::ALL.into_iter().chain(Design::WINTER) {
+        let gpu = GpuPipeline::new().expect("Shader übersetzt (frame.hlsl + frame_winter.hlsl + frame_eigen.hlsl)");
+        for design in Design::ALL.into_iter().chain(Design::WINTER).chain(Design::EIGEN) {
             let (p, w, h) = params(design, 3.0, 1.0, 300, 200, false);
             let c = canvas(&gpu, w, h);
             gpu.draw(&c.rtv, w, h, &p);
             let px = pixels(&gpu, &c);
             let alpha = |x: u32, y: u32| px[((y * w + x) * 4 + 3) as usize];
-            let on_edge = (36..336).filter(|&x| alpha(x, 36) > 40).count();
+            let m = (w - 300) / 2;
+            let on_edge = (m..m + 300).filter(|&x| (m - 8..=m).any(|y| alpha(x, y) > 40)).count();
             assert!(on_edge > 20, "{design:?}: die Oberkante leuchtet ({on_edge} Pixel)");
             assert_eq!(alpha(0, 0), 0, "{design:?}: die Ecke des Bilds liegt außerhalb des Hofs");
-            if !design.is_winter() {
+            if design.id() < 10 || design.id() >= 20 {
                 assert_eq!(alpha(w / 2, h / 2), 0, "{design:?}: tief im Fenster bleibt es durchsichtig");
             }
         }
     }
 
-    /// Standbilder der Winter-Designs zum Ansehen, über einem gemalten Terminal (hell und
+    /// Eigener Glow mit Glow-Art `kind` und Animation `anim` (Nummern wie in `frame_eigen.hlsl`).
+    fn glow(kind: u8, anim: u8, night: bool) -> [[f32; 4]; 4] {
+        let mut g = if night { GLOW_DARK } else { GLOW_LIGHT };
+        g[1][1] = f32::from(kind);
+        g[1][2] = f32::from(anim);
+        g
+    }
+
+    #[test]
+    fn every_glow_kind_with_every_animation_lights_the_bottom_corner_and_nothing_else() {
+        let gpu = GpuPipeline::new().unwrap();
+        for night in [false, true] {
+            for kind in 0..5u8 {
+                for anim in 0..6u8 {
+                    let (p, w, h) = params(Design::Eigen, 3.0, 1.0, 300, 200, night);
+                    let p = p.with_glow(&glow(kind, anim, night));
+                    let c = canvas(&gpu, w, h);
+                    gpu.draw(&c.rtv, w, h, &p);
+                    let px = pixels(&gpu, &c);
+                    let at = |x: u32, y: u32, ch: u32| px[((y * w + x) * 4 + ch) as usize];
+                    let m = (w - 300) / 2;
+                    // Unten rechts leuchtet jede Art: auch Bodenlicht (oben fast nichts) und
+                    // Ecklicht (Kantenmitte fast dunkel). Rot ist in beiden Vorgaben stark.
+                    let lit = (m + 250..m + 300).filter(|&x| (m + 201..m + 206).any(|y| at(x, y, 2) > 30)).count();
+                    assert!(lit > 20, "Art {kind}, Animation {anim}, dunkel {night}: unten rechts leuchtet es ({lit} Pixel)");
+                    assert_eq!((at(0, 0, 3), at(0, 0, 2)), (0, 0), "Art {kind}, Animation {anim}: der Hof endet vor dem Bildrand");
+                    assert_eq!((at(w / 2, h / 2, 3), at(w / 2, h / 2, 2)), (0, 0), "Art {kind}, Animation {anim}: im Fenster bleibt es leer");
+                }
+            }
+        }
+    }
+
+    /// Standbilder aller Glow-Arten (dunkel, Stärke 1 und 2), je mit einer anderen Animation:
+    /// `DECK_FRAME_STILLS=<ordner> cargo test -p deck-win glow_stills -- --ignored`
+    #[test]
+    #[ignore = "schreibt Bilder; nur zum Ansehen"]
+    fn glow_stills() {
+        let dir = std::path::PathBuf::from(std::env::var("DECK_FRAME_STILLS").expect("DECK_FRAME_STILLS=<ordner>"));
+        let gpu = GpuPipeline::new().unwrap();
+        for kind in 0..5u8 {
+            for strength in [1.0f32, 2.0] {
+                let (p, w, h) = params(Design::Eigen, 3.0, 1.0, 400, 300, true);
+                let mut g = glow(kind, kind + 1, true);
+                g[0][3] = strength;
+                let p = p.with_glow(&g);
+                let c = canvas(&gpu, w, h);
+                gpu.draw(&c.rtv, w, h, &p);
+                let px = pixels(&gpu, &c);
+                let m = (w - 400) / 2;
+                let mut bmp = bmp_header(w, h);
+                for y in (0..h).rev() {
+                    for x in 0..w {
+                        let i = ((y * w + x) * 4) as usize;
+                        let inside = x >= m && x < w - m && y >= m && y < h - m;
+                        let under: [u8; 3] = if inside { [0x1B, 0x1C, 0x1D] } else { [0x26, 0x21, 0x1E] };
+                        let a = u32::from(px[i + 3]);
+                        for ch in 0..3 {
+                            bmp.push((u32::from(px[i + ch]) + u32::from(under[ch]) * (255 - a) / 255).min(255) as u8);
+                        }
+                    }
+                    bmp.resize(bmp.len() + (4 - (w as usize * 3) % 4) % 4, 0);
+                }
+                std::fs::write(dir.join(format!("glow-art{kind}-anim{}-staerke{strength}.bmp", kind + 1)), bmp).unwrap();
+            }
+        }
+    }
+
+    /// Standbilder der Winter-Designs und des eigenen Glows zum Ansehen, über einem gemalten Terminal (hell und
     /// dunkel), dazu die Rechenzeit je Bild bei 1920 × 1080:
     /// `DECK_FRAME_STILLS=<ordner> cargo test -p deck-win stills -- --ignored --nocapture`
     #[test]
@@ -270,7 +351,7 @@ mod tests {
     fn stills() {
         let dir = std::path::PathBuf::from(std::env::var("DECK_FRAME_STILLS").expect("DECK_FRAME_STILLS=<ordner>"));
         let gpu = GpuPipeline::new().unwrap();
-        for design in Design::WINTER {
+        for design in Design::WINTER.into_iter().chain(Design::EIGEN) {
             for (night, paper, name) in [(false, [0xEDu8, 0xF4, 0xFA], "hell"), (true, [0x1B, 0x1C, 0x1D], "dunkel")] {
                 for t in [0.5, 12.0, 40.0] {
                     let (p, w, h) = params(design, t, 1.25, 850, 600, night);
@@ -283,7 +364,9 @@ mod tests {
                         for x in 0..w {
                             let i = ((y * w + x) * 4) as usize;
                             let inside = x >= m && x < w - m && y >= m && y < h - m;
-                            let under: [u8; 3] = if inside { paper } else { [0x26, 0x21, 0x1E] };
+                            // Hell auf hellem Desktop, dunkel auf dunklem, wie sie gedacht sind.
+                            let desk = if night { [0x26, 0x21, 0x1E] } else { [0xEB, 0xE6, 0xE3] };
+                            let under: [u8; 3] = if inside { paper } else { desk };
                             let a = u32::from(px[i + 3]);
                             for ch in 0..3 {
                                 bmp.push((u32::from(px[i + ch]) + u32::from(under[ch]) * (255 - a) / 255).min(255) as u8);

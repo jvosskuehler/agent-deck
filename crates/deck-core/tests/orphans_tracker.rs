@@ -232,3 +232,17 @@ fn filetime_and_unix_seconds_convert_both_ways() {
     assert!((filetime_to_unix(unix_to_filetime(t)) - t).abs() < 1e-6);
     assert_eq!(unix_to_filetime(0.0), 116_444_736_000_000_000);
 }
+
+#[test]
+fn a_deck_started_from_an_agent_window_and_its_webview_never_belong_to_that_agent() {
+    let mut tr = Tracker::default();
+    // Aus dem Agentenfenster installiert: pwsh 102 startet das Deck, das seine WebView.
+    let mut procs = agent_tree();
+    procs.push(p(110, 102, "agent-deck.exe", T0 + 7.0));
+    procs.push(p(111, 110, "msedgewebview2.exe", T0 + 8.0));
+    procs.push(p(112, 111, "msedgewebview2.exe", T0 + 8.5));
+    observe(&mut tr, T0 + 10.0, &[shell("A2", 100, T0)], &procs);
+    let after: Vec<ProcRow> = procs.into_iter().filter(|r| r.pid >= 103).collect();
+    observe(&mut tr, T0 + 12.0, &[], &after);
+    assert_eq!(orphan_pids(&tr), vec![103], "„Alle beenden“ darf die Oberfläche des Decks nicht treffen");
+}

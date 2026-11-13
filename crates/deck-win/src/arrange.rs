@@ -5,7 +5,7 @@
 
 use windows::Win32::Foundation::{POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use windows::Win32::Graphics::Dwm::{
@@ -113,7 +113,7 @@ pub fn raise_window(hwnd: Hwnd) -> Result<()> {
 /// Die Animation beim Minimieren und Wiederherstellen für dieses Fenster abstellen. Wer
 /// alle Agenten auf einmal ein- und ausblendet, will sie nicht einzeln in die Taskleiste
 /// fliegen sehen. Scheitert das, bleibt eben die Animation.
-fn no_transitions(hwnd: Hwnd) {
+pub(crate) fn no_transitions(hwnd: Hwnd) {
     let on: u32 = 1;
     // SAFETY: Zeiger auf einen lokalen u32, Größe passend.
     let _ = unsafe {
@@ -197,9 +197,24 @@ pub fn visible_rect(hwnd: Hwnd) -> Option<Rect> {
 /// abzieht, bekommt zwischen zwei Kacheln eine Lücke. Ohne DWM-Auskunft: kein Rand.
 pub fn frame_insets(hwnd: Hwnd) -> Insets {
     match (window_rect(hwnd), visible_rect(hwnd)) {
-        (Some(outer), Some(vis)) => insets_between(outer, vis),
-        _ => Insets::default(),
+        (Some(outer), Some(vis)) if !is_minimized(hwnd) => {
+            let ins = insets_between(outer, vis);
+            if let Ok(mut m) = INSETS.lock() {
+                m.get_or_insert_with(HashMap::new).insert(hwnd.0, ins);
+            }
+            ins
+        }
+        _ => remembered_insets(hwnd),
     }
+}
+
+/// Zuletzt gemessener Rand je Fenster ([`frame_insets`]). Ein minimiertes Fenster hat
+/// keinen messbaren Rand; wer es gleich an seinen Zielplatz wiederherstellen will
+/// ([`crate::together`]), nimmt den von zuletzt.
+static INSETS: Mutex<Option<HashMap<isize, Insets>>> = Mutex::new(None);
+
+pub(crate) fn remembered_insets(hwnd: Hwnd) -> Insets {
+    INSETS.lock().ok().and_then(|m| m.as_ref().and_then(|m| m.get(&hwnd.0).copied())).unwrap_or_default()
 }
 
 /// Rand zwischen Außen- und sichtbarem Rechteck.

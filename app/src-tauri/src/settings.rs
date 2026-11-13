@@ -42,6 +42,7 @@ impl Deck {
             language: Lang::normalize(cur.language.as_ref()).setting_value().to_string(),
             dock_edge: self.dock_edge().as_str().to_string(),
             auto_compact: auto_compact::enabled(&self.store.settings),
+            shortcuts: deck_core::shortcuts::rows(&self.store.settings, self.lang),
         }
     }
 

@@ -43,7 +43,7 @@ const HOLD_MAX: Duration = Duration::from_secs(60);
 
 pub struct DockCtl {
     pub edge: Edge,
-    along: Option<i32>,
+    pub along: Option<i32>,
     auto: AutoHide,
     content: (f64, f64),
     hide_gen: u64,
@@ -58,7 +58,8 @@ pub struct DockCtl {
     zoom: f64,
     /// Die Oberfläche zieht gerade eine Karte oder einen Block (`panel_hold`).
     drag_hold: Option<Instant>,
-    /// Das freie Panel wird gerade verschoben oder gezoomt (`panel_drag`).
+    /// Das Panel wird gerade verschoben, gezoomt oder die Kante entlang geschoben
+    /// (`panel_drag`).
     pub dragging: bool,
 }
 
@@ -236,7 +237,8 @@ fn pointer_tick(app: &AppHandle) {
     if ctl.edge == Edge::Off {
         return;
     }
-    let hold = menu || ctl.held_by_drag();
+    // Auch beim Schieben entlang der Kante (`dock_drag`): der Zeiger darf dabei hinaus.
+    let hold = menu || ctl.held_by_drag() || ctl.dragging;
     let p = ctl.place(s.desktop.as_ref());
     let handle = handle_rect(ctl.edge, work, ctl.along, scale);
     let sight = Sight {

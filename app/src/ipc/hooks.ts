@@ -59,6 +59,11 @@ export function useSettings(): Live<"deck://settings"> {
   return useLive("deck://settings", commands.getSettings);
 }
 
+/** Fenster „Glow einstellen“ samt Setzer für das sofortige Zeigen beim Ziehen. */
+export function useGlow(): Live<"deck://glow"> {
+  return useLive("deck://glow", commands.getGlow);
+}
+
 /** Inhalt des Ticket-Dialogs; jedes Öffnen schickt den Slot neu. */
 export function useTicket(): TicketView | null {
   return useLive("deck://ticket", commands.getTicket)[0];

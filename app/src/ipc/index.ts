@@ -4,6 +4,7 @@
 // Stelle, welche Befehle es gibt, und der Mock kann nicht vom Vertrag abweichen.
 
 import { isTauri } from "@tauri-apps/api/core";
+import type { GlowSettings } from "../bindings/GlowSettings";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { Backend, PanelDragMode, SettingKey } from "./contract";
 import { createMockBackend } from "./mock/mockBackend";
@@ -46,14 +47,21 @@ export const commands = {
   focusBlock: (letter: string) => fire(getBackend().invoke("focus_block", { letter }), "focus_block"),
   tooltipContentSize: (width: number, height: number) =>
     fire(getBackend().invoke("tooltip_content_size", { width, height }), "tooltip_content_size"),
+  dialogContentSize: (height: number) =>
+    fire(getBackend().invoke("dialog_content_size", { height }), "dialog_content_size"),
   showBlockMenu: (letter: string) => fire(getBackend().invoke("show_block_menu", { letter }), "show_block_menu"),
   panelHold: (hold: boolean) => fire(getBackend().invoke("panel_hold", { hold }), "panel_hold"),
   panelDrag: (mode: PanelDragMode, x: number, y: number) =>
     fire(getBackend().invoke("panel_drag", { mode, x, y }), "panel_drag"),
   getTicket: () => getBackend().invoke("get_ticket", {}),
   submitTicket: (ticket: string | null) => fire(getBackend().invoke("submit_ticket", { ticket }), "submit_ticket"),
+  getGlow: () => getBackend().invoke("get_glow", {}),
+  setGlow: (glow: GlowSettings) => getBackend().invoke("set_glow", { glow }),
+  openKeys: () => fire(getBackend().invoke("open_keys", {}), "open_keys"),
+  openGlow: () => fire(getBackend().invoke("open_glow", {}), "open_glow"),
   killOrphan: (id: string) => fire(getBackend().invoke("kill_orphan", { id }), "kill_orphan"),
   killAllOrphans: () => fire(getBackend().invoke("kill_all_orphans", {}), "kill_all_orphans"),
+  uiPong: () => fire(getBackend().invoke("ui_pong", {}), "ui_pong"),
 };
 
 export function isNative(): boolean {

@@ -31,6 +31,14 @@ pub enum Design {
     Nordlicht = 11,
     /// Eine kleine Dampflok zieht vier Wagen um das Fenster, hinter ihr glüht der Rand nach.
     Express = 12,
+    // Die Probe-Designs 20 bis 89 (ruhige Glows, Runden 1 bis 7, 11. und 12.11.2026) sind
+    // seit dem eigenen Glow wieder draußen (nie committet; die Vorlagen stehen in den
+    // Canvas-Tafeln). Gewählt war „Nah und dicht“, heute die Vorgabe des eigenen Glows für
+    // dunkel.
+    /// Der eigene Glow aus dem Fenster „Glow einstellen“ (`deck_core::glow`), je ein Satz für
+    /// helles und dunkles Terminal. Farbe, Stärke und Form kommen zur Laufzeit über
+    /// [`FrameParams::with_glow`]. In `frame_eigen.hlsl`.
+    Eigen = 90,
 }
 
 impl Design {
@@ -46,13 +54,16 @@ impl Design {
     /// über dem ganzen Fenster, siehe [`crate::frame_fx_winter`].
     pub const WINTER: [Design; 3] = [Design::Schneewehe, Design::Nordlicht, Design::Express];
 
-    /// Aus welchen Designs gerade gewählt wird.
+    /// Außerhalb des Winters: der eigene Glow, hell wie dunkel (seit 12.11.2026).
+    pub const EIGEN: [Design; 1] = [Design::Eigen];
+
+    /// Aus welchen Designs gerade gewählt wird. Der Winter geht vor, hell wie dunkel.
     pub const fn pool(winter: bool) -> &'static [Design] {
-        if winter { &Design::WINTER } else { &Design::ALL }
+        if winter { &Design::WINTER } else { &Design::EIGEN }
     }
 
     pub const fn is_winter(self) -> bool {
-        self.id() >= 10
+        self.id() >= 10 && self.id() < 20
     }
 
     /// Nummer im Shader (`misc.z`).
@@ -74,8 +85,10 @@ impl Design {
     }
 }
 
-/// Wie weit der Hof über die Fensterkante hinausreicht, in Punkten.
-pub const MARGIN_PT: f64 = 36.0;
+/// Wie weit der Hof über die Fensterkante hinausreicht, in Punkten. Der eigene Glow läuft
+/// bis hierhin weich auf null aus (`E_M` in `frame_eigen.hlsl`); die anderen Designs enden
+/// früher.
+pub const MARGIN_PT: f64 = 60.0;
 
 /// Was der Renderer je Bild bekommt; Aufbau wie `cbuffer Params` in `Frame.hlsl`.
 #[repr(C)]
@@ -83,7 +96,7 @@ pub const MARGIN_PT: f64 = 36.0;
 pub struct FrameParams {
     /// Agentenfenster im Rahmenbild: x0, y0, x1, y1 (Pixel).
     pub win: [f32; 4],
-    /// Skalierung, Umfang P, Design (0..3, Winter ab 10), Zeit (mod 1000 s, Winter mod
+    /// Skalierung, Umfang P, Design (0..3, Winter ab 10, eigener Glow 90), Zeit (mod 1000 s, ab 10 mod
     /// 3600 s: dort treibt sie Schnee und Licht, ein Umbruch ist ein sichtbarer Sprung).
     pub misc: [f32; 4],
     pub a: [f32; 4],
@@ -98,6 +111,17 @@ impl FrameParams {
     /// Papier eisblau (weiße wären dort unsichtbar). Die Stammdesigns lesen es nicht.
     pub fn with_night(mut self, night: bool) -> FrameParams {
         self.b[3] = if night { 1.0 } else { 0.0 };
+        self
+    }
+
+    /// Die Werte des eigenen Glows (`deck_core::glow::GlowStyle::shader_params`): `a`,
+    /// `b` ohne das letzte Feld (hell/dunkel), `items[0]` und `items[1]`. Nur für
+    /// [`Design::Eigen`]; die anderen Designs füllen dieselben Felder selbst.
+    pub fn with_glow(mut self, glow: &[[f32; 4]; 4]) -> FrameParams {
+        self.a = glow[0];
+        self.b[..3].copy_from_slice(&glow[1][..3]);
+        self.items[0] = glow[2];
+        self.items[1] = glow[3];
         self
     }
 }
@@ -138,7 +162,7 @@ pub fn compute(
             sc as f32,
             perimeter as f32,
             design.id() as f32,
-            modp(t, if design.is_winter() { 3600.0 } else { 1000.0 }) as f32,
+            modp(t, if design.id() >= 10 { 3600.0 } else { 1000.0 }) as f32,
         ],
         ..Default::default()
     };
@@ -150,6 +174,8 @@ pub fn compute(
         Design::Schneewehe | Design::Nordlicht | Design::Express => {
             crate::frame_fx_winter::fill(&mut p, design, t, width / sc, height / sc)
         }
+        // Den eigenen Glow treibt der Shader allein aus Zeit und Einstellung.
+        _ => {}
     }
     p
 }
@@ -264,6 +290,12 @@ mod tests {
             Some(Design::Glut)
         );
         assert_eq!(Design::pick(&[], None, 7), None);
+    }
+
+    #[test]
+    fn the_own_glow_keeps_its_shader_number_and_is_no_winter_design() {
+        assert_eq!(Design::Eigen.id(), 90, "Nummer wie in frame.hlsl (PSMain)");
+        assert!(!Design::Eigen.is_winter());
     }
 
     #[test]

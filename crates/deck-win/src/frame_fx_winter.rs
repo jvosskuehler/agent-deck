@@ -55,8 +55,8 @@ mod tests {
         assert_eq!(Design::WINTER.map(Design::id), [10, 11, 12]);
         assert!(Design::WINTER.iter().all(|d| d.is_winter()));
         assert!(Design::ALL.iter().all(|d| !d.is_winter()));
-        assert_eq!(Design::pool(true), &Design::WINTER);
-        assert_eq!(Design::pool(false), &Design::ALL);
+        assert_eq!(Design::pool(true), &Design::WINTER, "Winter vor dem eigenen Glow, hell wie dunkel");
+        assert_eq!(Design::pool(false), &Design::EIGEN, "sonst der eigene Glow");
     }
 
     #[test]

@@ -3,7 +3,8 @@
 //!
 //! Ein `claude`-Aufruf ist schwer (~8 s Startup). Darum wird je Session eine kleine
 //! JSON-Datei in `state\summaries\` gehalten und nur bei echtem Zuwachs des Transcripts
-//! neu erzeugt. Ticket-Scan und Zusammenfassung teilen sich diese Datei; jeder ersetzt
+//! neu erzeugt. Die Zusammenfassung ist das Lagebild aus `briefing.rs`: `brief` hält
+//! die vier Felder, `summary` die Kurzform für den Hover. Ticket-Scan und Zusammenfassung teilen sich diese Datei; jeder ersetzt
 //! nur seine eigenen Felder (`merge_cache`), damit der eine den anderen nicht
 //! überbügelt. Den `claude`-Prozess startet die App: `plan_summary` sagt ihr, ob und mit
 //! welchem Prompt, `finish_summary` nimmt die Antwort entgegen.
@@ -14,9 +15,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::claude::refs::{Refs, find_refs};
-use crate::claude::summarize::{
-    build_digest, clean_summary, enc_cwd, extract_turns, extract_turns_from_values, instruction, transcript_lines,
-};
+use crate::claude::briefing::{self, BRIEF_VERSION, Briefing};
+use crate::claude::summarize::{enc_cwd, extract_turns_from_values, transcript_lines};
 use crate::claude::worktree_use::active_worktree;
 use crate::paths::{home_dir, load_json, save_json};
 use crate::field::number;
@@ -92,6 +92,16 @@ fn text_field(cache: &Map<String, Value>, key: &str) -> String {
 pub fn cached_summary(dir: &Path, session_id: &str) -> Option<String> {
     let c = read_cache(dir, session_id)?;
     Some(text_field(&c, "summary")).filter(|s| !s.is_empty())
+}
+
+/// Das ganze Lagebild der Session (Ziel, Stand, offene Frage, nächster Schritt) und
+/// wann es entstand (Unix-Sekunden); nur im heutigen Format.
+pub fn cached_brief(dir: &Path, session_id: &str) -> Option<(Briefing, f64)> {
+    let c = read_cache(dir, session_id)?;
+    if c.get("brief_v").and_then(Value::as_u64) != Some(BRIEF_VERSION) {
+        return None;
+    }
+    Some((Briefing::from_json(c.get("brief")?)?, number(c.get("ts")).unwrap_or(0.0)))
 }
 
 /// Nur die schon erkannten Bezüge, ohne das Transcript zu lesen; nur, wenn sie mit der
@@ -194,7 +204,7 @@ fn refs_key(project: Option<&str>) -> String {
 pub struct SummaryGates {
     /// So viele Bytes muss das Transcript seit dem letzten Lauf gewachsen sein.
     pub min_growth: u64,
-    /// So viele Sekunden muss der letzte Lauf her sein (deckelt arbeitende Chats).
+    /// So viele Sekunden muss der letzte Lauf her sein (deckelt schnelles Hin und Her).
     pub cooldown: f64,
     /// Zeichenbudget des Digests.
     pub max_chars: usize,
@@ -202,7 +212,10 @@ pub struct SummaryGates {
 
 impl Default for SummaryGates {
     fn default() -> Self {
-        SummaryGates { min_growth: 8000, cooldown: 45.0, max_chars: 2400 }
+        // Jeder neue Zug zählt: gefragt wird ohnehin nur, wenn der Agent gerade nicht
+        // arbeitet (die App wärmt nur ruhende Agenten vor). Der Auszug darf groß sein,
+        // das Modell ist Sonnet.
+        SummaryGates { min_growth: 500, cooldown: 30.0, max_chars: 24_000 }
     }
 }
 
@@ -215,9 +228,9 @@ pub enum SummaryPlan {
     Generate { prompt: String, size: u64, cached: Option<String> },
 }
 
-/// Entscheiden, ob neu erzeugt wird: nur ohne Cache, bei anderer Sprache oder wenn das
-/// Transcript um `min_growth` gewachsen UND der letzte Lauf `cooldown` her ist. Die
-/// Gates sind bewusst grob: das Thema ändert sich kaum von Zug zu Zug.
+/// Entscheiden, ob neu erzeugt wird: ohne Cache, bei anderer Sprache, bei einem
+/// Lagebild in altem Format, oder wenn das Transcript um `min_growth` gewachsen UND der
+/// letzte Lauf `cooldown` her ist.
 pub fn plan_summary(
     projects: &Path,
     dir: &Path,
@@ -236,22 +249,28 @@ pub fn plan_summary(
     let size = size_of(&path);
     // Alt-Caches ohne "lang" gelten als deutsch.
     let cache_lang = cache.get("lang").and_then(Value::as_str).unwrap_or("german");
-    if cached.is_some() && cache_lang == lang {
+    let current = cache.get("brief_v").and_then(Value::as_u64) == Some(BRIEF_VERSION);
+    if cached.is_some() && cache_lang == lang && current {
         let grown = size as f64 - number(cache.get("size")).unwrap_or(0.0).trunc();
         let age = now - number(cache.get("ts")).unwrap_or(0.0);
         if grown < gates.min_growth as f64 || age < gates.cooldown {
             return SummaryPlan::Cached(cached);
         }
     }
-    let digest = build_digest(&extract_turns(&read_lines_lossy(&path)), gates.max_chars, 600);
+    let records: Vec<Value> =
+        read_lines_lossy(&path).iter().map(|l| l.trim()).filter(|l| !l.is_empty()).filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let digest = briefing::build_digest(&records, gates.max_chars);
     if digest.is_empty() {
         return SummaryPlan::Cached(cached);
     }
-    SummaryPlan::Generate { prompt: format!("{}{digest}", instruction(lang)), size, cached }
+    // Fortschreiben nur in derselben Sprache und im heutigen Format.
+    let previous = (current && cache_lang == lang).then(|| cache.get("brief").and_then(Briefing::from_json)).flatten();
+    SummaryPlan::Generate { prompt: briefing::prompt(lang, previous.as_ref(), &digest), size, cached }
 }
 
-/// Antwort von `claude` übernehmen (`None` = Aufruf gescheitert). Bei leerem Ergebnis
-/// bleibt der alte Cache-Wert. Ersetzt nur die Summary-Felder.
+/// Antwort von `claude` übernehmen (`None` = Aufruf gescheitert). Trifft sie das Format
+/// nicht, bleibt der alte Cache-Wert. Ersetzt nur die Summary-Felder; geliefert wird die
+/// Kurzform für den Hover.
 pub fn finish_summary(
     dir: &Path,
     session_id: &str,
@@ -261,14 +280,19 @@ pub fn finish_summary(
     now: f64,
     cached: Option<String>,
 ) -> Option<String> {
-    let summary = clean_summary(output.unwrap_or(""), 200);
-    if summary.is_empty() {
-        return cached;
-    }
+    let Some(brief) = briefing::parse(output.unwrap_or("")) else { return cached };
+    let summary = brief.short(lang);
     let _ = merge_cache(
         dir,
         session_id,
-        vec![("summary", summary.clone().into()), ("size", size.into()), ("ts", now.into()), ("lang", lang.into())],
+        vec![
+            ("summary", summary.clone().into()),
+            ("brief", brief.to_json()),
+            ("brief_v", BRIEF_VERSION.into()),
+            ("size", size.into()),
+            ("ts", now.into()),
+            ("lang", lang.into()),
+        ],
     );
     Some(summary)
 }

@@ -218,6 +218,8 @@ float4 lauflicht(float u, float s, float P, float sc)
 // Die Winter-Designs (ab 10) stehen in frame_winter.hlsl, das hinter diese Datei
 // gehaengt wird.
 float4 winter(int design, float2 p, float u, float s, float W, float H);
+// Der eigene Glow (90) in frame_eigen.hlsl.
+float4 eigen(float2 p, float u, float s, float W, float H);
 
 float4 PSMain(VSOut i) : SV_Target
 {
@@ -230,6 +232,9 @@ float4 PSMain(VSOut i) : SV_Target
     // weitaus groessten Teil der Pixel. Im Winter schneit es auch dort.
     if (design < 10 && u > 24 * sc)
         return float4(0, 0, 0, 0);
+    // Der eigene Glow leuchtet additiv (Farbe heller als sein Alpha) und rauscht selbst:
+    // er geht an der Klemme unten vorbei.
+    if (design >= 90) return eigen(p, u, s, W, H);
     float4 c;
     if (design >= 10) c = winter(design, p, u, s, W, H);
     else if (design == 0) c = kometen(u, s, P, sc);

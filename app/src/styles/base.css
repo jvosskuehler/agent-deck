@@ -32,8 +32,6 @@
   --cache-low: #575279;
 
   /* Blockkopf, ＋-Karte, Leiste */
-  --rail: #dfdad9;
-  --rail-hot: #9893a5;
   --bar-line: #ece4dc;
   --add-border: #cecacd;
   --add-border-hot: #9893a5;
@@ -89,8 +87,6 @@
     --cache-warm: #8e8a84;
     --cache-low: #e6e0d6;
 
-    --rail: #3a3734;
-    --rail-hot: #6f6b66;
     --bar-line: #2b2927;
     --add-border: #3a3734;
     --add-border-hot: #6f6b66;

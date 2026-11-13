@@ -39,6 +39,12 @@ const DOCKER_PREFIXES: [&str; 5] = ["docker", "com.docker.", "vpnkit", "wslservi
 /// Dateinamen, unter denen Claude Code startet (Exe, npm-Shim, Skript).
 const CLAUDE_FILES: [&str; 5] = ["claude", "claude.exe", "claude.cmd", "claude.ps1", "claude.js"];
 
+/// Ein Programm des Decks? Was darunter läuft (seine WebView), gehört zu keinem Agenten,
+/// auch wenn das Deck aus einem Agentenfenster heraus gestartet wurde.
+pub fn is_deck_exe(exe: &str) -> bool {
+    DECK_EXES.contains(&exe_stem(exe).as_str())
+}
+
 /// Exe-Name ohne Pfad und ohne `.exe`, klein.
 pub fn exe_stem(exe: &str) -> String {
     let name = file_name(exe).to_ascii_lowercase();

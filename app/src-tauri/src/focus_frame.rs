@@ -2,8 +2,10 @@
 //! wird (`deck/ui/focus_frame.py`). Gezeichnet auf der Grafikkarte mit dem Rahmen aus
 //! `deck_win::frame_gpu_overlay`; dieses Modul entscheidet, ob und um welches Fenster.
 //!
-//! Bei jedem Fokuswechsel kommt ein zufälliges Design dran, nie zweimal dasselbe
-//! hintereinander. Vom ersten Advent bis Dreikönig kommen statt der Stammdesigns die drei
+//! Der Rahmen ist der eigene Glow (`Design::Eigen`), je einer für helles und dunkles
+//! Terminal, eingestellt im Fenster „Glow einstellen“ (`crate::glow`, Strg+Alt+G) und
+//! sofort wirksam. Vorgabe dunkel ist Honiggold, nah und dicht (gewählt am 12.11.2026 nach
+//! sieben Proberunden). Vom ersten Advent bis Dreikönig kommen stattdessen die drei
 //! Winter-Designs dran (`deck_core::season`, Einstellung `frame_season`); geprüft wird
 //! bei jedem Fokuswechsel, der Wechsel braucht also keinen Neustart. Die Agentenfenster bekommen eckige Ecken: ein eckiger Rahmen um eine
 //! runde Win11-Ecke ließe dort den Hintergrund durchscheinen. Das geschieht bei jedem
@@ -16,10 +18,11 @@
 //! Im selben Thread läuft der gemeinsame Schatten bündig liegender Agenten
 //! (`crate::group_shadow`): auch er braucht eigene Fenster und deren Nachrichtenpumpe.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use deck_core::group_shadow::ring_rgb;
 use deck_core::wt::{WINDOW_CLASS, paper_for};
 use deck_win::Hwnd;
 use deck_win::effects::Desktop;
@@ -28,7 +31,7 @@ use deck_win::frame_fx::Design;
 use deck_win::taskbar::TaskbarGroup;
 
 use crate::applog::note;
-use crate::group_shadow::{ShadowLayer, ShadowWatch};
+use crate::group_shadow::{RingLayer, ShadowLayer, ShadowWatch, StatusMap};
 use crate::wt_host::{FrameHold, HostMap, WtHost};
 
 /// So oft wird geschaut, welches Fenster vorn ist.
@@ -55,6 +58,13 @@ pub struct FrameWatch {
     pub winter: Box<dyn Fn() -> bool>,
     /// Solange gesetzt, bleibt der Rahmen, wo er ist ([`FrameHold`]).
     pub hold: FrameHold,
+    /// Fenster, das den Rahmen nicht wegnimmt, wenn es vorn ist: „Glow einstellen“. Man
+    /// stellt dort ein und sieht es am zuletzt gewählten Agenten.
+    pub keep: Box<dyn Fn(Hwnd) -> bool>,
+    /// Zustand je Slot für die Randfarbe; leer = alle in Papierfarbe.
+    pub statuses: StatusMap,
+    /// Zuletzt gesetzte Randfarbe je Fenster.
+    borders: HashMap<Hwnd, u32>,
     rng: u64,
 }
 
@@ -74,6 +84,9 @@ impl FrameWatch {
             night: false,
             winter: Box::new(|| false),
             hold: FrameHold::default(),
+            keep: Box::new(|_| false),
+            statuses: StatusMap::default(),
+            borders: HashMap::new(),
             rng: seed | 1,
         }
     }
@@ -90,6 +103,25 @@ impl FrameWatch {
         WtHost::slot_of_title(&self.hosts, title).is_some()
     }
 
+    /// Den Rand jedes Agentenfensters in der Farbe seines Zustands halten (Entwurf „02a
+    /// Fein“); kennt das Deck den Zustand nicht, in Papierfarbe. Es ist die Randfarbe von
+    /// Windows selbst. Sichtbar ist sie nur an frei liegenden Fenstern: gekachelten stellt
+    /// der Gruppenschatten den Rahmen von Windows ab, dort trägt der Ring in der Naht die
+    /// Farbe (`crate::group_shadow`). Gesetzt wird nur, was sich geändert hat.
+    fn color_borders(&mut self) {
+        let light = self.desktop.light_theme();
+        let status = self.statuses.read().map(|m| m.clone()).unwrap_or_default();
+        let windows = self.desktop.class_windows(WINDOW_CLASS);
+        self.borders.retain(|h, _| windows.iter().any(|w| w.hwnd == *h));
+        for w in windows {
+            let Some(slot) = WtHost::slot_of_title(&self.hosts, &w.title) else { continue };
+            let rgb = status.get(&slot).map_or_else(|| paper_for(light), |s| ring_rgb(*s, light != Some(false)));
+            if self.borders.get(&w.hwnd) != Some(&rgb) && self.desktop.set_border(w.hwnd, rgb).is_ok() {
+                self.borders.insert(w.hwnd, rgb);
+            }
+        }
+    }
+
     fn square_agents(&mut self) {
         let light = self.desktop.light_theme();
         self.night = light == Some(false);
@@ -97,7 +129,6 @@ impl FrameWatch {
             self.styled_light = Some(light);
             self.squared.clear();
         }
-        let border = paper_for(light);
         let windows = self.desktop.class_windows(WINDOW_CLASS);
         // Zugegangene Fenster vergessen: Windows vergibt ein Handle später neu, das neue
         // Fenster bliebe sonst ungestylt.
@@ -110,7 +141,6 @@ impl FrameWatch {
             }
             if !self.squared.contains(&w.hwnd) {
                 let _ = self.desktop.set_corners(w.hwnd, Corners::Square);
-                let _ = self.desktop.set_border(w.hwnd, border);
                 self.squared.insert(w.hwnd);
             }
             if let Some(group) = &self.group
@@ -129,14 +159,26 @@ impl FrameWatch {
         }
         let fg = self.desktop.foreground();
         let fg_hwnd = fg.as_ref().map(|w| w.hwnd);
+        if fg_hwnd.is_some_and(|h| (self.keep)(h)) {
+            return false;
+        }
         if fg_hwnd != self.last_fg {
             self.last_fg = fg_hwnd;
             self.square_agents();
         }
+        self.color_borders();
         let target = fg
             .filter(|w| w.class == WINDOW_CLASS && self.is_agent_title(&w.title) && !self.desktop.is_minimized(w.hwnd))
             .map(|w| w.hwnd);
         if target == self.target {
+            // Ändert sich die Auswahl unter dem offenen Rahmen (Fenster „Glow einstellen“
+            // auf oder zu, im Winter), gleich umschalten, nicht erst beim nächsten Fokus.
+            let pool = Design::pool((self.winter)());
+            if target.is_some() && self.design.is_some_and(|d| !pool.contains(&d)) {
+                let r = self.random();
+                self.design = Design::pick(pool, self.design, r);
+                return true;
+            }
             return false;
         }
         self.target = target;
@@ -151,8 +193,10 @@ impl FrameWatch {
 
 /// Den Rahmen-Thread starten. Fehlt die Grafikkarte, gibt es eben keinen Rahmen (einmal
 /// ins Log), das Deck läuft weiter. `season` ist die Einstellung `frame_season`,
-/// `group_shadow` schaltet den gemeinsamen Schatten bündig liegender Agenten ein.
+/// `group_shadow` schaltet den gemeinsamen Schatten bündig liegender Agenten ein, `glow`
+/// ist der eigene Glow; jedes Bild liest ihn neu, eine Änderung wirkt also sofort.
 pub fn start(
+    glow: crate::glow::GlowCell,
     desktop: Arc<dyn Desktop>,
     hosts: HostMap,
     hold: FrameHold,
@@ -174,13 +218,19 @@ pub fn start(
             if frame.is_none() && !group_shadow {
                 return;
             }
-            let mut shadows = group_shadow.then(|| (ShadowWatch::new(desktop.clone(), hosts.clone()), ShadowLayer::default()));
+            let mut shadows = group_shadow.then(|| (ShadowWatch::new(desktop.clone(), hosts.clone(), crate::group_shadow::statuses()), ShadowLayer::default()));
+            let mut rings = RingLayer::default();
             let shadow_desktop = desktop.clone();
             let shadow_hold = hold.clone();
             let mut watch = FrameWatch::new(desktop, hosts, group, seed);
             watch.hold = hold;
-            watch.winter =
-                Box::new(move || deck_core::season::winter_frames(season.as_ref(), deck_win::clock::local_date()));
+            watch.statuses = crate::group_shadow::statuses();
+            let keep = glow.clone();
+            watch.keep = Box::new(move |h| keep.is_window(h.0));
+            let preview = glow.clone();
+            watch.winter = Box::new(move || {
+                !preview.previewing() && deck_core::season::winter_frames(season.as_ref(), deck_win::clock::local_date())
+            });
             if (watch.winter)() {
                 note("Fokus-Rahmen: Winter-Designs (erster Advent bis Dreikönig oder frame_season)");
             }
@@ -201,14 +251,18 @@ pub fn start(
                     {
                         if plan.step() {
                             layer.apply(&plan.plans);
+                            rings.apply(&plan.rings);
                         }
-                        layer.keep_behind(&shadow_desktop.z_order());
+                        let z = shadow_desktop.z_order();
+                        rings.keep_behind(&z);
+                        layer.keep_behind(&z);
                     }
                 }
                 match (frame.as_mut().zip(watch.target), watch.design) {
                     (Some((frame, target)), Some(design)) => {
                         // draw wartet auf den Bildwechsel: das ist der Takt der Animation.
-                        if let Err(e) = frame.draw(target, design, watch.seed, t0.elapsed().as_secs_f64(), watch.night)
+                        let params = crate::glow::params(&glow, watch.night);
+                        if let Err(e) = frame.draw(target, design, watch.seed, t0.elapsed().as_secs_f64(), watch.night, &params)
                             && !logged
                         {
                             note(format!("Fokus-Rahmen: {e}"));
@@ -241,6 +295,22 @@ mod tests {
     }
 
     #[test]
+    fn the_window_border_carries_the_agents_status_and_a_resting_agent_keeps_a_quiet_one() {
+        use deck_core::view::Status;
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        d.add_wt(Hwnd(6), "PowerShell", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        w.statuses.write().unwrap().insert("A1".into(), Status::Waiting);
+        w.step();
+        w.step();
+        assert_eq!(d.bordered(), vec![(Hwnd(5), 0xE8813F)], "einmal gesetzt, fremde Fenster bleiben");
+        w.statuses.write().unwrap().insert("A1".into(), Status::Idle);
+        w.step();
+        assert_eq!(d.bordered().last(), Some(&(Hwnd(5), 0x9893A5)), "ruhend: gedämpft, nicht farblos");
+    }
+
+    #[test]
     fn only_a_focused_agent_window_of_a_terminal_block_gets_the_frame() {
         let d = Arc::new(FakeDesktop::default());
         d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
@@ -251,13 +321,13 @@ mod tests {
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         assert!(w.step());
         assert_eq!(w.target, Some(Hwnd(5)));
-        let first = w.design;
+        assert_eq!(w.design, Some(Design::Eigen), "außerhalb des Winters der eigene Glow");
         d.set_foreground(Hwnd(9), "Editor", "Notepad");
         assert!(w.step());
         assert_eq!(w.target, None);
         d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
         w.step();
-        assert_ne!(w.design, first, "nie zweimal dasselbe Design hintereinander");
+        assert_eq!(w.design, Some(Design::Eigen), "auch beim nächsten Fokus");
         assert_eq!(d.cornered(), vec![Hwnd(5)], "nur Agentenfenster werden eckig");
         assert_eq!(d.bordered(), vec![(Hwnd(5), 0xFAF4ED)], "Rand in Papierfarbe, ohne Auskunft hell");
     }
@@ -276,6 +346,22 @@ mod tests {
         w.hold.store(false, std::sync::atomic::Ordering::SeqCst);
         assert!(w.step());
         assert_eq!(w.target, Some(Hwnd(6)));
+    }
+
+    #[test]
+    fn the_glow_window_in_front_leaves_the_frame_on_the_last_agent() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(5), "A1", Rect::new(0, 0, 10, 10), false);
+        let mut w = FrameWatch::new(d.clone(), hosts(), None, 42);
+        w.keep = Box::new(|h| h == Hwnd(77));
+        d.set_foreground(Hwnd(5), "A1", WINDOW_CLASS);
+        w.step();
+        d.set_foreground(Hwnd(77), "Glow einstellen", "Tauri Window");
+        assert!(!w.step());
+        assert_eq!(w.target, Some(Hwnd(5)), "der Rahmen bleibt, man sieht die Änderung");
+        d.set_foreground(Hwnd(9), "Editor", "Notepad");
+        w.step();
+        assert_eq!(w.target, None);
     }
 
     #[test]

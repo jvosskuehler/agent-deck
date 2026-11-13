@@ -1,4 +1,4 @@
-/* Repo-Block: Kopf mit Schiene, Kartenraster, ＋-Karte.
+/* Repo-Block: Kopf, Kartenraster, ＋-Karte.
  * Maße aus docs/design-refs/karte-farbe-deck01.html, Farben aus dem Papier-Look
  * (styles/base.css, docs/DESIGN.md). Die Kartenmaße kommen als Variablen aus
  * src/logic/layout.ts (gridVars), hier steht keine eigene Zahl dafür. */
@@ -34,32 +34,6 @@
 
 .block[data-settling] {
   transition: none;
-}
-
-/* Die Schiene bindet Kopf und Karten zu einer Gruppe. */
-.block-rail {
-  position: absolute;
-  left: -13px;
-  top: 3px;
-  bottom: 3px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--rail);
-  transition: background-color 150ms ease;
-}
-
-.block:hover .block-rail {
-  background: var(--rail-hot);
-}
-
-/* Während ein Block gezogen wird, leuchtet nur seine Schiene, nicht die, über die der
- * Zeiger gerade wandert. */
-.panel[data-block-drag] .block:not([data-lifted]):hover .block-rail {
-  background: var(--rail);
-}
-
-.block[data-lifted] .block-rail {
-  background: var(--muted);
 }
 
 .block-head {

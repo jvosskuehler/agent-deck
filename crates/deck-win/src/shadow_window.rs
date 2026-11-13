@@ -18,7 +18,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::w;
 
-use crate::frame_window::create_layer;
+use crate::frame_window::{clip_to_work_areas, create_layer};
 use crate::guard;
 use crate::types::{Error, Hwnd, Rect, Result};
 
@@ -100,6 +100,8 @@ impl ShadowWindow {
             done
         };
         done?;
+        // Der Schatten ragt unter dem Terminal hervor; die Taskleiste bleibt frei.
+        clip_to_work_areas(self.hwnd, area);
         self.shown = true;
         self.restack(below)
     }

@@ -9,6 +9,8 @@ use deck_core::claude::summarize::enc_cwd;
 use super::*;
 
 const CWD: &str = r"C:\Repos\alpha";
+/// Eine Antwort im Format des Lagebilds; die Kurzform davon ist das Ziel.
+const ANSWER: &str = "Ziel: Login reparieren.\nStand: Ursache gefunden, noch ungeprüft.\nWartet auf dich: nichts\nNächster Schritt: Der Agent baut den Fix.";
 
 /// Antwortet mit festem Text (oder `None`), zählt Aufrufe und die höchste Gleichzeitigkeit.
 struct FakeClaude {
@@ -27,7 +29,7 @@ impl FakeClaude {
 
 impl ClaudeRunner for FakeClaude {
     fn run(&self, prompt: &str, model: &str, _: Duration, _: &Path) -> Option<String> {
-        assert!(prompt.contains("--- Chat ---") && model == "haiku");
+        assert!(prompt.contains("--- Chat ---") && model == "sonnet");
         self.calls.fetch_add(1, Ordering::SeqCst);
         let now = self.running.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(now, Ordering::SeqCst);
@@ -70,7 +72,7 @@ fn transcript(rig: &Rig, sid: &str, bytes: usize) {
 fn a_summary_is_made_once_and_then_comes_from_the_cache() {
     let r = rig();
     transcript(&r, "s1", 0);
-    let fake = FakeClaude::new(Some("Zusammenfassung: Login reparieren."), Duration::ZERO);
+    let fake = FakeClaude::new(Some(ANSWER), Duration::ZERO);
     let svc = SummaryService::new(r.cfg.clone(), fake.clone());
     assert_eq!(svc.generate("s1", Some(CWD), Lang::German).as_deref(), Some("Login reparieren."));
     assert_eq!(svc.generate("s1", Some(CWD), Lang::German).as_deref(), Some("Login reparieren."));
@@ -82,7 +84,7 @@ fn a_summary_is_made_once_and_then_comes_from_the_cache() {
 fn a_language_switch_asks_again_at_once() {
     let r = rig();
     transcript(&r, "s1", 0);
-    let fake = FakeClaude::new(Some("Fixing the login."), Duration::ZERO);
+    let fake = FakeClaude::new(Some(ANSWER), Duration::ZERO);
     let svc = SummaryService::new(r.cfg.clone(), fake.clone());
     svc.generate("s1", Some(CWD), Lang::German);
     svc.generate("s1", Some(CWD), Lang::English);
@@ -93,10 +95,10 @@ fn a_language_switch_asks_again_at_once() {
 fn a_failed_run_keeps_the_old_value() {
     let r = rig();
     transcript(&r, "s1", 0);
-    SummaryService::new(r.cfg.clone(), FakeClaude::new(Some("Alter Satz."), Duration::ZERO)).generate("s1", Some(CWD), Lang::German);
+    SummaryService::new(r.cfg.clone(), FakeClaude::new(Some(ANSWER), Duration::ZERO)).generate("s1", Some(CWD), Lang::German);
     let svc = SummaryService::new(r.cfg.clone(), FakeClaude::new(None, Duration::ZERO));
     // Englisch erzwingt einen neuen Lauf; der scheitert, der deutsche Satz bleibt.
-    assert_eq!(svc.generate("s1", Some(CWD), Lang::English).as_deref(), Some("Alter Satz."));
+    assert_eq!(svc.generate("s1", Some(CWD), Lang::English).as_deref(), Some("Login reparieren."));
 }
 
 #[test]
@@ -111,7 +113,7 @@ fn without_a_transcript_nothing_is_started() {
 fn refs_come_first_and_the_summary_closes_the_job() {
     let r = rig();
     transcript(&r, "s1", 0);
-    let svc = SummaryService::new(r.cfg.clone(), FakeClaude::new(Some("Login reparieren"), Duration::ZERO));
+    let svc = SummaryService::new(r.cfg.clone(), FakeClaude::new(Some(ANSWER), Duration::ZERO));
     let (tx, rx) = mpsc::channel();
     let tx = Mutex::new(tx);
     assert!(svc.request("s1", Some(CWD), Lang::German, true, Arc::new(move |sid, info| {
@@ -120,7 +122,7 @@ fn refs_come_first_and_the_summary_closes_the_job() {
     let first = rx.recv_timeout(Duration::from_secs(5)).unwrap();
     let second = rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(matches!(&first, (s, ChatInfo::Refs(refs)) if s == "s1" && refs.ticket == "ABC-123"), "{first:?}");
-    assert_eq!(second, ("s1".to_string(), ChatInfo::Summary(Some("Login reparieren".into()))));
+    assert_eq!(second, ("s1".to_string(), ChatInfo::Summary(Some("Login reparieren.".into()))));
 }
 
 #[test]

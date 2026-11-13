@@ -72,6 +72,8 @@ pub struct WtHost {
     hosts: HostMap,
     pending: HashMap<String, f64>,
     alive: BTreeMap<String, u32>,
+    /// Startzeit der Shell je lebendem Slot, Unix-Sekunden.
+    started: BTreeMap<String, f64>,
     alive_ts: f64,
     last_fg: Option<String>,
     tiler: WtTiler,
@@ -113,6 +115,7 @@ impl WtHost {
             hosts: Arc::new(RwLock::new(hosts)),
             pending: HashMap::new(),
             alive: BTreeMap::new(),
+            started: BTreeMap::new(),
             alive_ts: -1.0,
             last_fg: None,
             tiler: WtTiler::default(),
@@ -170,6 +173,7 @@ impl WtHost {
             return self.alive.clone();
         }
         let mut out = BTreeMap::new();
+        let mut started = BTreeMap::new();
         let names = fs::read_dir(&self.setup.state_dir)
             .map(|rd| rd.flatten().filter_map(|e| e.file_name().into_string().ok()).collect::<Vec<_>>())
             .unwrap_or_default();
@@ -180,6 +184,7 @@ impl WtHost {
             match self.fx.procs.process_start(pid) {
                 Some(start) if wt::same_start(start as i64, created) => {
                     out.insert(slot.to_string(), pid);
+                    started.insert(slot.to_string(), wt::filetime_unix(created));
                 }
                 _ => {
                     let _ = fs::remove_file(&path);
@@ -187,6 +192,7 @@ impl WtHost {
             }
         }
         self.alive = out.clone();
+        self.started = started;
         self.alive_ts = now;
         self.pending.retain(|n, t| !out.contains_key(n) && now - *t <= PENDING_TTL_S);
         self.measure_cell(&out);
@@ -204,7 +210,7 @@ impl WtHost {
                 slots.extend(wt::slots_of(&win, &names).into_iter().filter(|s| !slots.contains(s)).collect::<Vec<_>>());
                 let d = self.fx.desktop.clone();
                 self.worker.run(move || {
-                    wt_tiles::tile(d.as_ref(), &slots);
+                    wt_tiles::tile(d.as_ref(), &slots, 0);
                 });
             }
         }
@@ -232,14 +238,24 @@ impl WtHost {
     }
 
     /// Wo das nächste Fenster dieses Blocks aufgehen soll: in der Kachel, die ihm das
-    /// Raster gleich gibt ([`wt_tiles::next_tile`]). `None` = ohne Vorgabe öffnen.
-    fn next_spot(&mut self, win: &str) -> Option<wt::Spot> {
+    /// Raster gleich gibt ([`wt_tiles::next_tile`]). Dazu die liegenden Agenten in
+    /// Kachel-Reihenfolge und wie viele angeforderte vor ihm dran sind: damit rückt
+    /// [`Self::create_agent`] sie vorab beiseite. Spot `None` = ohne Vorgabe öffnen.
+    fn next_spot(&mut self, win: &str) -> (Option<wt::Spot>, Vec<String>, usize) {
         let live = self.terminals(win);
         let mut order: Vec<String> = self.screen_rows(win).0.concat();
         order.extend(live.into_iter().filter(|s| !order.contains(s)).collect::<Vec<_>>());
         let ahead = self.pending.keys().filter(|n| wt::split_slot(n).is_some_and(|(w, _)| w == win)).count();
-        let (r, scale) = wt_tiles::next_tile(self.fx.desktop.as_ref(), &order, ahead)?;
-        Some(wt::spot((i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height())), scale, self.cell))
+        let spot = wt_tiles::next_tile(self.fx.desktop.as_ref(), &order, ahead).map(|(r, scale)| {
+            wt::spot((i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height())), scale, self.cell)
+        });
+        (spot, order, ahead)
+    }
+
+    /// Wann die Shell jedes lebenden Agenten gestartet ist (Unix-Sekunden).
+    pub fn started(&mut self) -> BTreeMap<String, f64> {
+        self.alive_slots();
+        self.started.clone()
     }
 
     pub fn terminals(&mut self, win: &str) -> Vec<String> {
@@ -278,7 +294,7 @@ impl WtHost {
         self.screen.remove(win);
         let d = self.fx.desktop.clone();
         self.worker.run(move || {
-            wt_tiles::tile(d.as_ref(), &slots);
+            wt_tiles::tile(d.as_ref(), &slots, 0);
         });
     }
 
@@ -343,7 +359,7 @@ impl WtHost {
                 return false;
             }
         };
-        let spot = self.next_spot(win);
+        let (spot, order, ahead) = self.next_spot(win);
         self.pending.insert(name.clone(), (self.clock)());
         if let Some(sp) = spot {
             self.spots.insert(name.clone(), sp);
@@ -353,7 +369,14 @@ impl WtHost {
         let line =
             wt::wt_argv(&s.wt_exe, &name, &folder, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref(), spot.as_ref());
         let launcher = self.fx.launcher.clone();
+        let d = self.fx.desktop.clone();
+        self.screen.remove(win);
         self.worker.run(move || {
+            // Erst die liegenden beiseite, dann das neue in die frei gewordene Kachel:
+            // sonst steht es schon da, während die anderen noch auf alten Plätzen liegen.
+            if !order.is_empty() {
+                wt_tiles::tile(d.as_ref(), &order, ahead + 1);
+            }
             launcher.launch(&line);
         });
         true
@@ -419,6 +442,14 @@ impl WtHost {
         let alive = self.alive_slots();
         let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
         wt_tiles::all_open(self.fx.desktop.as_ref(), &slots)
+    }
+
+    /// Liegen die lebenden unter `slots` auf dem Monitor unter `cursor`
+    /// ([`wt_tiles::on_cursor_monitor`])?
+    pub fn on_cursor_monitor(&mut self, slots: &[String], cursor: Option<(i32, i32)>) -> bool {
+        let alive = self.alive_slots();
+        let slots: Vec<String> = slots.iter().filter(|s| alive.contains_key(*s)).cloned().collect();
+        wt_tiles::on_cursor_monitor(self.fx.desktop.as_ref(), &slots, cursor)
     }
 
     /// Das fremde Fenster, das einen der lebenden unter `slots` verdeckt ([`wt_tiles::coverer`]).

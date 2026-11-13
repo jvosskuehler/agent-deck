@@ -96,3 +96,63 @@
 .panel-grip:hover {
   color: var(--muted);
 }
+
+/* Streifen an der Bildschirmkante des angedockten Panels: gedrückt halten und ziehen
+ * schiebt das Deck die Kante entlang (dock_drag.rs). Er liegt im Innenabstand, über
+ * nichts Klickbarem; die kleine Kapsel zeigt sich erst unter dem Zeiger. */
+.panel-slide {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.panel-slide[data-edge="top"],
+.panel-slide[data-edge="bottom"] {
+  left: 0;
+  right: 0;
+  height: 12px;
+  cursor: ew-resize;
+}
+.panel-slide[data-edge="top"] {
+  top: 0;
+}
+.panel-slide[data-edge="bottom"] {
+  bottom: 0;
+  height: 6px;
+}
+
+.panel-slide[data-edge="left"],
+.panel-slide[data-edge="right"] {
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  cursor: ns-resize;
+}
+.panel-slide[data-edge="left"] {
+  left: 0;
+}
+.panel-slide[data-edge="right"] {
+  right: 0;
+}
+
+.panel-slide::after {
+  content: "";
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hl-high);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.panel-slide[data-edge="left"]::after,
+.panel-slide[data-edge="right"]::after {
+  width: 4px;
+  height: 44px;
+}
+.panel-slide:hover::after,
+.panel-slide:active::after {
+  opacity: 1;
+}

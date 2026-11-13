@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::model::{Key, Tracked, row_id};
-use super::rules::{display_command, exe_stem, protected};
+use super::rules::{display_command, exe_stem, is_deck_exe, protected};
 use super::tracker::Tracker;
 use crate::i18n::Lang;
 use crate::view::OrphanView;
@@ -34,7 +34,12 @@ fn grouped(tr: &Tracker) -> Vec<(&Tracked, Key, usize)> {
         let (mut root, mut depth, mut steps) = (t.key(), 0usize, 0usize);
         let mut cur = t;
         let mut seen = HashSet::new();
+        let mut under_deck = false;
         while let Some(p) = parent(&alive, cur) {
+            if is_deck_exe(&p.exe) {
+                under_deck = true;
+                break;
+            }
             if !seen.insert(p.key()) || steps > 64 {
                 break;
             }
@@ -45,7 +50,10 @@ fn grouped(tr: &Tracker) -> Vec<(&Tracked, Key, usize)> {
             }
             cur = p;
         }
-        out.push((t, root, depth));
+        // Schon früher gemerkte Prozesse unter dem Deck (vor dieser Regel): nie anbieten.
+        if !under_deck {
+            out.push((t, root, depth));
+        }
     }
     out
 }

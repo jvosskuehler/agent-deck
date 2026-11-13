@@ -56,6 +56,12 @@
   line-height: 1.45;
 }
 
+/* Zweite Zeile des Lagebilds: worauf der Agent von dir wartet. */
+.tip-line--waiting {
+  margin-top: 4px;
+  font-weight: 600;
+}
+
 /* Solange die Zusammenfassung rechnet: die letzte Frage, gedämpft. */
 .tip-body--pending {
   color: var(--dim);

@@ -32,6 +32,9 @@ pub struct Limit {
     pub kind: String,
     pub group: String,
     pub label: String,
+    /// Modell eines modellbezogenen Wochenlimits (`scope.model.display_name`, etwa
+    /// „Fable“); sonst `None`.
+    pub model: Option<String>,
     pub percent: Option<i64>,
     pub severity: String,
     pub resets_at: Option<String>,
@@ -148,6 +151,16 @@ fn title_case(s: &str) -> String {
     out
 }
 
+/// Modell, auf das ein Limit beschränkt ist (`scope.model.display_name`).
+fn scope_model(lim: &serde_json::Map<String, Value>) -> Option<String> {
+    lim.get("scope")
+        .and_then(Value::as_object)
+        .and_then(|s| s.get("model"))
+        .and_then(Value::as_object)
+        .and_then(|m| text(m.get("display_name")))
+        .map(|m| m.to_string())
+}
+
 /// Name eines API-Limits für die Anzeige.
 fn limit_label(lim: &serde_json::Map<String, Value>, lang: Lang) -> String {
     let kind = lim.get("kind").and_then(Value::as_str).unwrap_or("").to_lowercase();
@@ -161,13 +174,7 @@ fn limit_label(lim: &serde_json::Map<String, Value>, lang: Lang) -> String {
         return lang.l("Sonnet (Woche)", "Sonnet (week)").into();
     }
     if kind == "weekly_scoped" {
-        let model = lim
-            .get("scope")
-            .and_then(Value::as_object)
-            .and_then(|s| s.get("model"))
-            .and_then(Value::as_object)
-            .and_then(|m| text(m.get("display_name")));
-        return match model {
+        return match scope_model(lim) {
             Some(m) => format!("{m} {}", lang.l("(Woche)", "(week)")),
             None => lang.l("Woche (Modell)", "Week (model)").into(),
         };
@@ -199,6 +206,7 @@ pub fn parse_usage(data: &Value, lang: Lang) -> Vec<Limit> {
                 kind: opt_str(lim.get("kind")).unwrap_or_default(),
                 group: opt_str(lim.get("group")).unwrap_or_default(),
                 label: limit_label(lim, lang),
+                model: scope_model(lim),
                 percent: pct(lim.get("percent")),
                 severity: opt_str(lim.get("severity")).unwrap_or_default(),
                 resets_at: opt_str(lim.get("resets_at")),
@@ -215,6 +223,7 @@ pub fn parse_usage(data: &Value, lang: Lang) -> Vec<Limit> {
             kind: kind.into(),
             group: group.into(),
             label,
+            model: None,
             percent: pct(Some(util)),
             severity: String::new(),
             resets_at: opt_str(o.get("resets_at")),
@@ -350,24 +359,33 @@ fn limit_view(lim: Option<&Limit>, label: &str, now: f64, lang: Lang) -> LimitVi
     }
 }
 
-/// Das Anzeigemodell der Leiste: Session und Woche immer (unbekannt = „—“), weitere
-/// Limits mit Signal nur im Tooltip. `color` ist die unverdunkelte Ampel; ist der Wert
+/// Das Anzeigemodell der Leiste: Session und Woche immer (unbekannt = „—“), dahinter
+/// jedes Wochenlimit eines Modells unter dessen Namen („Fable 43 %“; das knappere
+/// Kontingent des teuersten Modells ist oft das, das zuerst reißt). Weitere Limits mit
+/// Signal nur im Tooltip. `color` ist die unverdunkelte Ampel; ist der Wert
 /// alt (`stale`), zeichnet die Oberfläche matt.
 pub fn usage_view(snap: &UsageSnapshot, now: f64, lang: Lang) -> UsageView {
     let session = session_of(&snap.limits);
     let week = snap.limits.iter().find(|l| l.kind == "weekly_all");
+    let scoped = |l: &&Limit| l.kind == "weekly_scoped" && l.model.is_some();
     let extra = snap
         .limits
         .iter()
-        .filter(|l| keep_in_tooltip(l))
+        .filter(|l| keep_in_tooltip(l) && !scoped(l))
         .filter(|l| !session.is_some_and(|s| std::ptr::eq(*l, s)) && !week.is_some_and(|w| std::ptr::eq(*l, w)))
         .map(|l| limit_view(Some(l), &l.label, now, lang))
         .collect();
+    let mut primary = vec![
+        limit_view(session, "Session", now, lang),
+        limit_view(week, lang.l("Woche", "Week"), now, lang),
+    ];
+    // In der Leiste nur der Modellname: „(Woche)“ sagt dort der Nachbar.
+    primary.extend(snap.limits.iter().filter(scoped).map(|l| LimitView {
+        label: l.model.clone().unwrap_or_default(),
+        ..limit_view(Some(l), &l.label, now, lang)
+    }));
     UsageView {
-        primary: vec![
-            limit_view(session, "Session", now, lang),
-            limit_view(week, lang.l("Woche", "Week"), now, lang),
-        ],
+        primary,
         extra,
         stale: is_stale(snap, now),
         account: snap.account.clone().filter(|a| !a.is_empty()),

@@ -200,3 +200,33 @@ fn port_and_time_texts_read_naturally_in_both_languages_without_dashes() {
         assert!(!de.contains(['—', '–']) && !en.contains(['—', '–']));
     }
 }
+
+#[test]
+fn the_decks_webview_remembered_before_the_fix_is_never_offered() {
+    use deck_core::orphans::{Saved, ShellRecord, Tracked};
+    let t = |pid: u32, ppid: u32, exe: &str, s: f64| Tracked {
+        pid,
+        start: ft(s),
+        ppid,
+        exe: exe.into(),
+        cmdline: None,
+        image: None,
+        session: Some(1),
+        shell_pid: 100,
+        shell_start: ft(T0),
+        first_seen: T0 + 10.0,
+        gone_at: None,
+    };
+    let saved = Saved {
+        saved_at: T0 + 10.0,
+        shells: vec![ShellRecord { slot: "A2".into(), pid: 100, start: ft(T0), last_seen: T0 + 10.0, closed_at: Some(T0 + 11.0) }],
+        procs: vec![
+            t(110, 102, "agent-deck.exe", T0 + 7.0),
+            t(111, 110, "msedgewebview2.exe", T0 + 8.0),
+            t(112, 111, "msedgewebview2.exe", T0 + 8.5),
+            t(103, 102, "node.exe", T0 + 6.0),
+        ],
+    };
+    let tr = Tracker::from_saved(saved);
+    assert_eq!(roots(&tr), vec![(103, ft(T0 + 6.0))]);
+}

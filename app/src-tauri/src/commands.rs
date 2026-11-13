@@ -103,6 +103,12 @@ pub async fn tooltip_content_size(app: AppHandle, width: f64, height: f64) -> Re
     Ok(())
 }
 
+/// Ein Dialog meldet seine Inhaltshöhe; sein Fenster wächst bzw. schrumpft mit.
+#[tauri::command]
+pub async fn dialog_content_size(window: tauri::WebviewWindow, height: f64) -> Res<()> {
+    crate::ui_windows::fit_dialog(&window, height).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn open_usage_page(app: AppHandle) -> Res<()> {
     app.opener().open_url(USAGE_URL, None::<&str>).map_err(|e| e.to_string())
@@ -169,6 +175,28 @@ pub async fn panel_drag(app: AppHandle, mode: String, x: Option<f64>, y: Option<
 pub async fn focus_block(app: AppHandle, letter: String) -> Res<()> {
     tooltip::hide(&app);
     lock(&shared(&app).deck).show_window(&letter);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_keys(app: AppHandle) -> Res<()> {
+    present(&app, crate::ui_windows::KEYS);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_glow(app: AppHandle) -> Res<deck_core::glow::GlowView> {
+    Ok(crate::glow::view(&app))
+}
+
+#[tauri::command]
+pub async fn set_glow(app: AppHandle, glow: deck_core::glow::GlowSettings) -> Res<deck_core::glow::GlowView> {
+    Ok(crate::glow::set(&app, &glow))
+}
+
+#[tauri::command]
+pub async fn open_glow(app: AppHandle) -> Res<()> {
+    crate::glow::open(&app);
     Ok(())
 }
 

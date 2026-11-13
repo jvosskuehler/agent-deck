@@ -88,8 +88,8 @@ Hover: Rand und „+“ eine Stufe dunkler (dunkel heller). Sie steht als letzte
 Repo-Name 12,5 px halbfett in Textfarbe (ist zugleich der Griff zum Umsortieren der
 Blöcke; Hover in der Ticketfarbe); ist der Block nicht verbunden, steht daneben klein
 „nicht verbunden“ (11 px gedämpft). Einen Host nennt der Kopf nicht: alle Agenten laufen
-in Windows Terminal. Links eine 2 px breite Schiene (hl-med), die Kopf und Karten
-zu einer Gruppe bindet; beim Hover über den Block wird sie kräftiger. Heimat-Block
+in Windows Terminal. Eine Schiene links neben dem Block gibt es seit 11.11.2026 nicht
+mehr: sie stammte aus der Zeit, als die Blöcke VS-Code-Fenster waren. Heimat-Block
 (`Repos`) steht immer oben.
 
 Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nach vorn,

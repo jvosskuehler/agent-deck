@@ -24,7 +24,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 deck-core = { path = "../../crates/deck-core" }
 deck-win = { path = "../../crates/deck-win" }
 deck-services = { path = "../../crates/deck-services" }
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
