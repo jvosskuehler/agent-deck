@@ -2,14 +2,14 @@
 //! und Alt+V aus Claude Code (Bild einfügen; Strg+V fügt in Windows Terminal nur Text ein).
 //! Tasten ohne Modifier (F13 bis F24) kommen nur vom Makropad und fehlen in der Liste. Es
 //! sind dieselben Einstellungen, die `app/src-tauri/src/lib.rs` beim Start liest
-//! (`jump_hotkey`, `front_hotkeys`, `glow_hotkey`, `new_agent_hotkey`); eine leere Einstellung schaltet ein
+//! (`jump_hotkey`, `front_hotkeys`, `glow_hotkey`, `new_agent_hotkey`, `fullscreen_hotkey`); eine leere Einstellung schaltet ein
 //! Kürzel ab, es fehlt dann auch in der Liste.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use ts_rs::TS;
 
-use crate::config::{FRONT_HOTKEYS, GLOW_HOTKEY, JUMP_HOTKEY, NEW_AGENT_HOTKEY};
+use crate::config::{FRONT_HOTKEYS, FULLSCREEN_HOTKEY, GLOW_HOTKEY, JUMP_HOTKEY, NEW_AGENT_HOTKEY};
 use crate::i18n::Lang;
 
 /// Eine Zeile der Liste.
@@ -47,6 +47,7 @@ pub fn rows(settings: &Map<String, Value>, lang: Lang) -> Vec<ShortcutRow> {
         add(&c, "Alle Agenten nach vorn, nochmal: zurück", "All agents to the front, again: back");
     }
     add(&single(settings, "new_agent_hotkey", NEW_AGENT_HOTKEY), "Neuer Agent (im Block des zuletzt benutzten)", "New agent (in the block of the last one used)");
+    add(&single(settings, "fullscreen_hotkey", FULLSCREEN_HOTKEY), "Agent vorn auf Vollbild, nochmal: zurück", "Agent in front to full screen, again: back");
     add(&single(settings, "glow_hotkey", GLOW_HOTKEY), "Glow einstellen", "Adjust glow");
     add("alt+v", "Bild aus der Zwischenablage einfügen", "Paste image from clipboard");
     out
@@ -80,12 +81,12 @@ mod tests {
     fn without_settings_all_default_shortcuts_are_listed() {
         let r = rows(&Map::new(), Lang::German);
         let keys: Vec<&str> = r.iter().map(|x| x.keys.as_str()).collect();
-        assert_eq!(keys, ["Strg+<", "Strg+Shift+<", "Strg+Alt+N", "Strg+Alt+G", "Alt+V"], "F20 nur vom Makropad, nicht gelistet");
+        assert_eq!(keys, ["Strg+<", "Strg+Shift+<", "Strg+Alt+N", "Strg+Alt+F", "Strg+Alt+G", "Alt+V"], "F20 nur vom Makropad, nicht gelistet");
     }
 
     #[test]
     fn an_empty_setting_switches_a_shortcut_off_and_a_changed_one_shows_up() {
-        let s = json!({"jump_hotkey": "", "glow_hotkey": "win+shift+g", "front_hotkeys": "ctrl+f19", "new_agent_hotkey": ""});
+        let s = json!({"jump_hotkey": "", "glow_hotkey": "win+shift+g", "front_hotkeys": "ctrl+f19", "new_agent_hotkey": "", "fullscreen_hotkey": ""});
         let keys: Vec<String> = rows(s.as_object().unwrap(), Lang::German).into_iter().map(|x| x.keys).collect();
         assert_eq!(keys, ["Strg+F19", "Win+Shift+G", "Alt+V"]);
     }

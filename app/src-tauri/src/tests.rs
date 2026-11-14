@@ -202,6 +202,30 @@ fn the_new_agent_key_opens_in_the_block_of_the_last_used_agent() {
 }
 
 #[test]
+fn the_fullscreen_key_toggles_the_agent_in_front_and_otherwise_maximizes_the_last_used() {
+    let mut r = rig();
+    r.wt_block("A", "repo");
+    r.wt_agent("A1", 91);
+    r.wt_agent("A2", 92);
+    r.desk.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 960, 1040), false);
+    r.desk.add_wt(Hwnd(12), "A2", Rect::new(960, 0, 960, 1040), false);
+    r.desk.set_foreground(Hwnd(12), "A2", deck_core::wt::WINDOW_CLASS);
+    r.deck.toggle_fullscreen();
+    assert_eq!(r.desk.maximized(), vec![Hwnd(12)], "der vorn wird maximiert");
+    assert_eq!(r.desk.focused(), vec![Hwnd(12)], "und behält die Tastatur");
+    r.deck.toggle_fullscreen();
+    assert!(r.desk.maximized().is_empty(), "nochmal: zurück an seinen Platz");
+
+    // Kein Agent vorn: der zuletzt benutzte kommt maximiert, auch wenn er es schon war.
+    r.desk.set_foreground(Hwnd(99), "Browser", "Chrome_WidgetWin_1");
+    r.deck.active_slot = Some("A1".into());
+    r.deck.toggle_fullscreen();
+    r.deck.toggle_fullscreen();
+    assert_eq!(r.desk.maximized(), vec![Hwnd(11)]);
+    assert_eq!(r.desk.focused().last(), Some(&Hwnd(11)));
+}
+
+#[test]
 fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
     let mut r = rig();
     r.wt_block("A", "repo");

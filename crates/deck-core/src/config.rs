@@ -89,3 +89,8 @@ pub const GLOW_HOTKEY: &str = "ctrl+alt+g";
 /// AltGr+N tippt auf der deutschen Tastatur nichts. Überschreibbar per `new_agent_hotkey`,
 /// leer = aus.
 pub const NEW_AGENT_HOTKEY: &str = "ctrl+alt+n";
+
+/// Vollbild (`actions.rs`, `toggle_fullscreen`): F wie Fullscreen. Der Agent vorn füllt
+/// seinen Monitor, nochmal = zurück an seinen Platz. AltGr+F tippt auf der deutschen
+/// Tastatur nichts. Überschreibbar per `fullscreen_hotkey`, leer = aus.
+pub const FULLSCREEN_HOTKEY: &str = "ctrl+alt+f";

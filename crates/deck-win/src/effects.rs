@@ -61,6 +61,9 @@ pub trait Desktop: Send + Sync {
     fn restore(&self, hwnd: Hwnd) -> Result<bool>;
     /// Fenster minimieren; die Tastatur bleibt, wo sie ist, außer es war selbst vorn.
     fn minimize(&self, hwnd: Hwnd) -> Result<bool>;
+    /// Maximiert zurück an seinen Platz (nur mit `may_restore`), sonst maximieren
+    /// ([`arrange::toggle_maximize`]). `Ok(true)` = jetzt maximiert.
+    fn toggle_maximize(&self, hwnd: Hwnd, may_restore: bool) -> Result<bool>;
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool>;
     /// Mehrere Fenster zugleich zeigen: Minimierte wiederherstellen, jedes mit Ziel
     /// dorthin legen, alle über die anderen heben, das erste zuoberst, keines aktivieren
@@ -182,6 +185,9 @@ impl Desktop for Win32Desktop {
     }
     fn minimize(&self, hwnd: Hwnd) -> Result<bool> {
         arrange::minimize_window(hwnd)
+    }
+    fn toggle_maximize(&self, hwnd: Hwnd, may_restore: bool) -> Result<bool> {
+        arrange::toggle_maximize(hwnd, may_restore)
     }
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool> {
         focus::set_corners(hwnd, corners)

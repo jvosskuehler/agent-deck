@@ -11,6 +11,9 @@
 //! - Neuer Agent (`config::NEW_AGENT_HOTKEY`, heute Strg+Alt+N): wie das ＋ im Deck, im
 //!   Block des zuletzt benutzten Agenten (`Deck::create_agent_here`). Überschreibbar über
 //!   `new_agent_hotkey`.
+//! - Vollbild (`config::FULLSCREEN_HOTKEY`, heute Strg+Alt+F): der Agent vorn füllt seinen
+//!   Monitor, nochmal = zurück an seinen Platz (`Deck::toggle_fullscreen`). Überschreibbar
+//!   über `fullscreen_hotkey`.
 //!
 //! Leer schaltet eine Taste ab. Ist eine Kombination belegt (etwa vom noch laufenden
 //! Python-Deck), versucht es ihr Thread eine Weile und gibt dann auf; das Deck läuft ohne
@@ -46,6 +49,11 @@ pub fn start_glow(app: &AppHandle, combo: String) {
 /// Neuer Agent.
 pub fn start_new_agent(app: &AppHandle, combo: String) {
     listen(app, combo, "Neuer-Agent-Taste", |app| lock(&shared(app).deck).create_agent_here(crate::now()));
+}
+
+/// Vollbild.
+pub fn start_fullscreen(app: &AppHandle, combo: String) {
+    listen(app, combo, "Vollbild-Taste", |app| lock(&shared(app).deck).toggle_fullscreen());
 }
 
 fn listen(app: &AppHandle, combo: String, label: &'static str, press: fn(&AppHandle)) {

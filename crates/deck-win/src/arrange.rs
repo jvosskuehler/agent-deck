@@ -14,7 +14,8 @@ use windows::Win32::Graphics::Dwm::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GetClientRect, GetForegroundWindow, GetWindowLongPtrW, GetWindowPlacement, GetWindowRect,
-    HWND_NOTOPMOST, HWND_TOPMOST, SW_MINIMIZE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
+    HWND_NOTOPMOST, HWND_TOPMOST, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE,
+    SWP_NOACTIVATE,
     SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, ShowWindow, WINDOWPLACEMENT, WS_EX_TOPMOST,
     WS_EX_TRANSPARENT,
 };
@@ -278,6 +279,19 @@ pub fn restore_window(hwnd: Hwnd) -> Result<bool> {
     // SAFETY: Handle als Wert; Windows prüft es selbst.
     let _ = unsafe { ShowWindow(hwnd.h(), SW_SHOWNOACTIVATE) };
     Ok(true)
+}
+
+/// Vollbild-Taste: ein maximiertes Fenster zurück an seinen Platz (nur mit `may_restore`),
+/// jedes andere maximieren (auf die Arbeitsfläche seines Monitors). Den Platz merkt sich
+/// Windows selbst (Normallage in `WINDOWPLACEMENT`), also auch die Kachel, in die das Deck
+/// es gelegt hat. `Ok(true)` = jetzt maximiert.
+pub fn toggle_maximize(hwnd: Hwnd, may_restore: bool) -> Result<bool> {
+    guard::check("toggle_maximize")?;
+    let back = may_restore && is_maximized(hwnd);
+    no_transitions(hwnd);
+    // SAFETY: Handle als Wert; Windows prüft es selbst.
+    let _ = unsafe { ShowWindow(hwnd.h(), if back { SW_RESTORE } else { SW_MAXIMIZE }) };
+    Ok(!back)
 }
 
 /// Ein Fenster minimieren (Taste „alle nach vorn“, zweiter Druck). `Ok(true)` = es lag

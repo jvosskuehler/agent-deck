@@ -396,6 +396,27 @@ impl WtHost {
         true
     }
 
+    /// Vollbild-Taste ([`deck_win::arrange::toggle_maximize`]): das Fenster des Agenten
+    /// maximieren und nach vorn holen; mit `may_restore` geht ein maximiertes zurück an
+    /// seinen Platz. `false` = der Slot lebt nicht.
+    pub fn toggle_maximize(&mut self, slot: &str, may_restore: bool) -> bool {
+        if !self.alive_slots().contains_key(slot) {
+            return false;
+        }
+        let (d, slot) = (self.fx.desktop.clone(), slot.to_string());
+        self.worker.run(move || {
+            let Some(h) = wt_tiles::hwnd_of(d.as_ref(), &slot) else { return };
+            match d.toggle_maximize(h, may_restore) {
+                Ok(true) => {
+                    let _ = d.focus(h);
+                }
+                Ok(false) => {}
+                Err(e) => note(format!("wt_host.maximize {slot}: {e}")),
+            }
+        });
+        true
+    }
+
     /// Klick auf den Repo-Namen: alle Fenster des Blocks nach vorn, das des ersten
     /// Agenten zuletzt und damit obenauf.
     pub fn raise_window(&mut self, win: &str) -> bool {

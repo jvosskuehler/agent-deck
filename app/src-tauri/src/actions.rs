@@ -80,6 +80,22 @@ impl Deck {
         }
     }
 
+    /// Vollbild-Taste (`config::FULLSCREEN_HOTKEY`): der Agent, dessen Fenster vorn ist,
+    /// füllt seinen Monitor; nochmal gedrückt geht er zurück an seinen Platz im Raster. Ist
+    /// kein Agent vorn, holt die Taste den zuletzt benutzten maximiert nach vorn (dann nie
+    /// zurück: wer ihn nicht sieht, will ihn sehen).
+    pub fn toggle_fullscreen(&mut self) {
+        let front = self.wt.slot_in_front();
+        let may_restore = front.is_some();
+        let Some(slot) = front.or_else(|| self.active_slot.clone()) else {
+            note("Vollbild-Taste: kein Agent vorn und keiner zuletzt benutzt");
+            return;
+        };
+        if !self.wt.toggle_maximize(&slot, may_restore) {
+            note(format!("Vollbild-Taste: {slot} lebt nicht"));
+        }
+    }
+
     /// Sprung-Taste: das Pane, das am längsten wartet; steht man schon bei einem
     /// Wartenden, der nächste (reihum). Wartet niemand, passiert nichts.
     pub fn jump_to_waiting(&mut self) {

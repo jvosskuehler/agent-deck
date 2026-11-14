@@ -31,6 +31,8 @@ struct Desk {
     minimized: Vec<Hwnd>,
     raised: Vec<Hwnd>,
     shadows: Vec<(Hwnd, bool)>,
+    /// Fenster, die gerade maximiert sind.
+    maximized: Vec<Hwnd>,
     /// Fenster von oben nach unten.
     z: Vec<Hwnd>,
     monitors: Vec<Monitor>,
@@ -96,6 +98,10 @@ impl FakeDesktop {
     /// Ein Agentenfenster wurde verschoben.
     pub fn move_wt(&self, hwnd: Hwnd, rect: Rect) {
         self.0.lock().unwrap().wt.iter_mut().filter(|(w, _)| w.hwnd == hwnd).for_each(|(_, r)| *r = rect);
+    }
+    /// Fenster, die gerade maximiert sind.
+    pub fn maximized(&self) -> Vec<Hwnd> {
+        self.0.lock().unwrap().maximized.clone()
     }
     /// Fenster, die minimiert werden sollten, in dieser Reihenfolge.
     pub fn minimized(&self) -> Vec<Hwnd> {
@@ -190,6 +196,17 @@ impl Desktop for FakeDesktop {
         d.minimized.push(hwnd);
         d.wt.iter_mut().filter(|(w, _)| w.hwnd == hwnd).for_each(|(w, _)| w.minimized = true);
         Ok(true)
+    }
+    fn toggle_maximize(&self, hwnd: Hwnd, may_restore: bool) -> Result<bool> {
+        let mut d = self.0.lock().unwrap();
+        let on = !(may_restore && d.maximized.contains(&hwnd));
+        if on {
+            d.maximized.retain(|h| *h != hwnd);
+            d.maximized.push(hwnd);
+        } else {
+            d.maximized.retain(|h| *h != hwnd);
+        }
+        Ok(on)
     }
     fn set_corners(&self, hwnd: Hwnd, _: Corners) -> Result<bool> {
         self.0.lock().unwrap().corners.push(hwnd);
