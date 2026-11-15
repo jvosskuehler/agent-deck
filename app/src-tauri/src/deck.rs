@@ -17,6 +17,7 @@ use deck_core::bind_store::BindStore;
 use deck_core::claude::refs::Refs;
 use deck_core::claude::settings::{BYPASS_MODE, DefaultModeCache};
 use deck_core::config::{MODE_CYCLE, WINDOWS};
+use deck_core::crash_resume::{Pending, ResumeMemo};
 use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view, chat_worktree, slot_dirs};
 use deck_core::front::BackToggle;
 use deck_core::i18n::Lang;
@@ -74,6 +75,10 @@ pub struct Deck {
     pub front_toggle: BackToggle,
     /// Automatisches `/compact`: für welchen Cache-Stand je Slot schon gesendet wurde.
     pub compact_memo: CompactMemo,
+    /// Abgestürzte Agenten, die gerade fortgesetzt werden (`crash_resume.rs`).
+    pub resumes: Vec<Pending>,
+    /// Wann welche Session zuletzt fortgesetzt wurde (gegen Kreisläufe).
+    pub resume_memo: ResumeMemo,
     last_cycle: Option<Vec<String>>,
     memory: StatusMemory,
     mode_cache: DefaultModeCache,
@@ -108,6 +113,8 @@ impl Deck {
             shown_slots: Vec::new(),
             front_toggle: BackToggle::default(),
             compact_memo: CompactMemo::default(),
+            resumes: Vec::new(),
+            resume_memo: ResumeMemo::default(),
             last_cycle: None,
             memory: StatusMemory::default(),
             mode_cache: DefaultModeCache::new(),
@@ -120,6 +127,9 @@ impl Deck {
         self.autofocus_new(now);
         self.mark_seen_read(now);
         self.read_files();
+        // Ohne das Deck verschwundene Agenten: protokollieren und fortsetzen.
+        self.handle_ended(now);
+        self.drive_resumes(now);
         let cycle = self.mode_cycle();
         let view = self.sweep_view(now);
         let orphans = self.services.sweep(&view);
@@ -184,6 +194,7 @@ impl Deck {
                 v.live.extend(self.wt.terminals(w));
             }
         }
+        v.live.extend(self.held_for_resume());
         v
     }
 

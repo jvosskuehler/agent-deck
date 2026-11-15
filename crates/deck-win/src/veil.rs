@@ -169,6 +169,20 @@ impl Veil {
     }
 }
 
+/// Wie lange das Foto am Ende ausblendet, wenn es als [`crate::effects::Curtain`] dient.
+const CURTAIN_FADE: Duration = Duration::from_millis(140);
+
+impl crate::effects::Curtain for Veil {
+    fn wait(&self, d: Duration) {
+        Veil::wait(self, d);
+    }
+    fn lift(self: Box<Self>) {
+        self.on_top();
+        Veil::wait(&self, Duration::from_millis(16));
+        Veil::lift(*self, CURTAIN_FADE);
+    }
+}
+
 impl Drop for Veil {
     fn drop(&mut self) {
         for p in self.panes.drain(..) {

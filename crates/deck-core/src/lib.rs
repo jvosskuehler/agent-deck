@@ -17,6 +17,7 @@ pub mod bind_store;
 pub mod binding;
 pub mod claude;
 pub mod config;
+pub mod crash_resume;
 pub mod dock;
 pub mod field;
 pub mod deck_view;

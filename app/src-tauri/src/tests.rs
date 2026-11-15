@@ -30,9 +30,9 @@ pub(crate) struct Rig {
     _tmp: tempfile::TempDir,
     pub(crate) deck: Deck,
     pub(crate) desk: Arc<FakeDesktop>,
-    procs: Arc<FakeProcesses>,
+    pub(crate) procs: Arc<FakeProcesses>,
     pub(crate) console: Arc<FakeConsole>,
-    launcher: Arc<FakeLauncher>,
+    pub(crate) launcher: Arc<FakeLauncher>,
 }
 
 pub(crate) fn rig() -> Rig {
@@ -80,7 +80,7 @@ impl Rig {
         self.console.0.lock().unwrap().iter().map(|(pid, steps)| (*pid, text(steps))).collect()
     }
     /// Die claude-Argumente des zuletzt gestarteten Agenten (aus der `-Spec` des Starts).
-    fn last_claude_args(&self) -> Vec<String> {
+    pub(crate) fn last_claude_args(&self) -> Vec<String> {
         let argv = self.launcher.0.lock().unwrap().last().cloned().expect("kein Start");
         let spec = deck_core::wt::decode_spec(argv.last().unwrap()).unwrap();
         serde_json::from_value(spec["args"].clone()).unwrap()

@@ -94,6 +94,14 @@ pub fn screen_cols(desktop: &dyn Desktop, rows: &[Vec<String>]) -> u32 {
 /// liegenden schon beiseite, bevor das neue erscheint. Liefert die Zahl der gelegten
 /// Fenster.
 pub fn tile(desktop: &dyn Desktop, slots: &[String], room: usize) -> usize {
+    let plan = tile_plan(desktop, slots, room);
+    let hwnds: Vec<Hwnd> = plan.iter().map(|(h, _)| *h).collect();
+    flatten(desktop, &hwnds);
+    plan.iter().filter(|(h, r)| desktop.place(*h, *r).is_ok()).count()
+}
+
+/// Wohin [`tile`] die (nicht minimierten) Fenster dieser Agenten legen würde.
+pub fn tile_plan(desktop: &dyn Desktop, slots: &[String], room: usize) -> Vec<(Hwnd, Rect)> {
     let mut found: HashMap<String, Hwnd> = HashMap::new();
     for w in desktop.class_windows(WINDOW_CLASS) {
         if let Some(slot) = slot_from_title(Some(&w.title))
@@ -104,25 +112,30 @@ pub fn tile(desktop: &dyn Desktop, slots: &[String], room: usize) -> usize {
         }
     }
     let order: Vec<Hwnd> = slots.iter().filter_map(|s| found.get(s).copied()).collect();
-    let Some(first) = order.first().copied() else { return 0 };
-    let Some(r) = desktop.window_rect(first) else { return 0 };
+    let Some(first) = order.first().copied() else { return Vec::new() };
+    let Some(r) = desktop.window_rect(first) else { return Vec::new() };
     let (cx, cy) = r.center();
-    let Some(area) = desktop.work_area(cx, cy) else { return 0 };
+    let Some(area) = desktop.work_area(cx, cy) else { return Vec::new() };
     let scale = desktop.scale_of(first);
-    flatten(desktop, &order);
     let cols = max_cols_for(i64::from(area.width()), scale);
     let grid = tile_grid(
         (order.len() + room) as i64,
         (i64::from(area.left), i64::from(area.top), i64::from(area.right), i64::from(area.bottom)),
         cols,
     );
-    let mut placed = 0;
-    for (hwnd, cell) in order.iter().zip(grid) {
-        if desktop.place(*hwnd, tile_rect(cell, scale)).is_ok() {
-            placed += 1;
-        }
-    }
-    placed
+    order.into_iter().zip(grid).map(|(h, cell)| (h, tile_rect(cell, scale))).collect()
+}
+
+/// Liegt eines der Fenster sichtbar woanders als geplant? Bis auf zwei Pixel genau.
+pub fn needs_moving(desktop: &dyn Desktop, plan: &[(Hwnd, Rect)]) -> bool {
+    plan.iter().any(|(h, t)| {
+        desktop.frame_rect(*h).is_none_or(|v| {
+            (v.left - t.left).abs() > 2
+                || (v.top - t.top).abs() > 2
+                || (v.right - t.right).abs() > 2
+                || (v.bottom - t.bottom).abs() > 2
+        })
+    })
 }
 
 /// Die Kachel, die [`tile`] einem weiteren Fenster dieses Blocks geben wird, samt
@@ -152,6 +165,16 @@ pub fn next_tile(desktop: &dyn Desktop, slots: &[String], ahead: usize) -> Optio
         max_cols_for(i64::from(area.width()), scale),
     );
     grid.last().map(|cell| (tile_rect(*cell, scale), scale))
+}
+
+/// Der ganze Monitor, auf dem die Mitte von `r` liegt (für den Vorhang beim Öffnen).
+pub fn monitor_of(desktop: &dyn Desktop, r: Rect) -> Option<Rect> {
+    let (x, y) = r.center();
+    desktop
+        .monitors()
+        .into_iter()
+        .min_by_key(|m| Area::new(m.rect.left, m.rect.top, m.rect.right, m.rect.bottom).distance_sq(x, y))
+        .map(|m| m.rect)
 }
 
 /// Arbeitsfläche und Skalierung des Monitors unter dem Punkt `pos` (Mauszeiger). Steht

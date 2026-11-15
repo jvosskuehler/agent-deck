@@ -21,6 +21,7 @@
 //! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
 //! | [`git_fs`] | (neu) Branch aus `.git/HEAD` lesen | nichts |
 //! | [`orphans`] | (neu) „Läuft noch ohne Fenster“ | den Scan-Thread |
+//! | [`store_update`] | (neu) Terminal und PowerShell aktualisieren, wenn kein Agent läuft | den Prüf-Thread |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
@@ -32,6 +33,7 @@ pub mod install;
 pub mod logfile;
 pub mod orphans;
 pub mod report;
+pub mod store_update;
 pub mod summary;
 pub mod usage;
 pub mod vscode_cleanup;

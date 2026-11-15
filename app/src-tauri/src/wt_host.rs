@@ -20,9 +20,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
+use deck_core::crash_resume::Ended;
 use deck_core::paths::{load_json, save_json};
 use deck_core::wt::{self, Step};
+use deck_win::Rect;
+use deck_win::effects::Desktop;
 use deck_win::console_input::Step as ConsoleStep;
 use serde_json::Value;
 
@@ -35,6 +39,56 @@ use crate::wt_tiles::{self, WtTiler};
 const PENDING_TTL_S: f64 = 30.0;
 /// `terminals()` wird je Takt dutzendfach gefragt (s).
 const ALIVE_CACHE_S: f64 = 0.3;
+/// Nach einem Wechsel im Raster wird so oft (s danach) noch einmal nachgelegt. Ein
+/// frisches Fenster setzt seine Größe manchmal selbst noch einmal (Anfangsgröße in ganzen
+/// Zeichen, DPI-Wechsel, Rand weg): ohne Nachlegen bliebe es dann ein paar Pixel zu klein.
+const SETTLE_AFTER_S: [f64; 2] = [1.0, 3.0];
+/// So lange wartet der Vorhang höchstens auf das Fenster eines neuen Agenten.
+const OPEN_WAIT: Duration = Duration::from_secs(5);
+/// Legen unter dem Vorhang, je mit [`OPEN_PAINT`] Zeit zum Nachziehen und Zeichnen.
+const OPEN_ROUNDS: usize = 3;
+const OPEN_PAINT: Duration = Duration::from_millis(120);
+/// Nach dem Legen, vor dem Lüften: Zeit für Statusringe, Schatten und Glow, den Fenstern an
+/// ihre neuen Plätze zu folgen (sie warten, solange das Deck Fenster umlegt).
+const CATCH_UP: Duration = Duration::from_millis(220);
+/// So lange wartet der Vorhang beim Schließen höchstens, bis das Fenster weg ist.
+const CLOSE_WAIT: Duration = Duration::from_secs(2);
+
+/// Unter dem Vorhang ([`Desktop::curtain`]) über dem Monitor von `around` arbeiten:
+/// `work` legt die Fenster, danach folgen Ringe, Schatten und Glow, dann geht der Vorhang
+/// weg. Ohne Vorhang (geht nicht, Attrappe) bekommt `work` `None` statt der Wartefunktion
+/// und macht es so schlicht wie möglich.
+fn under_curtain(d: &dyn Desktop, around: Option<Rect>, hold: &FrameHold, work: impl FnOnce(Option<&dyn Fn(Duration)>)) {
+    let curtain = around.and_then(|r| wt_tiles::monitor_of(d, r)).and_then(|m| d.curtain(&[m]));
+    let Some(curtain) = curtain else {
+        work(None);
+        return;
+    };
+    let holding = Holding::start(hold);
+    work(Some(&|t| curtain.wait(t)));
+    drop(holding);
+    curtain.wait(CATCH_UP);
+    curtain.lift();
+}
+
+/// Den Block in der Reihenfolge `slots` kacheln; muss dabei ein Fenster sichtbar umziehen,
+/// unter dem Vorhang (zweimal gelegt: ein Terminal setzt seine Größe gern noch einmal).
+fn retile_veiled(d: &dyn Desktop, slots: &[String], hold: &FrameHold) {
+    let plan = wt_tiles::tile_plan(d, slots, 0);
+    if !wt_tiles::needs_moving(d, &plan) {
+        wt_tiles::tile(d, slots, 0);
+        return;
+    }
+    let around = plan.first().and_then(|(h, _)| d.window_rect(*h));
+    under_curtain(d, around, hold, |wait| {
+        wt_tiles::tile(d, slots, 0);
+        if let Some(wait) = wait {
+            wait(OPEN_PAINT);
+            wt_tiles::tile(d, slots, 0);
+            wait(OPEN_PAINT);
+        }
+    });
+}
 /// So lange gilt die gemessene Fensterlage (s). Ein Blick kostet ein EnumWindows.
 const SCREEN_CACHE_S: f64 = 0.5;
 /// Hier merkt sich das Deck die vermessene Zeichenzelle der Agentenfenster (neben
@@ -85,6 +139,14 @@ pub struct WtHost {
     /// Zeichenzelle der Agentenfenster, Pixel bei 100 % ([`wt::learn_cell`]).
     cell: (f64, f64),
     clock: fn() -> f64,
+    /// Slots, die das Deck gerade selbst schließt: ihr Tod ist kein Ereignis.
+    closing: BTreeSet<String>,
+    /// Pane-Shells, die seit dem letzten [`Self::drain_ended`] gestorben sind.
+    ended: Vec<Ended>,
+    /// Schon einmal nachgesehen? Was beim allerersten Blick tot ist, starb vor diesem Deck.
+    scanned: bool,
+    /// Fällige Nachlege-Durchgänge je Block ([`SETTLE_AFTER_S`]).
+    settle: Vec<(String, f64)>,
 }
 
 /// Eingabe-Schritte aus dem Fachkern in die Form von `deck-console` (Pausen als Dauer).
@@ -124,6 +186,10 @@ impl WtHost {
             spots: HashMap::new(),
             cell,
             clock,
+            closing: BTreeSet::new(),
+            ended: Vec::new(),
+            scanned: false,
+            settle: Vec::new(),
         }
     }
 
@@ -188,17 +254,29 @@ impl WtHost {
                 }
                 _ => {
                     let _ = fs::remove_file(&path);
+                    let by_deck = self.closing.remove(slot);
+                    self.ended.push(Ended { slot: slot.to_string(), by_deck, at_start: !self.scanned });
                 }
             }
         }
+        self.scanned = true;
         self.alive = out.clone();
         self.started = started;
         self.alive_ts = now;
         self.pending.retain(|n, t| !out.contains_key(n) && now - *t <= PENDING_TTL_S);
         self.measure_cell(&out);
         // Neu kacheln, sobald ein Agent dazukommt oder geht. Die PID-Datei schreibt die
-        // Shell IM Fenster: es steht also schon, wenn der Slot hier auftaucht.
-        let names: Vec<String> = out.keys().cloned().collect();
+        // Shell IM Fenster: es steht also schon, wenn der Slot hier auftaucht. Gehen zählt
+        // schon, wenn das Fenster weg ist: die Shell stirbt erst eine gute Sekunde später
+        // (Claude räumt auf), so lange stünde sonst ein Loch im Raster.
+        let windows: BTreeSet<String> = self
+            .fx
+            .desktop
+            .class_windows(wt::WINDOW_CLASS)
+            .into_iter()
+            .filter_map(|w| wt::slot_from_title(Some(&w.title)))
+            .collect();
+        let names: Vec<String> = out.keys().filter(|s| windows.contains(*s)).cloned().collect();
         for win in self.hosts().into_keys() {
             let slots = wt::slots_of(&win, &names);
             if self.tiler.changed(&win, &slots) {
@@ -209,12 +287,39 @@ impl WtHost {
                 let mut slots: Vec<String> = seen.into_iter().filter(|s| slots.contains(s)).collect::<Vec<_>>();
                 slots.extend(wt::slots_of(&win, &names).into_iter().filter(|s| !slots.contains(s)).collect::<Vec<_>>());
                 let d = self.fx.desktop.clone();
+                let hold = self.frame_hold.clone();
                 self.worker.run(move || {
-                    wt_tiles::tile(d.as_ref(), &slots, 0);
+                    retile_veiled(d.as_ref(), &slots, &hold);
                 });
+                self.settle.retain(|(w, _)| *w != win);
+                self.settle.extend(SETTLE_AFTER_S.iter().map(|dt| (win.clone(), now + dt)));
             }
         }
+        self.settle_due(now, &names);
         out
+    }
+
+    /// Fällige Nachlege-Durchgänge: jeden Block in seiner jetzigen Reihenfolge noch einmal
+    /// kacheln. Wer schon liegt, wo er soll, bleibt unberührt liegen (gleiche Lage).
+    fn settle_due(&mut self, now: f64, names: &[String]) {
+        let due: BTreeSet<String> = self.settle.iter().filter(|(_, t)| *t <= now).map(|(w, _)| w.clone()).collect();
+        if due.is_empty() {
+            return;
+        }
+        self.settle.retain(|(_, t)| *t > now);
+        for win in due {
+            let live = wt::slots_of(&win, names);
+            if live.is_empty() {
+                continue;
+            }
+            let d = self.fx.desktop.clone();
+            self.screen.remove(&win);
+            self.worker.run(move || {
+                let mut order: Vec<String> = wt_tiles::screen_rows(d.as_ref(), &live).concat();
+                order.extend(live.iter().filter(|s| !order.contains(s)).cloned().collect::<Vec<_>>());
+                wt_tiles::tile(d.as_ref(), &order, 0);
+            });
+        }
     }
 
     /// Ein eben aufgegangenes Fenster vermessen, bevor das Raster es anfasst: aus der
@@ -241,13 +346,16 @@ impl WtHost {
     /// Raster gleich gibt ([`wt_tiles::next_tile`]). Dazu die liegenden Agenten in
     /// Kachel-Reihenfolge und wie viele angeforderte vor ihm dran sind: damit rückt
     /// [`Self::create_agent`] sie vorab beiseite. Spot `None` = ohne Vorgabe öffnen.
-    fn next_spot(&mut self, win: &str) -> (Option<wt::Spot>, Vec<String>, usize) {
+    fn next_spot(&mut self, win: &str) -> (Option<(wt::Spot, Rect)>, Vec<String>, Vec<String>) {
         let live = self.terminals(win);
         let mut order: Vec<String> = self.screen_rows(win).0.concat();
         order.extend(live.into_iter().filter(|s| !order.contains(s)).collect::<Vec<_>>());
-        let ahead = self.pending.keys().filter(|n| wt::split_slot(n).is_some_and(|(w, _)| w == win)).count();
-        let spot = wt_tiles::next_tile(self.fx.desktop.as_ref(), &order, ahead).map(|(r, scale)| {
-            wt::spot((i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height())), scale, self.cell)
+        let mut ahead: Vec<String> =
+            self.pending.keys().filter(|n| wt::split_slot(n).is_some_and(|(w, _)| w == win)).cloned().collect();
+        ahead.sort();
+        let spot = wt_tiles::next_tile(self.fx.desktop.as_ref(), &order, ahead.len()).map(|(r, scale)| {
+            let sp = wt::spot((i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height())), scale, self.cell);
+            (sp, r)
         });
         (spot, order, ahead)
     }
@@ -359,27 +467,102 @@ impl WtHost {
                 return false;
             }
         };
+        self.open_agent(win, &name, &folder, &argv);
+        true
+    }
+
+    /// Tote Pane-Shells seit dem letzten Aufruf (`deck_core::crash_resume`).
+    pub fn drain_ended(&mut self) -> Vec<Ended> {
+        self.alive_slots();
+        std::mem::take(&mut self.ended)
+    }
+
+    /// Eine abgestürzte Session wieder öffnen: möglichst unter ihrem alten Slot-Namen, im
+    /// Ordner `cwd` (falls es ihn gibt, sonst im Ordner des Blocks), mit der Flag-Zeile
+    /// `args` und auf Wunsch einem ersten Prompt. Liefert den Slot-Namen, `None` = nicht
+    /// gestartet.
+    pub fn resume_agent(&mut self, win: &str, prefer: &str, cwd: Option<&str>, args: &str, prompt: Option<&str>) -> Option<String> {
+        let block = self.folder(win)?;
+        let mut taken = self.terminals(win);
+        taken.extend(self.pending.keys().cloned());
+        let fits = wt::split_slot(prefer).is_some_and(|(w, _)| w == win) && !taken.iter().any(|t| t == prefer);
+        let name = if fits { prefer.to_string() } else { wt::next_slot(win, &taken) };
+        let folder = cwd.filter(|c| std::path::Path::new(c).is_dir()).map_or(block, String::from);
+        let mut argv = match wt::claude_argv(None, Some(args)) {
+            Ok(a) => a,
+            Err(e) => {
+                note(format!("wt_host.resume {name}: Argumente unbrauchbar ({e})"));
+                return None;
+            }
+        };
+        argv.extend(prompt.map(String::from));
+        self.open_agent(win, &name, &folder, &argv);
+        Some(name)
+    }
+
+    /// Ein Agentenfenster `deck-<name>` in `folder` öffnen, an seinem Platz im Raster.
+    ///
+    /// Unter dem Vorhang ([`Desktop::curtain`], dasselbe Standbild wie bei „alle nach
+    /// vorn“): die liegenden rücken beiseite, das neue geht auf, alle bekommen ihre
+    /// Kachel, erst dann geht der Vorhang weg. Man sieht den alten Block stehen und dann
+    /// den neuen auf einmal, ohne Überlappen und ohne Nachruckeln.
+    fn open_agent(&mut self, win: &str, name: &str, folder: &str, argv: &[String]) {
+        let name = name.to_string();
         let (spot, order, ahead) = self.next_spot(win);
         self.pending.insert(name.clone(), (self.clock)());
-        if let Some(sp) = spot {
-            self.spots.insert(name.clone(), sp);
+        if let Some((sp, _)) = &spot {
+            self.spots.insert(name.clone(), sp.clone());
         }
+        let target = spot.as_ref().map(|(_, r)| *r);
         let s = &self.setup;
-        let spec = wt::launch_spec(&name, &s.state_dir.to_string_lossy(), &argv);
-        let line =
-            wt::wt_argv(&s.wt_exe, &name, &folder, &s.shell, &s.script.to_string_lossy(), &spec, s.profile.as_deref(), spot.as_ref());
+        let spec = wt::launch_spec(&name, &s.state_dir.to_string_lossy(), argv);
+        let line = wt::wt_argv(
+            &s.wt_exe,
+            &name,
+            folder,
+            &s.shell,
+            &s.script.to_string_lossy(),
+            &spec,
+            s.profile.as_deref(),
+            spot.as_ref().map(|(sp, _)| sp),
+        );
         let launcher = self.fx.launcher.clone();
         let d = self.fx.desktop.clone();
+        let hold = self.frame_hold.clone();
         self.screen.remove(win);
         self.worker.run(move || {
-            // Erst die liegenden beiseite, dann das neue in die frei gewordene Kachel:
-            // sonst steht es schon da, während die anderen noch auf alten Plätzen liegen.
-            if !order.is_empty() {
-                wt_tiles::tile(d.as_ref(), &order, ahead + 1);
-            }
-            launcher.launch(&line);
+            let d = d.as_ref();
+            under_curtain(d, target, &hold, |wait| {
+                let Some(wait) = wait else {
+                    // Ohne Vorhang: erst die liegenden beiseite, dann das neue in die frei
+                    // gewordene Kachel.
+                    if !order.is_empty() {
+                        wt_tiles::tile(d, &order, ahead.len() + 1);
+                    }
+                    launcher.launch(&line);
+                    return;
+                };
+                // Aufträge laufen nacheinander: wer vorher angefordert wurde, steht schon
+                // (oder kommt nicht mehr). Also zählt, was wirklich ein Fenster hat.
+                let mut block = order;
+                block.extend(ahead.into_iter().filter(|n| wt_tiles::hwnd_of(d, n).is_some()));
+                if !block.is_empty() {
+                    wt_tiles::tile(d, &block, 1);
+                }
+                launcher.launch(&line);
+                let until = Instant::now() + OPEN_WAIT;
+                while wt_tiles::hwnd_of(d, &name).is_none() && Instant::now() < until {
+                    wait(Duration::from_millis(40));
+                }
+                block.push(name);
+                // Windows Terminal setzt die Größe eines frischen Fensters gern noch einmal
+                // selbst (ganze Zeichen, Rand weg): so lange nachlegen, bis es hält.
+                for _ in 0..OPEN_ROUNDS {
+                    wt_tiles::tile(d, &block, 0);
+                    wait(OPEN_PAINT);
+                }
+            });
         });
-        true
     }
 
     /// Das Fenster des Agenten nach vorn. `false` = der Slot lebt nicht.
@@ -508,11 +691,43 @@ impl WtHost {
         let Some(pid) = self.alive_slots().get(slot).copied() else { return false };
         let path = self.setup.state_dir.join(format!("{slot}{}", wt::PID_SUFFIX));
         let p = self.fx.procs.clone();
-        self.worker.run(move || match p.kill_tree(pid) {
-            Ok(()) => {
-                let _ = fs::remove_file(&path);
-            }
-            Err(e) => note(format!("wt_host.close pid={pid}: {e}")),
+        self.closing.insert(slot.to_string());
+        // Die übrigen des Blocks in ihrer jetzigen Reihenfolge: sie rücken unter dem
+        // Vorhang zusammen, man sieht weder das Loch noch das Nachrutschen.
+        let win: String = slot.chars().take(1).collect();
+        let mut rest: Vec<String> = self.screen_rows(&win).0.concat();
+        rest.extend(self.terminals(&win));
+        rest.dedup();
+        rest.retain(|s| s != slot);
+        let slot = slot.to_string();
+        let d = self.fx.desktop.clone();
+        let hold = self.frame_hold.clone();
+        self.screen.remove(&win);
+        self.worker.run(move || {
+            let d = d.as_ref();
+            let around = wt_tiles::hwnd_of(d, &slot).and_then(|h| d.window_rect(h));
+            under_curtain(d, around, &hold, |wait| {
+                match p.kill_tree(pid) {
+                    Ok(()) => {
+                        let _ = fs::remove_file(&path);
+                    }
+                    Err(e) => {
+                        note(format!("wt_host.close pid={pid}: {e}"));
+                        return;
+                    }
+                }
+                let Some(wait) = wait else { return };
+                let until = Instant::now() + CLOSE_WAIT;
+                while wt_tiles::hwnd_of(d, &slot).is_some() && Instant::now() < until {
+                    wait(Duration::from_millis(30));
+                }
+                if !rest.is_empty() {
+                    for _ in 0..2 {
+                        wt_tiles::tile(d, &rest, 0);
+                        wait(OPEN_PAINT);
+                    }
+                }
+            });
         });
         self.alive_ts = -1.0;
         true

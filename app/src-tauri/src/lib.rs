@@ -8,6 +8,7 @@ pub mod actions;
 pub mod auto_compact;
 pub mod app_paths;
 pub mod applog;
+pub mod crash_resume;
 pub mod commands;
 pub mod deck;
 pub mod dock;
@@ -27,6 +28,7 @@ pub mod services;
 pub mod settings;
 pub mod speechmike;
 pub mod state;
+pub mod store_update;
 pub mod ticket;
 pub mod ticket_dialog;
 pub mod tooltip;
@@ -48,6 +50,10 @@ mod tests_compact;
 mod tests_head;
 #[cfg(test)]
 mod tests_refs;
+#[cfg(test)]
+mod tests_resume;
+#[cfg(test)]
+mod tests_tiles;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -139,6 +145,7 @@ pub fn run() {
     let speechmike_voice = deck_core::speechmike::enabled(&deck.store.settings);
     let english = deck.lang.is_english();
     let watch_dir = paths.app_dir.clone();
+    let update_dir = paths.app_dir.clone();
     let state = Arc::new(AppState {
         deck: Mutex::new(deck),
         dock: Mutex::new(dock_ctl),
@@ -211,6 +218,7 @@ pub fn run() {
             }
             focus_frame::start(glow, desktop, host_map, frame_hold, Some(agent_group), frame_season, group_shadow);
             ui_watch::start(handle, watch_dir);
+            store_update::start(handle, update_dir);
             Ok(())
         })
         .build(tauri::generate_context!());

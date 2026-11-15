@@ -244,7 +244,7 @@ impl Deck {
     /// Der im Deck gewählte Effort als Label (`high`, `Ultracode` …). `None`, solange in
     /// settings.json keiner steht: dann startet der Agent ohne `--effort`, statt den
     /// Rückfall der Anzeige (xhigh) aufgezwungen zu bekommen.
-    fn chosen_effort(&self) -> Option<&'static str> {
+    pub(crate) fn chosen_effort(&self) -> Option<&'static str> {
         let cur = read_values(&self.paths.claude_settings);
         let set = cur.effort.as_ref().and_then(Value::as_str);
         (set.is_some() || cur.ultracode).then(|| effort_label(set, cur.ultracode))

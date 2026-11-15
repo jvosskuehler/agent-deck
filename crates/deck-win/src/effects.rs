@@ -111,6 +111,19 @@ pub trait Desktop: Send + Sync {
     fn join_taskbar_group(&self, _hwnd: Hwnd, _group: &TaskbarGroup) -> Result<()> {
         Ok(())
     }
+    /// Ein Standbild der Monitore `areas` davorlegen, solange darunter Fenster umziehen
+    /// ([`crate::veil::Veil`]). `None` = geht nicht (oder Attrappe): dann eben ohne.
+    fn curtain(&self, _areas: &[Rect]) -> Option<Box<dyn Curtain>> {
+        None
+    }
+}
+
+/// Das Standbild aus [`Desktop::curtain`]. Gehört dem Thread, der es anlegt.
+pub trait Curtain {
+    /// Warten und dabei die Nachrichten des Standbilds abarbeiten.
+    fn wait(&self, d: std::time::Duration);
+    /// Wegnehmen, kurz ausgeblendet.
+    fn lift(self: Box<Self>);
 }
 
 /// Prozesse.
@@ -200,6 +213,9 @@ impl Desktop for Win32Desktop {
     }
     fn set_shadow(&self, hwnd: Hwnd, on: bool) -> Result<bool> {
         arrange::set_shadow(hwnd, on)
+    }
+    fn curtain(&self, areas: &[Rect]) -> Option<Box<dyn Curtain>> {
+        crate::veil::Veil::cover(areas).map(|v| Box::new(v) as Box<dyn Curtain>)
     }
     fn set_border(&self, hwnd: Hwnd, rgb: u32) -> Result<bool> {
         focus::set_border_color(hwnd, rgb)
