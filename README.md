@@ -36,6 +36,6 @@ Die Symbole (Taskleiste der Terminal-Agenten, Vorlage des App-Symbols) zeichnet
 | `crates/deck-services` | Nutzung, Zusammenfassung, Worktrees, Wächter, Einrichtung (`deck-setup`) |
 | `app/src-tauri` | die App: Fenster, Andocken, Windows-Terminal-Host, Befehle |
 | `app/src` | die Oberfläche |
-| `docs/` | `DESIGN.md` (verbindliche Gestaltung), `IPC.md` (Vertrag Oberfläche ↔ Rust) |
+| `docs/` | `DESIGN.md` (verbindliche Gestaltung), `IPC.md` (Vertrag Oberfläche ↔ Rust), `DATEIEN.md` (Dateiverträge Hooks ↔ Deck), `BETRIEB.md` (Bauen, Installieren, Diagnose, Offenes) |
 
 Regeln und Fallen für alle, die daran arbeiten: `CLAUDE.md`.

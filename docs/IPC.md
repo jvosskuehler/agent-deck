@@ -134,7 +134,7 @@ nicht auf das erste Ereignis warten muss.
   Prozesse in Sitzung 0 (`deck_core::orphans`), und prüft danach, dass die Prozesse weg
   und ihre Ports frei sind.
 - Zugeordnet wird über die Eltern-Kette aus Schnappschüssen und, wo die gerissen ist, über
-  die Herkunftsmarke `AGENT_DECK_SHELL` in der Umgebung (CLAUDE.md „Daten und Verträge“).
+  die Herkunftsmarke `AGENT_DECK_SHELL` in der Umgebung (`docs/DATEIEN.md`).
 - Gemerkt wird in `%LOCALAPPDATA%\claude-agent-deck\orphans.json`, damit ein Neustart
   des Decks die Herkunft nicht vergisst. Gescannt wird in einem eigenen Thread
   (`app/src-tauri/src/orphans.rs`), nicht im Takt.

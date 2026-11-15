@@ -1,144 +1,100 @@
 # Agent Deck (Tauri)
 
-Dashboard für parallel laufende Claude-Code-Agenten in **Windows Terminal** (seit
-09.11.2026 nur dort; die VS-Code-Extension samt Broker ist entfernt, Stand davor in der
-Historie).
-Eine Kachel je Agent, Farbe = Zustand; dockt am Bildschirmrand an und klappt weg.
-Windows-only. Rust (Tauri 2) hinten, React + TypeScript vorn.
+Dashboard für parallel laufende Claude-Code-Agenten in **Windows Terminal**. Eine Kachel
+je Agent, Farbe = Zustand; dockt am Bildschirmrand an und klappt weg. Windows-only. Rust
+(Tauri 2) hinten, React + TypeScript vorn. Frühere Fassungen nur in der Historie:
+VS-Code-Extension bis 09.11.2026, Python/tkinter bis `2856494`
+(`git show 2856494:<pfad>`).
 
-Die frühere Python/tkinter-Fassung liegt nur noch in der Historie (letzter Stand
-`2856494`, lesen mit `git show 2856494:<pfad>`).
+**Die Oberfläche ist nicht Nebensache, sie ist der Grund für den Umbau.** Der .NET-Port
+(Juli 2026) hatte die Rechnung sauber portiert, aber das Aussehen fehlte, und daran ist
+er gescheitert. Jede Änderung am Aussehen wird angeschaut (Screenshot), nicht nur gebaut.
 
-## Lehre aus dem verworfenen .NET-Port (Juli 2026)
+## Wo was steht
 
-Der C#-Port hatte die Rechnung sauber portiert und golden-getestet, aber das Aussehen
-fehlte, und genau daran ist er gescheitert. Deshalb hier umgekehrt: **die Oberfläche ist
-nicht Nebensache, sie ist der Grund für den Umbau.** Jede Änderung am Aussehen wird
-angeschaut (Screenshot), nicht nur gebaut. Die Vorgabe steht in `docs/DESIGN.md`.
+| Datei | Lesen, wenn … |
+|---|---|
+| `docs/DESIGN.md` | du etwas an der Oberfläche änderst (verbindlich, mit Vorlagen in `docs/design-refs/`) |
+| `docs/IPC.md` | du Fenster, Ereignisse oder `invoke`-Befehle zwischen Oberfläche und Rust änderst |
+| `docs/DATEIEN.md` | du Zustandsdateien, `.wtpid`/Herkunftsmarke, `refs.json` oder die Ticket/PR-Erkennung anfasst |
+| `docs/BETRIEB.md` | du baust, installierst, einen Fehler im Betrieb suchst (Log, Hänger, Absturz) oder offene Punkte suchst |
 
 ## Aufbau
 
 ```
-Cargo.toml              Workspace
-crates/deck-core/       Fachkern: Zustände, Pfade, Konfiguration, Reihenfolge, Flag-Zeile für
-                        claude, Windows-Terminal-Rechnung, Ticket/PR-Erkennung, Usage-Auswertung,
-                        settings.json, Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll
-                        getestet.
-crates/deck-win/        Win32: Fenster finden/fokussieren/anordnen, Monitore, DPI, Prozesse
-                        (auch deren Umgebung lesen), Tasten in fremde Konsolen, Fokus-Rahmen
-                        (GPU), globale Tastenkürzel.
-crates/deck-hooks/      Die Claude-Code-Hooks als kleine Programme: deck-report, deck-statusline.
-crates/deck-services/   Hintergrunddienste: Usage-Abruf (gemeinsamer Poller), KI-Zusammenfassung,
-                        Worktree-Aufräumen und Sweep, Hook-Installation und Entfernen der
-                        früheren VS-Code-Extension (deck-setup), Watchdog (deck-watchdog).
-                        Wirkung nach außen hinter Traits, in Tests gesperrt.
-app/src-tauri/          Die App: Fenster, Andocken, Windows-Terminal-Host, Poll-Schleife, Usage,
-                        Zusammenfassung, Worktrees, Befehle für die Oberfläche.
-app/src/                React-Oberfläche: Panel, Kacheln, Griff, Tooltip, Einstellungen.
-app/src/bindings/       aus Rust erzeugte TypeScript-Typen (nicht von Hand ändern).
-docs/DESIGN.md          verbindliche Gestaltung.
+crates/deck-core/       Fachkern: Zustände, Konfiguration, Reihenfolge, WT-Rechnung, Ticket/PR,
+                        Usage, Anzeigemodell (view.rs). Kein Win32, kein Tauri, voll getestet.
+crates/deck-win/        Win32: Fenster, Monitore, DPI, Prozesse, Tasten an Konsolen,
+                        Fokus-Rahmen (GPU), globale Tastenkürzel.
+crates/deck-hooks/      Claude-Code-Hooks: deck-report, deck-statusline.
+crates/deck-services/   Hintergrunddienste: Usage-Poller, Zusammenfassung, Worktrees,
+                        deck-setup, deck-watchdog, Store-Update. Wirkung nach außen hinter Traits.
+app/src-tauri/          Die App: Fenster, Andocken, WT-Host, Poll-Schleife, Befehle.
+app/src/                React-Oberfläche. app/src/bindings/ ist aus Rust erzeugt, nie von Hand.
 ```
 
-Abhängigkeiten zeigen nur nach unten: `app` → `deck-services`, `deck-win`, `deck-core`;
-`deck-services` → `deck-win`, `deck-core`; `deck-hooks` → `deck-core`; `deck-core` → nichts
-aus dem Projekt. Ein Worktree mit nicht committeter Arbeit wird nie automatisch gelöscht
-(strenger als die Python-Fassung, die `--force` nahm). **Rechnen gehört nach `deck-core` und
-wird dort getestet; Zeichnen gehört nach `app/src` und wird angeschaut.**
+Abhängigkeiten zeigen nur nach unten: `app` → `deck-services` → `deck-win` → `deck-core`;
+`deck-hooks` → `deck-core`; `deck-core` → nichts aus dem Projekt. **Rechnen gehört nach
+`deck-core` und wird dort getestet; Zeichnen gehört nach `app/src` und wird angeschaut.**
 
 ## Kommandos
 
 ```powershell
 cargo test --workspace                               # alle Rust-Tests
 cargo test -p deck-core export_bindings              # TS-Typen nach app/src/bindings erzeugen
-cargo test -p deck-services --test orphans_real -- --ignored --nocapture   # „ohne Fenster“ echt (startet node/pwsh/cmd versteckt)
 cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
+pwsh tools\install.ps1                               # bauen, installieren, Hooks, starten
 ```
 
-`cargo` liegt unter `%USERPROFILE%\.cargo\bin` (rustup, ohne PATH-Eintrag installiert).
+`cargo` liegt unter `%USERPROFILE%\.cargo\bin` (ohne PATH-Eintrag). Das Deck läuft aus
+`%LOCALAPPDATA%\claude-agent-deck\bin`: Änderungen sind erst nach `install.ps1` sichtbar.
+Log: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
 
-### Bauen
+## Verträge
 
-Neben `agent-deck.exe` müssen `deck-console`, `deck-report`, `deck-statusline` und
-`deck-watchdog` liegen. Sie gehören zum selben Workspace, landen also im selben
-`target/<profil>/`; `app/scripts/helpers.mjs` baut sie (`pnpm helpers` bzw.
-`pnpm helpers:release`) und legt Kopien mit Zielsystem-Anhängsel nach
-`app/src-tauri/binaries/` (nicht eingecheckt). `pnpm tauri dev` und `pnpm tauri build`
-rufen das selbst auf (`beforeDevCommand`/`beforeBuildCommand`). `pnpm tauri build` baut nur
-die Exe; das Installationspaket macht `pnpm bundle` (zusätzlich `tauri.bundle.conf.json`
-mit `externalBin`). `wt_agent.ps1` und `agent-taskbar.ico` (in `resources/`) sind in die
-Exe eingebaut und werden beim Start in den App-Ordner geschrieben.
+Einzelheiten in `docs/DATEIEN.md`.
 
-Installiert und aktualisiert wird mit `pwsh tools\install.ps1` (`-SkipBuild` nimmt das
-schon gebaute Release): bauen, Deck und Wächter beenden, alle Programme samt `deck-setup`
-nach `%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup remove-vscode-extension`
-(nimmt die frühere VS-Code-Extension aus `~/.vscode/extensions`, nur ihren Eintrag und
-Ordner; Übergangsschritt, kann später entfallen), `deck-setup install` und `check` (Hooks
-in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
-`deck-setup uninstall` nimmt die Hooks wieder heraus.
-
-## Daten und Verträge
-
-1. **Zustandsdateien** `%LOCALAPPDATA%\claude-agent-deck\state\<slot>.json` (Hooks schreiben,
-   App liest; zwei Prozesse). Feldnamen snake_case, `ts` Unix-Sekunden als Float. Immer
-   atomar schreiben (`.tmp` + ersetzen, kompaktes UTF-8-JSON über serde), nie mit Sperre
-   lesen. Gelesen wird tolerant: ein Feld mit falschem Typ gilt als fehlend
-   (`deck_core::field`), kein Hook scheitert daran. `deck-report` und
-   `deck-statusline` schreiben, die App liest; das Format bleibt stabil, wer ein Feld
-   ändert, ändert beide Seiten. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
-2. **Laufzeitdateien der App** (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts …)
-   liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht neben dem Code.
-3. **Ein Hook endet nie mit Fehler.** Bei `UserPromptSubmit`/`PreToolUse` liest Claude Code
+1. **Hooks und App reden nur über Dateien** in `%LOCALAPPDATA%\claude-agent-deck\`.
+   Immer atomar schreiben (`.tmp` + ersetzen), nie mit Sperre lesen, tolerant lesen
+   (falscher Typ = fehlend, `deck_core::field`). Wer ein Feld ändert, ändert beide Seiten.
+2. **Ein Hook endet nie mit Fehler.** Bei `UserPromptSubmit`/`PreToolUse` liest Claude Code
    Exit ≠ 0 als Veto. Jeder Pfad in `deck-hooks` hat ein Fangnetz und Exit-Code 0; jeder
    Eintrag in `settings.json` endet zusätzlich auf `|| exit 0`. **Kein `cmd /c` davor**
    (MSYS macht aus `/c` den Pfad `C:\`, `cmd` liest dann das Hook-JSON als Befehl).
-4. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
-5. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`**, gesetzt von `wt_agent.ps1` im
-   Fenster des Agenten. Ohne ihn meldet kein Hook etwas: eine selbst gestartete Session
-   gehört nicht zum Deck.
-6. **`<slot>.wtpid` und die Herkunftsmarke.** `wt_agent.ps1` schreibt vor claude atomar
-   `{"pid", "created", "slot"}` (die Shell im Pane; `created` als FILETIME, über DateTime nur
-   auf etwa eine Sekunde genau) und setzt neben `AGENT_SLOT` die Umgebungsvariable
-   `AGENT_DECK_SHELL=<pid>.<created>` mit denselben Werten. Jeder Nachkomme erbt sie, auch
-   wenn das Zwischenglied sofort endet (Claudes Werkzeug-Shell mit `Start-Process npm run
-   dev`). „Läuft noch ohne Fenster“ ordnet über die Eltern-Kette zu und, wo die gerissen ist,
-   über die Marke in der Umgebung des Prozesses (`deck_core::orphans::marker`, gelesen von
-   `deck_win::proc_env`, je Prozess einmal, nur für Prozesse jünger als die älteste bekannte
-   Shell). Das Deck nimmt die Marke beim Start aus seiner eigenen Umgebung, damit nichts,
-   was es selbst startet, einem Agenten zugerechnet wird. Ein Job-Objekt je Fenster taugt
-   dafür nicht: auf dem Zielrechner steckt jeder Prozess schon in einem Job, und Kinder
-   erben einen darunter angelegten Job nicht (gemessen 09.11.2026).
-7. **`<slot>.refs.json`** schreibt das Deck (atomar, nur bei Änderung, weg mit der Kachel):
-   Ticket und PR genau so, wie die Kachel sie zeigt (`deck_core::tile_refs`):
-   `{"ticket", "ticket_source", "ticket_detected", "pr", "pr_source", "pr_detected"}`, alle
-   dürfen `null` sein, Quellen wie `RefSource` (`assigned`, `branch` …). `deck-statusline`
-   liest nur diese Datei für das Ticket (kein `tickets.json`, kein `.ticket` mehr, keine
-   eigene Erkennung) und zeigt die Kopfzeile „B3 · ORPH-4116 · PR #347 freigegeben ·
-   Titel“; nur Geratenes gedimmt, der PR aus dem stdin vor dem des Decks, der Titel wird um
-   Ticket und PR gekürzt (`TITLE_MAX`). Fehlt die Datei: kein Ticket.
+3. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
+4. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`** (gesetzt von `wt_agent.ps1`).
+   Ohne ihn meldet kein Hook etwas: eine selbst gestartete Session gehört nicht zum Deck.
+5. **Ein Worktree mit nicht committeter Arbeit wird nie automatisch gelöscht.**
 
 ## Fallen, die schon einmal wehgetan haben
 
 - **Tests dürfen nie echte Eingriffe auslösen** (taskkill, Fenster schließen, Programme
   starten). Alles mit Wirkung nach außen steckt hinter einem Trait, Tests bekommen eine
-  Attrappe. Am 2026-11-06 hat die Python-Suite zweimal das VS Code beendet, in dem sie lief.
+  Attrappe. Die Python-Suite hat zweimal das VS Code beendet, in dem sie lief.
 - **Usage-Werte:** ein Limit hinter seinem `resets_at` ist keine Zahl mehr (→ „—“); ein
   alter Wert wird matt gezeigt, nicht versteckt; das Deck pollt den Endpoint **nicht**
-  selbst nach, wenn der gemeinsame Poller (`claude-usage-shared`) einen Cache hat. Der
-  Endpoint ist eng limitiert, 429 heißt zurückweichen. `%LOCALAPPDATA%\claude-usage\usage.json`
-  liest und schreibt weiter auch der Tray-Poller in Python: Felder, `account` und
-  Zahlentypen bleiben, wie `usage/shared_format_tests.rs` sie festhält.
+  selbst, wenn der gemeinsame Poller (`claude-usage-shared`) einen Cache hat. 429 heißt
+  zurückweichen. `%LOCALAPPDATA%\claude-usage\usage.json` teilt sich das Deck mit dem
+  Tray-Poller in Python: Format bleibt, wie `usage/shared_format_tests.rs` es festhält.
 - **Ein maximiertes Fenster klebt an seinem Monitor:** erst `SW_SHOWNORMAL` auf die
   Zielfläche, dann maximieren.
 - **Ein halb ausgefahrenes Deck ist der eine unzulässige Zustand.** Die Ein-/Ausklapp-
   Animation hat genau einen Ausgang, eine Deadline und landet im Zweifel ganz offen.
 - **Der „gesehen“-Merker hält über den Poll hinaus** (in der Datei steht weiter `done`).
-- **Ein Deck, das lebt, aber nichts zeigt, blockiert jeden Neustart** (Einzelinstanz-Sperre
-  reicht das Signal an die tote Instanz weiter; 11.11.2026). Der Herzschlag merkt das nicht,
-  ihn schreibt der Poll-Thread. Darum `ui_watch` (Hauptthread und Seite des sichtbaren
-  Fensters, `ui-alive.json`, Selbst-Neustart nach 60 s) und `instance_guard` (ein neuer Start
-  beendet eine hängende Instanz). Im Log: „Oberfläche hängt: …“ bzw. „Vorgänger-Deck … hing“.
+- **Ein Deck, das lebt, aber nichts zeigt, blockiert jeden Neustart.** Dagegen `ui_watch`
+  und `instance_guard`; nicht entfernen (`docs/BETRIEB.md`).
+- **Ein Store-Update von PowerShell beendet jeden Agenten.** PowerShell und Windows
+  Terminal nur aktualisieren, solange kein Agent lebt (`store_update`, `crash_resume`,
+  `docs/BETRIEB.md`).
+- **Ein Overlay, das bei jedem Wechsel umzieht, zuckt.** Fensterlage und Swapchain-Bild
+  kommen nicht im selben DWM-Bild an. Der Fokus-Rahmen ist darum eine feste Bühne über dem
+  ganzen Monitor, nur der Inhalt bewegt sich (`frame_gpu_overlay`).
+- **Fenster umlegen, das man nicht sehen soll: unter den Vorhang.** Öffnen, Schließen und
+  Umsortieren der Agenten laufen unter einem Standbild (`Desktop::curtain`, `veil`); vor
+  dem Lüften `FrameHold` lösen und kurz warten, sonst stehen die Statusringe noch an alten
+  Plätzen.
 
 ## Konventionen
 
@@ -147,28 +103,3 @@ in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
 - Testnamen beschreiben die Regel, nicht die Methode.
 - In Texten der Oberfläche keine Gedankenstriche („—“, „–“).
 - Keine Commits ohne ausdrücklichen Auftrag.
-
-## Offen
-
-- **Im Betrieb prüfen**, was nur gegen Attrappen getestet ist: Strg+< springt zum
-  Wartenden, Klick auf eine Karte holt das richtige Terminal, ＋ legt einen Agenten an,
-  Worktree-Aufräumen, `deck-setup remove-vscode-extension` auf dem echten Rechner.
-  Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`.
-- **Taskleisten-Abzeichen:** der dringlichste Status als Overlay auf dem Agenten-Knopf
-  (`ITaskbarList3::SetOverlayIcon`, wirkt auch auf fremde Fenster, gemessen 09.11.2026).
-- **Makropad:** 6 Tasten mit Drehregler und ARGB je Taste (Taste = Agent, Licht = Status,
-  Druck = zum Agenten springen, Halten = Aufnahme mit Claude `/voice`).
-- **Rest des letzten Python-Commits:** der Rust-Port beruht auf `1c41595`, nicht auf
-  `2856494`. Nachgezogen sind automatisches `/compact` (`deck-core::prompt_cache`,
-  `auto_compact`), Konto je Token samt Konto im gemeinsamen Cache (`usage/account.rs`),
-  `pr` in der Statuszeile (`deck-hooks::status_extras`; Kontingent und Kosten sind dort
-  seit 09.11.2026 wieder draußen), der Hub-Prompt mit `wt/<Nummer>-<Kürzel>` und die
-  Cache-Restzeit auf der Kachel (Fußzeile „A“, `prompt_cache::tile_cache`).
-- **Ticket und PR einer Kachel** kommen aus Quellen mit fester Reihenfolge
-  (`deck-core::ref_sources`): zugewiesen, Branch (`.git/HEAD`, ohne `git`, gecacht in
-  `git_head.rs`), worktree-Ordner des cwd, der worktree aus den Werkzeugaufrufen im
-  Transcript (`claude::worktree_use`: Edit/Write-Pfade, `git -C wt/…`, `cd`; Schreiben
-  zählt achtfach, Altes klingt ab), PR aus der Statuszeile, Sessiontitel, zuletzt der Chat.
-  Probelauf gegen die echten Transcripts (nur lesend):
-  `cargo test -p deck-core --test worktree_use_real -- --ignored --nocapture`.
-  Im Betrieb prüfen, ob `live.json` `cwd` bei Agenten im `wt/`-Ordner den worktree trägt.
