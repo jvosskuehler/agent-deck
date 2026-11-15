@@ -34,8 +34,12 @@ use crate::applog::note;
 use crate::group_shadow::{RingLayer, ShadowLayer, ShadowWatch, StatusMap};
 use crate::wt_host::{FrameHold, HostMap, WtHost};
 
-/// So oft wird geschaut, welches Fenster vorn ist.
+/// So oft laufen die teuren Blicke (Ränder, Ecken, Schatten): sie zählen alle Fenster.
 const WATCH: Duration = Duration::from_millis(60);
+/// Takt ohne Rahmen. Ob ein anderes Fenster vorn ist, kostet nur `GetForegroundWindow`
+/// und wird in jedem Bild gefragt: der Glow soll beim Wechsel sofort mitspringen, nicht
+/// bis zu [`WATCH`] später (so wirkte er verzögert, 14.11.2026).
+const IDLE: Duration = Duration::from_millis(16);
 
 /// Welches Fenster bekommt den Rahmen, mit welchem Design?
 pub struct FrameWatch {
@@ -152,6 +156,11 @@ impl FrameWatch {
         }
     }
 
+    /// Das Fenster, das gerade vorn ist (billig, für den Blick in jedem Bild).
+    pub fn foreground(&self) -> Option<Hwnd> {
+        self.desktop.foreground().map(|w| w.hwnd)
+    }
+
     /// Einmal hinschauen. `true`, wenn sich das Ziel geändert hat.
     pub fn step(&mut self) -> bool {
         if self.hold.load(std::sync::atomic::Ordering::SeqCst) {
@@ -237,13 +246,24 @@ pub fn start(
             let mut since_watch = Instant::now();
             let mut t0 = Instant::now();
             let mut logged = false;
+            let mut seen_fg = None;
             loop {
                 deck_win::frame_window::pump_messages();
-                if since_watch.elapsed() >= WATCH || watch.target.is_none() {
-                    since_watch = Instant::now();
-                    if watch.step() {
+                // Wechsel des Vordergrunds sofort sehen, den Rest im Takt von WATCH.
+                let fg = watch.foreground();
+                let switched = fg != seen_fg;
+                seen_fg = fg;
+                let tick = since_watch.elapsed() >= WATCH;
+                if switched || tick {
+                    // Der eigene Glow läuft auf einer durchgehenden Uhr weiter: am neuen
+                    // Fenster blendet er im selben Atemzug ein, statt neu einzuatmen. Die
+                    // Winter-Designs beginnen je Fokus von vorn.
+                    if watch.step() && watch.design != Some(Design::Eigen) {
                         t0 = Instant::now();
                     }
+                }
+                if tick {
+                    since_watch = Instant::now();
                     // Solange das Deck Fenster umlegt, wartet auch der Schatten: sonst
                     // würde er für jeden Zwischenstand neu gerechnet.
                     if let Some((plan, layer)) = shadows.as_mut()
@@ -271,10 +291,12 @@ pub fn start(
                         }
                     }
                     _ => {
-                        if let Some(f) = frame.as_mut() {
-                            f.hide();
+                        // Blendet der Glow noch aus, hat hide schon auf den Bildwechsel
+                        // gewartet; schlafen erst, wenn nichts mehr zu sehen ist.
+                        let fading = frame.as_mut().is_some_and(|f| f.hide());
+                        if !fading {
+                            std::thread::sleep(IDLE);
                         }
-                        std::thread::sleep(WATCH);
                     }
                 }
             }

@@ -20,9 +20,11 @@ use windows::Win32::Graphics::Direct3D::{
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_CONSTANT_BUFFER, D3D11_BUFFER_DESC, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION,
     D3D11_USAGE_DEFAULT, D3D11_VIEWPORT, D3D11CreateDevice, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext,
+    ID3D11DeviceContext1,
     ID3D11PixelShader, ID3D11RenderTargetView, ID3D11VertexShader,
 };
-use windows::core::{PCSTR, s};
+use windows::Win32::Foundation::RECT;
+use windows::core::{Interface, PCSTR, s};
 
 use crate::frame_fx::FrameParams;
 use crate::types::{Error, Result};
@@ -41,6 +43,8 @@ pub const SHADER: &str = concat!(
 pub struct GpuPipeline {
     pub(crate) device: ID3D11Device,
     ctx: ID3D11DeviceContext,
+    /// Für das Leeren einzelner Flächen (`ClearView`, ab Direct3D 11.1).
+    ctx1: Option<ID3D11DeviceContext1>,
     vs: ID3D11VertexShader,
     ps: ID3D11PixelShader,
     cb: ID3D11Buffer,
@@ -97,6 +101,7 @@ impl GpuPipeline {
             let missing = || Error::Helper("D3D11 lieferte kein Objekt".into());
             Ok(GpuPipeline {
                 device,
+                ctx1: ctx.cast().ok(),
                 ctx,
                 vs: vs.ok_or_else(missing)?,
                 ps: ps.ok_or_else(missing)?,
@@ -106,8 +111,25 @@ impl GpuPipeline {
     }
 
     /// Ein Bild in `rtv` (w × h Pixel) zeichnen. Präsentieren macht der Aufrufer.
+    #[cfg(test)]
     pub(crate) fn draw(&self, rtv: &ID3D11RenderTargetView, w: u32, h: u32, p: &FrameParams) {
+        self.draw_at(rtv, (0, 0, w, h), None, p);
+    }
+
+    /// Wie [`Self::draw`], aber der Shader läuft nur im Ausschnitt `(x, y, w, h)` des
+    /// Ziels (er schreibt dort jeden Pixel). `p.win` zählt dabei vom Ursprung des ganzen
+    /// Ziels, nicht des Ausschnitts. Geleert wird vorher `clear` (`None` = alles): wer
+    /// weiß, wo im Puffer zuletzt etwas stand, spart das Leeren der übrigen Fläche.
+    pub(crate) fn draw_at(
+        &self,
+        rtv: &ID3D11RenderTargetView,
+        (x, y, w, h): (i32, i32, u32, u32),
+        clear: Option<&[RECT]>,
+        p: &FrameParams,
+    ) {
         let vp = D3D11_VIEWPORT {
+            TopLeftX: x as f32,
+            TopLeftY: y as f32,
             Width: w as f32,
             Height: h as f32,
             MaxDepth: 1.0,
@@ -119,7 +141,14 @@ impl GpuPipeline {
                 .UpdateSubresource(&self.cb, 0, None, (p as *const FrameParams).cast(), 0, 0);
             self.ctx
                 .OMSetRenderTargets(Some(&[Some(rtv.clone())]), None);
-            self.ctx.ClearRenderTargetView(rtv, &[0.0; 4]);
+            match (clear, &self.ctx1) {
+                (Some([]), _) => {}
+                (Some(rects), Some(ctx1)) => ctx1.ClearView(rtv, &[0.0; 4], Some(rects)),
+                _ => self.ctx.ClearRenderTargetView(rtv, &[0.0; 4]),
+            }
+            if w == 0 || h == 0 {
+                return;
+            }
             self.ctx.RSSetViewports(Some(&[vp]));
             self.ctx
                 .IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -273,6 +302,24 @@ mod tests {
             if design.id() < 10 || design.id() >= 20 {
                 assert_eq!(alpha(w / 2, h / 2), 0, "{design:?}: tief im Fenster bleibt es durchsichtig");
             }
+        }
+    }
+
+    #[test]
+    fn the_fade_dims_every_design_evenly_and_zero_leaves_nothing() {
+        let gpu = GpuPipeline::new().unwrap();
+        for design in Design::ALL.into_iter().chain(Design::WINTER).chain(Design::EIGEN) {
+            let (p, w, h) = params(design, 3.0, 1.0, 300, 200, true);
+            let alpha_sum = |k: f64| {
+                let c = canvas(&gpu, w, h);
+                gpu.draw(&c.rtv, w, h, &p.with_fade(k));
+                pixels(&gpu, &c).chunks(4).map(|px| u64::from(px[3])).sum::<u64>()
+            };
+            let (full, half, none) = (alpha_sum(1.0), alpha_sum(0.5), alpha_sum(0.0));
+            assert!(full > 0, "{design:?}: voll eingeblendet leuchtet es");
+            let ratio = half as f64 / full as f64;
+            assert!((0.45..0.55).contains(&ratio), "{design:?}: halb eingeblendet ist halb so hell ({ratio:.3})");
+            assert_eq!(none, 0, "{design:?}: ausgeblendet ist nichts zu sehen");
         }
     }
 

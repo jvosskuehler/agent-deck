@@ -104,6 +104,8 @@ pub struct FrameParams {
     pub b: [f32; 4],
     /// Funken bzw. Lichtbögen.
     pub items: [[f32; 4]; 8],
+    /// `fx[0]`: Deckkraft des ganzen Rahmens, 0..1 ([`FrameParams::with_fade`]). Der Rest frei.
+    pub fx: [f32; 4],
 }
 
 impl FrameParams {
@@ -111,6 +113,12 @@ impl FrameParams {
     /// Papier eisblau (weiße wären dort unsichtbar). Die Stammdesigns lesen es nicht.
     pub fn with_night(mut self, night: bool) -> FrameParams {
         self.b[3] = if night { 1.0 } else { 0.0 };
+        self
+    }
+
+    /// Deckkraft des ganzen Rahmens (0 = weg, 1 = voll): Ein- und Ausblenden beim Fokuswechsel.
+    pub fn with_fade(mut self, k: f64) -> FrameParams {
+        self.fx[0] = k.clamp(0.0, 1.0) as f32;
         self
     }
 
@@ -164,6 +172,7 @@ pub fn compute(
             design.id() as f32,
             modp(t, if design.id() >= 10 { 3600.0 } else { 1000.0 }) as f32,
         ],
+        fx: [1.0, 0.0, 0.0, 0.0],
         ..Default::default()
     };
     match design {
@@ -276,7 +285,7 @@ mod tests {
 
     #[test]
     fn params_have_the_exact_layout_of_the_shader_cbuffer() {
-        assert_eq!(size_of::<FrameParams>(), 12 * 16);
+        assert_eq!(size_of::<FrameParams>(), 13 * 16, "win, misc, a, b, items[8], fx");
     }
 
     #[test]

@@ -50,6 +50,21 @@ impl FrameLayout {
         [r.left as f32, r.top as f32, r.right as f32, r.bottom as f32]
     }
 
+    /// Parameter für ein Bild, das Fenster gezählt vom Punkt `origin` (Ursprung des
+    /// Bildpuffers, bei der Bühne die linke obere Ecke des Monitors).
+    pub fn params_from(&self, origin: (i32, i32), design: Design, seed: i32, t: f64) -> FrameParams {
+        let r = self.window.offset(-origin.0, -origin.1);
+        compute(
+            design,
+            seed,
+            t,
+            self.scale,
+            [r.left as f32, r.top as f32, r.right as f32, r.bottom as f32],
+            f64::from(self.window.width()),
+            f64::from(self.window.height()),
+        )
+    }
+
     /// Parameter für ein Bild.
     pub fn params(&self, design: Design, seed: i32, t: f64) -> FrameParams {
         compute(

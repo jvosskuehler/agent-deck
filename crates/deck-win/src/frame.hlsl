@@ -20,6 +20,7 @@ cbuffer Params : register(b0)
     float4 pa;         // je Design
     float4 pb;         // je Design; pb.w = 1 bei dunklem Terminal (lesen nur die Winter-Designs)
     float4 items[8];   // je Design: Funken bzw. Lichtboegen
+    float4 fx;         // fx.x = Deckkraft des ganzen Rahmens (Ein- und Ausblenden beim Fokuswechsel)
 };
 
 struct VSOut { float4 pos : SV_Position; };
@@ -221,7 +222,7 @@ float4 winter(int design, float2 p, float u, float s, float W, float H);
 // Der eigene Glow (90) in frame_eigen.hlsl.
 float4 eigen(float2 p, float u, float s, float W, float H);
 
-float4 PSMain(VSOut i) : SV_Target
+float4 shade(VSOut i)
 {
     float2 p = i.pos.xy;
     float u, s, W, H;
@@ -246,4 +247,11 @@ float4 PSMain(VSOut i) : SV_Target
     float a = saturate(c.a + n);
     float3 rgb = min(saturate(c.rgb + n), a);
     return float4(rgb, a);
+}
+
+// Ein- und Ausblenden: die Ausgabe ist vormultipliziert, also wirkt fx.x auf Farbe und
+// Alpha gleich (auch beim additiven eigenen Glow).
+float4 PSMain(VSOut i) : SV_Target
+{
+    return shade(i) * fx.x;
 }
