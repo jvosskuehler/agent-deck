@@ -74,3 +74,24 @@ pub fn screen_rows(wins: &[(String, Rect)]) -> Vec<Vec<String>> {
     }
     rows
 }
+
+/// Die Fläche, die [`tile_grid`] bei `n` Kacheln am Ende der letzten Reihe frei lässt
+/// (5 Fenster in 2 × 3: die Kachel rechts unten), als ein Rechteck über alle freien
+/// Kacheln. `None`, wenn das Raster aufgeht. Dort steht das Info-Fenster des Decks.
+pub fn grid_gap(n: i64, area: Area, max_cols: i64) -> Option<Rect> {
+    if n <= 0 {
+        return None;
+    }
+    let rows = -((-n).div_euclid(max_cols.max(1)));
+    let cols = -((-n).div_euclid(rows));
+    let full = rows * cols;
+    if full == n {
+        return None;
+    }
+    // Volles Raster mit derselben Teilung: Reihen und Spalten bleiben gleich, weil
+    // (rows - 1) · max_cols < n ≤ full ≤ rows · max_cols.
+    let cells = tile_grid(full, area, max_cols);
+    let first = cells[n as usize];
+    let last = cells[(full - 1) as usize];
+    Some((first.0, first.1, last.0 + last.2 - first.0, first.3))
+}

@@ -1,5 +1,6 @@
 // Einstieg: alle Fenster laden dieselbe Seite und wählen ihre Ansicht über den Hash
-// (#/panel, #/handle, #/tooltip, #/settings, #/ticket, #/glow, #/keys; siehe docs/IPC.md).
+// (#/panel, #/handle, #/tooltip, #/settings, #/ticket, #/glow, #/keys, #/dash; siehe
+// docs/IPC.md).
 
 // IBM Plex wie im Terminal-Profil „Agent Deck“: Mono für alles, Sans für Prosa
 // (Sessiontitel, Zusammenfassung). Mitgeliefert, nicht vom System erwartet.
@@ -12,6 +13,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { commands, getBackend, isNative } from "./ipc";
+import { DashBoardView } from "./views/dash/DashBoardView";
 import { GlowView } from "./views/glow/GlowView";
 import { HandleView } from "./views/handle/HandleView";
 import { KeysView } from "./views/keys/KeysView";
@@ -21,13 +23,13 @@ import { TicketView } from "./views/ticket/TicketView";
 import { TooltipView } from "./views/tooltip/TooltipView";
 import "./styles/base.css";
 
-type Route = "panel" | "handle" | "tooltip" | "settings" | "ticket" | "glow" | "keys";
+type Route = "panel" | "handle" | "tooltip" | "settings" | "ticket" | "glow" | "keys" | "dash";
+
+const ROUTES: readonly Route[] = ["panel", "handle", "tooltip", "settings", "ticket", "glow", "keys", "dash"];
 
 function routeOf(hash: string): Route {
   const name = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
-  return name === "handle" || name === "tooltip" || name === "settings" || name === "ticket" || name === "glow" || name === "keys"
-    ? name
-    : "panel";
+  return (ROUTES as readonly string[]).includes(name) ? (name as Route) : "panel";
 }
 
 function App() {
@@ -51,6 +53,8 @@ function App() {
       return <GlowView />;
     case "keys":
       return <KeysView />;
+    case "dash":
+      return <DashBoardView />;
     default:
       return <PanelView />;
   }

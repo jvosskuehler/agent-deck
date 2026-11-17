@@ -24,6 +24,7 @@ function fire(promise: Promise<unknown>, what: string): void {
 
 export const commands = {
   getView: () => getBackend().invoke("get_view", {}),
+  getDash: () => getBackend().invoke("get_dash", {}),
   getDock: () => getBackend().invoke("get_dock", {}),
   getSettings: () => getBackend().invoke("get_settings", {}),
   panelContentSize: (width: number, height: number) =>
@@ -41,6 +42,8 @@ export const commands = {
     fire(b.invoke("hover_tile", { slot, rect }), "hover_tile");
   },
   openUsagePage: () => fire(getBackend().invoke("open_usage_page", {}), "open_usage_page"),
+  openDashUrl: (url: string) => fire(getBackend().invoke("open_dash_url", { url }), "open_dash_url"),
+  dashAction: (command: string) => fire(getBackend().invoke("dash_action", { command }), "dash_action"),
   openSettings: () => fire(getBackend().invoke("open_settings", {}), "open_settings"),
   setSetting: <K extends SettingKey>(key: K, value: SettingsView[K]) => getBackend().invoke("set_setting", { key, value }),
   restartPanel: () => getBackend().invoke("restart_panel", {}),

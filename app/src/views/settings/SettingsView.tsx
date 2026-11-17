@@ -133,6 +133,12 @@ export function SettingsView() {
           value={settings.autoCompact ? "on" : "off"}
           onChange={(v) => save("autoCompact", v === "on")}
         />
+        <Segmented
+          label={t(lang, "dashboard")}
+          options={onOffOptions(lang)}
+          value={settings.dashboard ? "on" : "off"}
+          onChange={(v) => save("dashboard", v === "on")}
+        />
       </section>
 
     </div>

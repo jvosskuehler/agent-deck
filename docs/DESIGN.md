@@ -96,6 +96,37 @@ Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nac
 Rechtsklick öffnet das native Menü (vergessen; beim Heimat-Block kein Menü). Ein ✕ für
 den ganzen Block gibt es bewusst nicht.
 
+## Info-Fenster (Dashboard in der freien Fensterkachel)
+
+Seit 15.11.2026, neu gebaut am 16.11.2026 nach den Entwürfen im Canvas „Info-Fenster
+Entwürfe“ (Tafel „T1 mit echten Kosten“). Das Deck kachelt die Agentenfenster eines Blocks
+auf dem Monitor (`arrange::tile_grid`). Geht das Raster nicht auf (5 Fenster als 3 + 2),
+bleibt am Ende der letzten Reihe Platz. Dort steht das Info-Fenster, genau so groß wie die
+freie Fläche (`wt_gap.rs`, `dash_window.rs`). Ohne Lücke holt die Info-Taste
+(Strg+Alt+D, `dash_hotkey`) es mitten auf den Monitor unter dem Zeiger, immer oben; nochmal
+oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es ganz heraus.
+
+- **Fenster:** rahmenlos, Panelfarbe, Ecken 8 px, nie aktiv, nicht in der Taskleiste. In
+  der Lücke direkt hinter dem vordersten Agentenfenster (geht mit den Agenten nach hinten).
+- **Oben, Tokenkosten:** große Zahl, darunter die Zusammensetzung (Cache lesen, Cache
+  schreiben, Output, Input) und die Modelle. Gestapelte Fläche je Ticket über die Zeit,
+  Zeitraum 1 Std. / 24 Std. / 7 Tage / 30 Tage (merkt sich die Oberfläche), Fadenkreuz und
+  Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
+  Ticket“); Klick zeigt nur dieses Ticket im eigenen Maßstab. Einheit: Kosten in
+  Input-Tokens von Opus 5.5 mit den API-Preisen je Modell (`deck_core::dash::costs`).
+- **Farben:** acht Plätze der geprüften Dataviz-Palette, je Thema eigene Stufen
+  (`dash.css`, `--c1` … `--c8`). Ein Ticket behält seine Farbe in jedem Zeitraum
+  (`CostView.colored`); weitere Tickets und „ohne Ticket“ sind grau.
+- **Unten, Leiste:** Kacheln PRs (offen, bereit, bei dir, warten), Reviews für dich, Titan
+  (nur mit verwaisten Läufen, rot getönt), Worktrees (nur mit Entfernbarem). Klick auf eine
+  Kachel zeigt ihre Liste statt des Graphen; nochmal oder „← Tokenkosten“ zurück.
+- **Listen:** PRs mit Status nach „wer ist am Zug“ (mergebereit, CI rot, Änderungen offen,
+  Reviewer anfragen, wartet auf Re-Review, wartet auf Review, Draft), Klick öffnet GitHub.
+  Reviews mit „Ansehen“ und „Approve“. Titan-Läufe mit Alter und „Beenden“, „Alle
+  beenden“. Worktrees in drei Spalten mit „Alle n entfernen“. Jede Aktion fragt mit
+  einem zweiten Klick nach; Rust prüft danach selbst noch einmal.
+- **Schrift:** Plex Sans, Tickets und Ordner in Plex Mono. Keine Gedankenstriche.
+
 ## Panel, Leiste, Griff
 
 - Panel in Panelfarbe, angedockt an der gewählten Kante, freie Ecken Radius 18, Rand 1 px

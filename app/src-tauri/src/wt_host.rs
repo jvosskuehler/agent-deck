@@ -391,6 +391,16 @@ impl WtHost {
         (rows, cols)
     }
 
+    /// Die freie Kachel neben den Fenstern dieses Blocks ([`crate::wt_gap::gap`]), mit den
+    /// Fenstern in der Reihenfolge, in der sie gerade liegen.
+    pub fn gap(&mut self, win: &str) -> Option<crate::wt_gap::Gap> {
+        let order: Vec<String> = self.screen_rows(win).0.concat();
+        if order.is_empty() {
+            return None;
+        }
+        crate::wt_gap::gap(self.fx.desktop.as_ref(), &order)
+    }
+
     /// Nach dem Umsortieren im Deck: die Fenster in der neuen Reihenfolge neu kacheln,
     /// damit der Bildschirm der Karte folgt (und nicht die Karte zurückspringt).
     pub fn retile_in(&mut self, win: &str, order: &[String]) {

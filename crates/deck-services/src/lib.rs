@@ -27,6 +27,7 @@
 #![cfg(windows)]
 
 pub mod git_fs;
+pub mod dash;
 pub mod guard;
 pub mod heartbeat;
 pub mod install;

@@ -5,7 +5,9 @@
 // Startwerte über die Adresse: ?lang=en, ?edge=left, ?phase=closed, ?mode=bypassPermissions,
 // ?still=1 (keine Zustandswechsel, für Screenshots), ?blocks=3 (dritter Block), ?zoom=0.8,
 // ?orphans=0 (keine Prozesse ohne Fenster), ?orphanError=1 (eine Zeile mit Fehler vom
-// letzten Beenden).
+// letzten Beenden), ?rows=4,1&cols=4 (Fensterreihen des Heimat-Blocks und Fenster je
+// Monitorreihe), ?blocks=1 (nur der Heimat-Block), ?dash=0 (keine Info-Karten),
+// ?dash=day,prs (nur diese, in dieser Reihenfolge).
 // Playwright steuert über window.__deckMock.
 
 import type { DeckView } from "../../bindings/DeckView";
@@ -16,6 +18,8 @@ import type { TileView } from "../../bindings/TileView";
 import { langFromSetting, type Lang } from "../../logic/i18n";
 import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRect, Unlisten } from "../contract";
 import type { OrphanView } from "../../bindings/OrphanView";
+import { mockDash } from "./mockDash";
+import type { DashView } from "../../bindings/DashView";
 import { initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
@@ -55,7 +59,21 @@ export function createMockBackend(): Backend {
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
 
   let lang: Lang = langFromSetting(settings.language);
-  const blocks = initialBlocks(lang, now() - 600, params.get("blocks") === "3");
+  const homeRows = (params.get("rows") ?? "3,3").split(",").map(Number).filter((n) => n > 0);
+  const blocks = initialBlocks(lang, now() - 600, params.get("blocks") === "3", homeRows, Number(params.get("cols") ?? 3), params.get("blocks") === "1");
+  const dashParam = params.get("dash");
+  // ?dash=real: Info-Fenster aus einem echten Probelauf (dash::tests::real_dash_dump schreibt
+  // app/dash-real.json; die Datei ist nicht eingecheckt). ?dash=0: abgeschaltet.
+  let dashView: DashView | null = dashParam === "0" ? null : mockDash(lang, now());
+  if (dashParam === "real") {
+    fetch("/dash-real.json")
+      .then((r) => r.json())
+      .then((d: DashView) => {
+        dashView = d;
+        emit("deck://dash", dashView);
+      })
+      .catch((e) => console.warn("[mock] dash-real.json fehlt", e));
+  }
   let dock: DockView = { edge: settings.dockEdge, phase: params.get("phase") ?? "open", zoom: Number(params.get("zoom") ?? 1) };
 
   let orphans: OrphanView[] = params.get("orphans") === "0" ? [] : mockOrphans(lang, params.get("orphanError") === "1");
@@ -103,6 +121,7 @@ export function createMockBackend(): Backend {
   let summaryTimer = 0;
   const commands: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["ret"] } = {
     get_view: () => view(),
+    get_dash: () => (dashView ? structuredClone(dashView) : null),
     get_dock: () => ({ ...dock }),
     get_settings: () => ({ ...settings }),
     panel_content_size: (a) => {
@@ -162,6 +181,20 @@ export function createMockBackend(): Backend {
       }, 900);
     },
     open_usage_page: () => console.info("[mock] claude.ai/settings/usage"),
+    open_dash_url: ({ url }) => console.info(`[mock] öffnen: ${url}`),
+    dash_action: ({ command }) => {
+      console.info(`[mock] Aktion: ${command}`);
+      if (!dashView) return;
+      // Wie im echten Deck: Approve nimmt die Zeile weg, Beenden den Lauf.
+      if (command.startsWith("approve:")) dashView.reviews = dashView.reviews.filter((r) => `approve:${r.url}` !== command);
+      if (command.startsWith("titanKill") && dashView.titan) {
+        const runs = command === "titanKillAll" ? [] : dashView.titan.runs.filter((r) => `titanKill:${r.name}` !== command);
+        dashView.titan = runs.length ? { ...dashView.titan, runs } : null;
+      }
+      if (command === "cleanupWorktrees") dashView.cleanup = null;
+      dashView.notice = `Aktion ${command.split(":")[0]} (Mock)`;
+      emit("deck://dash", dashView);
+    },
     open_settings: () => console.info("[mock] Einstellungen öffnen"),
     set_setting: ({ key, value }) => {
       (settings as Record<string, unknown>)[key] = value;

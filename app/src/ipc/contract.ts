@@ -3,6 +3,7 @@
 // Wer hier etwas ändert, ändert zuerst IPC.md. Die Nutzlasten sind die aus Rust
 // erzeugten Bindings; nichts davon wird hier nachgebaut.
 
+import type { DashView } from "../bindings/DashView";
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { GlowSettings } from "../bindings/GlowSettings";
@@ -23,6 +24,10 @@ export interface EventPayloads {
   "deck://glow": GlowView;
   /** Lebenszeichen-Frage an Panel und Griff; Antwort `ui_pong`. */
   "deck://ping": null;
+  /** Info-Fenster per Info-Taste auf- (true) oder zugeklappt (false). */
+  "deck://dash-popup": boolean;
+  /** Neue Ansicht des Info-Fensters (null = abgeschaltet). */
+  "deck://dash": DashView | null;
 }
 
 export type EventName = keyof EventPayloads;
@@ -43,6 +48,8 @@ export type SettingKey = keyof SettingsView;
 /** Befehle Oberfläche → Rust (`invoke`), je mit Argumenten und Rückgabe. */
 export interface Commands {
   get_view: { args: Record<string, never>; ret: DeckView };
+  /** Startwert des Info-Fensters (danach `deck://dash`). */
+  get_dash: { args: Record<string, never>; ret: DashView | null };
   get_dock: { args: Record<string, never>; ret: DockView };
   get_settings: { args: Record<string, never>; ret: SettingsView };
   panel_content_size: { args: { width: number; height: number }; ret: void };
@@ -54,6 +61,10 @@ export interface Commands {
   reorder_blocks: { args: { letters: string[] }; ret: void };
   hover_tile: { args: { slot: string | null; rect: ScreenRect | null }; ret: void };
   open_usage_page: { args: Record<string, never>; ret: void };
+  /** Klick auf eine Info-Karte oder eine ihrer Zeilen: Adresse im Browser (Rust prüft sie). */
+  open_dash_url: { args: { url: string }; ret: void };
+  /** Knopf im Info-Fenster: `approve:<url>`, `titanKill:<name>`, `titanKillAll`, `cleanupWorktrees`, `closePopup` (das ×). */
+  dash_action: { args: { command: string }; ret: void };
   open_settings: { args: Record<string, never>; ret: void };
   set_setting: { args: { key: SettingKey; value: SettingsView[SettingKey] }; ret: SettingsView };
   /** „Panel neu starten“: frische Instanz, diese endet. */

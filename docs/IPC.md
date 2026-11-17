@@ -16,6 +16,7 @@ Alle Fenster laden dieselbe Seite (`index.html`) und wählen ihre Ansicht über 
 | `tooltip` | `#/tooltip` | Hover-Tooltip einer Karte | rahmenlos, transparent, immer oben, nie aktiv |
 | `settings` | `#/settings` | Einstellungen | normales Fenster mit dunkler Titelleiste |
 | `ticket` | `#/ticket` | Dialog „Ticket zuweisen“ (Kontextmenü einer Karte) | normales Fenster, klein, immer oben |
+| `dash` | `#/dash` | Info-Fenster (`DashView`, Ereignis `deck://dash`) in der freien Kachel neben den Agentenfenstern | rahmenlos, transparent, nie aktiv, nicht in der Taskleiste, **nicht** immer oben: Rust legt es auf die Lücke (`wt_gap.rs`) direkt hinter das vorderste Agentenfenster (`dash_window.rs`), ohne Lücke versteckt. Die Info-Taste (Strg+Alt+D, `dash_hotkey`) klappt es mitten auf dem Monitor auf, immer oben; nochmal oder × = zu |
 
 Das Panel misst seinen natürlichen Inhalt und meldet ihn mit `panel_content_size`; Rust
 setzt daraufhin die Fenstergröße. Ein- und Ausklappen entscheidet Rust (Zeigerposition),
@@ -32,6 +33,8 @@ die Oberfläche animiert das Gleiten im Fenster (`deck://dock`).
 | `deck://settings` | `SettingsView` | Einstellungen haben sich geändert (auch von außen) |
 | `deck://ticket` | `TicketView` | Ticket-Dialog für einen Slot geöffnet |
 | `deck://glow` | `GlowView` | Fenster „Glow einstellen“ geöffnet oder Glow geändert |
+| `deck://dash` | `DashView \| null` | Ansicht des Info-Fensters hat sich geändert (Kosten, PRs, Reviews, Titan, Aufräumen); `null` = abgeschaltet |
+| `deck://dash-popup` | `boolean` | Info-Fenster per Info-Taste auf- (`true`) oder zugeklappt (`false`); aufgeklappt zeigt es oben ein × |
 | `deck://ping` | `null` | alle 5 s an Panel und Griff; die Seite antwortet mit `ui_pong` (`ui_watch.rs`) |
 
 Beim Start ruft jede Ansicht zusätzlich einmal den passenden `get_*`-Befehl, damit sie
@@ -70,6 +73,9 @@ nicht auf das erste Ereignis warten muss.
 | `open_keys` | – | – | Fenster „Tastenkürzel“ öffnen (Inhalt aus `SettingsView.shortcuts`) |
 | `kill_orphan` | `id` (`OrphanView.id`) | – | „Läuft noch ohne Fenster“: diese Zeile beenden. Kehrt sofort zurück; die Zeile steht bis zum Ende auf `busy`, ein Fehler danach in `error` |
 | `kill_all_orphans` | – | – | „Alle beenden“: jede Zeile wie `kill_orphan` |
+| `get_dash` | – | `DashView \| null` | Startwert des Info-Fensters |
+| `open_dash_url` | `url` | – | Klick auf eine Zeile oder Kachel im Info-Fenster: Adresse im Browser öffnen. Rust öffnet nur `https://` auf bekannten Hosts (GitHub, Jira, claude.ai) |
+| `dash_action` | `command` | – | Knopf im Info-Fenster: `approve:<url>` (nur Adressen aus den Review-Anfragen), `titanKill:<name>` und `titanKillAll` (nur verwaiste Läufe), `cleanupWorktrees`, `closePopup` (das ×). gh und ssh laufen ohne Deck-Sperre; das Ergebnis steht kurz in `DashView.notice` |
 | `ui_pong` | – | – | Antwort auf `deck://ping`; schweigt die Seite des sichtbaren Fensters oder der Hauptthread 60 s, startet das Deck neu (`deck_core::liveness`) |
 
 ### Was die Oberfläche bereits so umsetzt (Stand 06.11.)

@@ -286,6 +286,8 @@ pub struct SettingsView {
     /// Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
     /// abläuft (`deck_settings.json` `auto_compact`, Standard an).
     pub auto_compact: bool,
+    /// Info-Karten in freien Kartenplätzen (`deck_settings.json` `dashboard`, Standard an).
+    pub dashboard: bool,
     /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
     pub shortcuts: Vec<crate::shortcuts::ShortcutRow>,
 }

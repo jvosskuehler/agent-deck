@@ -42,6 +42,7 @@ impl Deck {
             language: Lang::normalize(cur.language.as_ref()).setting_value().to_string(),
             dock_edge: self.dock_edge().as_str().to_string(),
             auto_compact: auto_compact::enabled(&self.store.settings),
+            dashboard: deck_core::dash::enabled(&self.store.settings),
             shortcuts: deck_core::shortcuts::rows(&self.store.settings, self.lang),
         }
     }
@@ -85,6 +86,12 @@ impl Deck {
                 // Wirkt sofort: `Deck::auto_compact` liest den Schalter in jedem Takt.
                 let on = value.as_bool().ok_or("autoCompact: true/false erwartet")?;
                 self.put(auto_compact::SETTING, on.into());
+                Effect::None
+            }
+            "dashboard" => {
+                // Wirkt mit dem nächsten Takt: `Deck::view` fragt den Schalter jedes Mal.
+                let on = value.as_bool().ok_or("dashboard: true/false erwartet")?;
+                self.put(deck_core::dash::SETTING, on.into());
                 Effect::None
             }
             other => return Err(format!("unbekannte Einstellung: {other}")),

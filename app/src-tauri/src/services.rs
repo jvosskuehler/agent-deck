@@ -146,6 +146,11 @@ impl Services {
         self.usage.as_ref().map(|u| u.view(lang))
     }
 
+    /// Der rohe Stand (Prozente, Resets) für die Hochrechnung der Info-Karte.
+    pub fn usage_snapshot(&self) -> Option<deck_core::claude::usage::UsageSnapshot> {
+        self.usage.as_ref().map(|u| u.snapshot())
+    }
+
     // ── Zusammenfassung und Bezüge ───────────────────────────────────────────────
 
     pub fn summary(&self, session_id: &str) -> Option<String> {

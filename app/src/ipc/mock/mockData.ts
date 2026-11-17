@@ -74,6 +74,8 @@ const HOME: TileSeed[] = [
   { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-3192 Mehrfach-RDS auf der Test-VM", ticket: ref("ORPH-3192", "assigned"), cache: cache("kalt", "cold") },
   { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", ticket: ref("ORPH-4116", "chat"), pr: ref("#347", "chat"), cache: cache("kalt", "cold") },
   { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", cache: cache("18 min", "warm") },
+  { slot: "B7", status: "done", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4256 Tests laufen parallel", ticket: ref("ORPH-4256", "folder"), pr: ref("#213", "statusline"), cache: cache("31 min", "warm") },
+  { slot: "B8", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "bypass", title: "Backend-Monorepo: Module verschieben", ticket: ref("ORPH-4257", "branch") },
 ];
 
 const REPO: TileSeed[] = [
@@ -103,12 +105,20 @@ const EXTRA: TileSeed[] = [
   { slot: "C2", status: "done", model: "Fable 5.2", effort: "medium", mode: "plan", title: "PR 347 Review", pr: ref("#347", "statusline") },
 ];
 
-export function initialBlocks(lang: Lang, now: number, extra = false): BlockView[] {
+/**
+ * <home>: Fensterreihen des Heimat-Blocks (`?rows=4,1`), <screenCols>: wie viele Fenster
+ * auf dem Monitor nebeneinander passen (`?cols=4`); <only>: nur der Heimat-Block
+ * (`?blocks=1`, wie im Alltag seit es nur noch Windows Terminal gibt).
+ */
+export function initialBlocks(lang: Lang, now: number, extra = false, home: number[] = [3, 3], screenCols = 3, only = false): BlockView[] {
   const selected = "B2";
+  const count = Math.min(HOME.length, home.reduce((a, b) => a + b, 0));
   const blocks: BlockView[] = [
-    { letter: "B", name: "Repos", home: true, connected: true, rows: [3, 3], screenCols: 3, tiles: HOME.map((s) => tile(s, lang, selected, now)) },
-    { letter: "A", name: "orpheus-management-api", home: false, connected: true, rows: [3], screenCols: 3, tiles: REPO.map((s) => tile(s, lang, selected, now)) },
+    { letter: "B", name: "Repos", home: true, connected: true, rows: home, screenCols, tiles: HOME.slice(0, count).map((s) => tile(s, lang, selected, now)) },
   ];
+  if (!only) {
+    blocks.push({ letter: "A", name: "orpheus-management-api", home: false, connected: true, rows: [3], screenCols: 3, tiles: REPO.map((s) => tile(s, lang, selected, now)) });
+  }
   if (extra) {
     blocks.push({ letter: "C", name: "orpheus-client-electron", home: false, connected: true, rows: [2], screenCols: 3, tiles: EXTRA.map((s) => tile(s, lang, selected, now)) });
   }
@@ -169,6 +179,7 @@ export function initialSettings(): SettingsView {
     language: "german",
     dockEdge: "top",
     autoCompact: true,
+    dashboard: true,
     shortcuts: [
       { keys: "Strg+<", action: "Zum Agenten, der am längsten wartet" },
       { keys: "Strg+Shift+<", action: "Alle Agenten nach vorn, nochmal: zurück" },

@@ -28,6 +28,7 @@ use deck_services::worktree_sweep::SweepView;
 use deck_win::effects::Desktop;
 
 use crate::app_paths::Paths;
+use crate::dash::{Dash, DashInput};
 use crate::refs_files::RefsFiles;
 use crate::services::Services;
 use crate::wt_host::WtHost;
@@ -79,6 +80,10 @@ pub struct Deck {
     pub resumes: Vec<Pending>,
     /// Wann welche Session zuletzt fortgesetzt wurde (gegen Kreisläufe).
     pub resume_memo: ResumeMemo,
+    /// Info-Fenster: Dienste und Aktionen (`dash.rs`).
+    pub dash: Dash,
+    /// Ansicht des Info-Fensters aus dem letzten Takt; `None` = abgeschaltet.
+    pub dash_view: Option<deck_core::dash::board::DashView>,
     last_cycle: Option<Vec<String>>,
     memory: StatusMemory,
     mode_cache: DefaultModeCache,
@@ -115,6 +120,8 @@ impl Deck {
             compact_memo: CompactMemo::default(),
             resumes: Vec::new(),
             resume_memo: ResumeMemo::default(),
+            dash: Dash::inert(),
+            dash_view: None,
             last_cycle: None,
             memory: StatusMemory::default(),
             mode_cache: DefaultModeCache::new(),
@@ -299,6 +306,7 @@ impl Deck {
         };
         let mut view = build_deck_view(&input, &mut self.memory);
         view.orphans = self.services.orphan_rows(now, self.lang);
+        self.dash_view = self.build_dash(&view, now, &prefix);
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
         self.tile_refs = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), (t.ticket.clone(), t.pr.clone()))).collect();
         self.refs_files.sync(&self.tile_refs);
@@ -308,6 +316,24 @@ impl Deck {
             self.active_slot = None;
         }
         view
+    }
+
+    /// Info-Fenster dieses Takts (`dash.rs`): die Ordner der offenen Agenten räumt niemand weg.
+    fn build_dash(&mut self, view: &DeckView, now: f64, prefix: &str) -> Option<deck_core::dash::board::DashView> {
+        let slots: Vec<&str> = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| t.slot.as_str()).collect();
+        let mut in_use: Vec<String> = slots.iter().flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees)).collect();
+        in_use.extend(slots.iter().filter_map(|slot| chat_worktree(slot, &self.states, &self.detected_refs)));
+        let input = DashInput { now, lang: self.lang, enabled: deck_core::dash::enabled(&self.store.settings), in_use, jira_prefix: prefix };
+        self.dash.view(&input)
+    }
+
+    /// Wo das Info-Fenster stehen soll: in der freien Kachel des Heimat-Blocks, sonst des
+    /// ersten Blocks, der eine hat. `None` ohne Karten oder ohne Lücke.
+    pub fn dash_gap(&mut self, view: &DeckView) -> Option<crate::wt_gap::Gap> {
+        self.dash_view.as_ref()?;
+        let mut letters: Vec<(bool, String)> = view.blocks.iter().filter(|b| b.connected).map(|b| (!b.home, b.letter.clone())).collect();
+        letters.sort();
+        letters.into_iter().find_map(|(_, l)| self.wt.gap(&l))
     }
 
     /// Jira-Projekt aus `deck_settings.json` (`jira_prefix`), sonst der Standard.

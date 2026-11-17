@@ -53,6 +53,7 @@ const TEXTS = {
     "Automatisch /compact (5 min bevor der Cache abläuft)",
     "Auto /compact (5 min before the cache expires)",
   ],
+  dashboard: ["Info-Fenster in der freien Fensterkachel (PRs, Kontingent, Heute …)", "Info window in the free window tile (PRs, quota, today …)"],
   shortcuts: ["Tastenkürzel", "Shortcuts"],
   shortcutsHint: ["Alt+V im Agenten, die übrigen überall", "Alt+V in the agent, the rest everywhere"],
   openGlow: ["Glow einstellen", "Adjust glow"],

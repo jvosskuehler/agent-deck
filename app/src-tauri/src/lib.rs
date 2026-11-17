@@ -6,6 +6,7 @@
 
 pub mod actions;
 pub mod auto_compact;
+pub mod dash;
 pub mod app_paths;
 pub mod applog;
 pub mod crash_resume;
@@ -39,6 +40,8 @@ pub mod worker;
 pub mod wt_host;
 pub mod wt_setup;
 pub mod wt_tiles;
+pub mod wt_gap;
+pub mod dash_window;
 
 #[cfg(test)]
 mod testing;
@@ -121,6 +124,7 @@ pub fn run() {
     let lang = deck_core::i18n::Lang::from_settings(&paths.claude_settings);
     let services = Services::system(&paths, lang, Arc::new(poll::wake));
     let mut deck = Deck::new(paths.clone(), wt, desktop.clone(), services);
+    deck.dash = dash::Dash::system(&paths, Arc::new(poll::wake));
     deck.ensure_home_terminal();
     let edge = deck.dock_edge();
     let along = deck_core::dock::saved_along(&deck.store.settings);
@@ -139,6 +143,7 @@ pub fn run() {
         deck_core::shortcuts::single(&deck.store.settings, "new_agent_hotkey", deck_core::config::NEW_AGENT_HOTKEY);
     let fullscreen_combo =
         deck_core::shortcuts::single(&deck.store.settings, "fullscreen_hotkey", deck_core::config::FULLSCREEN_HOTKEY);
+    let dash_combo = deck_core::shortcuts::single(&deck.store.settings, "dash_hotkey", deck_core::config::DASH_HOTKEY);
     let glow = glow::GlowState::new(deck_core::glow::GlowSettings::from_settings(&deck.store.settings));
     // Gemeinsamer Schatten für bündig liegende Agenten; `false` lässt jedem seinen eigenen.
     let group_shadow = deck.store.settings.get("group_shadow").and_then(serde_json::Value::as_bool).unwrap_or(true);
@@ -151,6 +156,7 @@ pub fn run() {
         dock: Mutex::new(dock_ctl),
         tip: Mutex::default(),
         last_view: Mutex::new(None),
+        last_dash: Mutex::new(None),
         menu_open: AtomicBool::new(false),
         restarting: AtomicBool::new(false),
         ticket_slot: Mutex::new(None),
@@ -186,6 +192,9 @@ pub fn run() {
             commands::tooltip_content_size,
             commands::dialog_content_size,
             commands::open_usage_page,
+            dash::get_dash,
+            dash::open_dash_url,
+            dash::dash_action,
             commands::open_settings,
             commands::set_setting,
             commands::restart_panel,
@@ -213,6 +222,7 @@ pub fn run() {
             hotkey::start_glow(handle, glow_combo);
             hotkey::start_new_agent(handle, new_agent_combo);
             hotkey::start_fullscreen(handle, fullscreen_combo);
+            hotkey::start_dash(handle, dash_combo);
             if speechmike_voice {
                 speechmike::start();
             }

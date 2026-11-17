@@ -21,6 +21,8 @@ pub struct AppState {
     pub tip: Mutex<TipState>,
     /// Zuletzt gesendete Ansicht (für `get_view` und den Vergleich im Takt).
     pub last_view: Mutex<Option<DeckView>>,
+    /// Zuletzt gesendete Ansicht des Info-Fensters (`deck://dash`, `get_dash`).
+    pub last_dash: Mutex<Option<deck_core::dash::board::DashView>>,
     /// Das Kontextmenü einer Kachel ist offen: das Panel bleibt offen.
     pub menu_open: AtomicBool,
     /// „Panel neu starten“ läuft: das Ende ist kein normales (der Wächter soll

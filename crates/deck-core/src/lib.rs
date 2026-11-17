@@ -18,6 +18,7 @@ pub mod binding;
 pub mod claude;
 pub mod config;
 pub mod crash_resume;
+pub mod dash;
 pub mod dock;
 pub mod field;
 pub mod deck_view;

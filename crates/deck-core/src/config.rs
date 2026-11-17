@@ -94,3 +94,8 @@ pub const NEW_AGENT_HOTKEY: &str = "ctrl+alt+n";
 /// seinen Monitor, nochmal = zurück an seinen Platz. AltGr+F tippt auf der deutschen
 /// Tastatur nichts. Überschreibbar per `fullscreen_hotkey`, leer = aus.
 pub const FULLSCREEN_HOTKEY: &str = "ctrl+alt+f";
+
+/// Info-Fenster aufklappen (`dash_window.rs`, `toggle`): D wie Dashboard. Zeigt es mitten
+/// auf dem Monitor unter dem Zeiger, auch ohne freie Kachel; nochmal = wieder weg. AltGr+D
+/// tippt auf der deutschen Tastatur nichts. Überschreibbar per `dash_hotkey`, leer = aus.
+pub const DASH_HOTKEY: &str = "ctrl+alt+d";

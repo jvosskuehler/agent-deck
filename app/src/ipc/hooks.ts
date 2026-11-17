@@ -5,6 +5,7 @@
 // gewinnt das Ereignis: es ist das neuere.
 
 import { useEffect, useState } from "react";
+import type { DashView } from "../bindings/DashView";
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { TicketView } from "../bindings/TicketView";
@@ -44,6 +45,10 @@ function useLive<E extends EventName>(event: E, initial: () => Promise<EventPayl
 
 export function useDeckView(): DeckView | null {
   return useLive("deck://view", commands.getView)[0];
+}
+
+export function useDash(): DashView | null {
+  return useLive("deck://dash", commands.getDash)[0];
 }
 
 export function useDock(): DockView | null {

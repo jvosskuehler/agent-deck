@@ -20,7 +20,7 @@ use deck_win::{Hwnd, Rect};
 
 /// Die Kachel `(x, y, w, h)` als Fensterfläche: rundum bleibt der feine Statusring frei
 /// (`deck_core::group_shadow`), dort scheint die Farbe des Zustands durch.
-fn tile_rect((x, y, w, h): arrange::Rect, scale: f64) -> Rect {
+pub(crate) fn tile_rect((x, y, w, h): arrange::Rect, scale: f64) -> Rect {
     let ring = ring_px(scale);
     Rect::from_xywh((x + ring) as i32, (y + ring) as i32, (w - 2 * ring).max(1) as i32, (h - 2 * ring).max(1) as i32)
 }

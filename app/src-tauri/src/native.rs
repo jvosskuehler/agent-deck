@@ -12,7 +12,7 @@ use deck_core::dock::Area;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, HWND_TOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
+    GetCursorPos, GetSystemMetrics, HWND_TOPMOST, HWND_NOTOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
     SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow,
 };
 
@@ -51,6 +51,19 @@ fn place(raw: isize, r: Area, show: bool) {
     }
     // SAFETY: eigenes Fenster; SetWindowPos liest nur die übergebenen Werte.
     let _ = unsafe { SetWindowPos(hwnd(raw), Some(HWND_TOPMOST), r.left, r.top, r.width().max(1), r.height().max(1), flags) };
+}
+
+/// Fenster auf `rect` legen und zeigen, ohne es zu aktivieren, in der Z-Ordnung direkt
+/// hinter `behind` (ein fremdes Fenster; für das Info-Fenster das vorderste Agentenfenster).
+/// Nicht „immer oben“: es soll mit den Agenten nach hinten gehen, wenn etwas anderes vorn liegt.
+pub fn show_behind(raw: isize, rect: Area, behind: isize) {
+    if !allowed() || raw == 0 {
+        return;
+    }
+    let after = if behind == 0 { HWND_NOTOPMOST } else { hwnd(behind) };
+    let flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
+    // SAFETY: eigenes Fenster; `behind` dient nur als Bezug in der Z-Ordnung.
+    let _ = unsafe { SetWindowPos(hwnd(raw), Some(after), rect.left, rect.top, rect.width().max(1), rect.height().max(1), flags) };
 }
 
 pub fn hide(raw: isize) {

@@ -31,6 +31,10 @@ dockEdge: string,
  */
 autoCompact: boolean, 
 /**
+ * Info-Karten in freien Kartenplätzen (`deck_settings.json` `dashboard`, Standard an).
+ */
+dashboard: boolean, 
+/**
  * Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
  */
 shortcuts: Array<ShortcutRow>, };

@@ -6,6 +6,7 @@
 //! | `panel` | rahmenlos, transparent, immer oben, nicht in der Taskleiste, nie aktiv beim Zeigen |
 //! | `handle` | dasselbe, klein, nie aktiv |
 //! | `tooltip` | dasselbe, klickt durch |
+//! | `dash` | Info-Karten in der freien Fensterkachel: rahmenlos, nicht in der Taskleiste, nie aktiv, aber **nicht** immer oben (liegt hinter dem vordersten Agenten, `dash_window.rs`) |
 //! | `settings` | normales Fenster, Titelleiste folgt dem System-Thema, Schließen versteckt nur |
 //! | `ticket` | kleiner Dialog „Ticket zuweisen“, Schließen versteckt nur |
 //! | `keys` | „Tastenkürzel“, nur zum Ansehen, Schließen versteckt nur |
@@ -23,6 +24,7 @@ pub const SETTINGS: &str = "settings";
 pub const TICKET: &str = "ticket";
 pub const GLOW: &str = "glow";
 pub const KEYS: &str = "keys";
+pub const DASH: &str = "dash";
 
 /// Rahmenlose Überlagerung (Panel, Griff, Tooltip): versteckt angelegt, gezeigt wird
 /// sie über `native::show_at`.
@@ -44,6 +46,27 @@ fn overlay(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri
         .visible(false)
         // Kein festes Thema: die Seite folgt dem System (hell = Rosé Pine Dawn, dunkel =
         // Rosé Pine), wie das Terminal-Profil „Agent Deck“.
+        .theme(None)
+        .build()
+}
+
+/// Das Info-Fenster: wie eine Überlagerung, aber nicht immer oben. Es gehört zu den
+/// Agentenfenstern und geht mit ihnen nach hinten.
+fn info(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    WebviewWindowBuilder::new(app, DASH, WebviewUrl::App(format!("index.html#/{DASH}").into()))
+        .title("Agent Deck Info")
+        .inner_size(600.0, 400.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(false)
+        .skip_taskbar(true)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .focusable(false)
+        .focused(false)
+        .visible(false)
         .theme(None)
         .build()
 }
@@ -80,6 +103,7 @@ pub fn create_all(app: &AppHandle, english: bool) -> tauri::Result<()> {
     overlay(app, HANDLE, "Agent Deck Griff", (152.0, 30.0))?;
     let tip = overlay(app, TOOLTIP, "Agent Deck Tooltip", (360.0, 120.0))?;
     tip.set_ignore_cursor_events(true)?;
+    info(app)?;
     // Höhe = gemessene Inhaltshöhe (556 px seit dem Schalter „Automatisch kompaktieren“,
     // gemessen 12.11.2026) plus etwas Luft.
     dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (480.0, 572.0))?;

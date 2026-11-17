@@ -45,7 +45,7 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
     let s = shared(app);
     let modal = modal(app);
     let now = crate::now();
-    let (view, app_dir) = {
+    let (view, app_dir, gap, desktop, dash) = {
         let mut d = lock(&s.deck);
         d.modal = modal;
         let v = d.tick(now);
@@ -54,8 +54,10 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
             *m = v.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), t.status)).collect();
         }
         tooltip::refresh(app, &d);
-        (v, d.paths.app_dir.clone())
+        let gap = d.dash_gap(&v);
+        (v, d.paths.app_dir.clone(), gap, d.desktop.clone(), d.dash_view.clone())
     };
+    crate::dash_window::sync(app, desktop.as_ref(), gap);
     let changed = {
         let mut last = lock(&s.last_view);
         if last.as_ref() == Some(&view) {
@@ -67,6 +69,17 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
     };
     if changed {
         let _ = app.emit("deck://view", &view);
+    }
+    let dash_changed = {
+        let mut last = lock(&s.last_dash);
+        let changed = *last != dash;
+        if changed {
+            last.clone_from(&dash);
+        }
+        changed
+    };
+    if dash_changed {
+        let _ = app.emit("deck://dash", &dash);
     }
     // Lebenszeichen für den Wächter (deck-watchdog): bezeugt, dass der Takt läuft.
     beater.tick(&app_dir, now);
