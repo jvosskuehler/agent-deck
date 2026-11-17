@@ -1,7 +1,13 @@
-// Ansicht `#/settings`: eigenes Fenster im Papier-Look. Zwei Bereiche: Neue Agenten und
-// Deck. Kein Speichern-Knopf: jede Änderung geht sofort per set_setting an Rust, ein
-// kurzes „Gespeichert“ bestätigt. Was bewusst fehlt, steht in docs/DESIGN.md („Bewusst
-// nicht“).
+// Ansicht `#/settings`: eigenes Fenster im Papier-Look. Kein Speichern-Knopf: jede
+// Änderung geht sofort per set_setting an Rust, ein kurzes „Gespeichert“ bestätigt. Das
+// Fenster wächst mit dem Inhalt (useDialogFit).
+//
+// Kompakt (Vorgabe, eine Spalte, 480 breit) steht nur, was man öfter anfasst: Neue Agenten
+// (Modell, Modus, Effort) und Deck (samt Hell/Dunkel; den Ort für den Sonnenstand gibt es
+// erst unter „Erweitert“). „Erweitert“ klappt auf zwei Spalten (960) den Rest auf:
+// Konto und Ordner, Auto-Modus neuer Agenten, Automatik samt Reviewern. Taugt der
+// Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt da; Rust öffnet das
+// Fenster dann beim Start selbst. Auf- oder zugeklappt merkt sich die Oberfläche.
 
 import { useEffect, useRef, useState } from "react";
 import type { SettingsView as Settings } from "../../bindings/SettingsView";
@@ -10,6 +16,7 @@ import type { SettingKey } from "../../ipc/contract";
 import { useSettings } from "../../ipc/hooks";
 import { langFromSetting, t } from "../../logic/i18n";
 import {
+  appearanceOptions,
   edgeOptions,
   effortOptions,
   languageOptions,
@@ -18,28 +25,67 @@ import {
   modeOptions,
   onOffOptions,
 } from "../../logic/settingsOptions";
-import { Segmented } from "./controls";
 import { useDialogFit } from "../useDialogFit";
+import { PathField, Segmented, SelectField, SwitchRow, TextField } from "./controls";
+import { ReviewerField } from "./ReviewerField";
 import "../../styles/settings.css";
 
 /** So lange steht „Gespeichert“ nach einer Änderung (ms). */
 const SAVED_MS = 1600;
 
+/** Fensterbreite kompakt bzw. erweitert (CSS-Pixel). */
+const WIDTH_COMPACT = 480;
+const WIDTH_WIDE = 960;
+const EXPANDED_KEY = "agentDeck.settingsExpanded";
+
+function readExpanded(): boolean {
+  try {
+    return window.localStorage.getItem(EXPANDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeExpanded(on: boolean) {
+  try {
+    window.localStorage.setItem(EXPANDED_KEY, on ? "1" : "0");
+  } catch {
+    // Ohne Speicher gilt die Wahl nur, bis das Fenster neu lädt.
+  }
+}
+
+const REPOS_NOTICE = {
+  unset: "reposUnset",
+  missing: "reposMissing",
+  noRepos: "reposNoRepos",
+} as const;
+
 export function SettingsView() {
   const [settings, setSettings] = useSettings();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(readExpanded);
   const savedTimer = useRef<number | null>(null);
-  const root = useRef<HTMLDivElement>(null);
-  useDialogFit(root, settings != null);
+  const root = useRef<HTMLDivElement | null>(null);
+  useDialogFit(root, settings !== null, expanded ? WIDTH_WIDE : WIDTH_COMPACT);
 
-  useEffect(() => () => {
-    if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    },
+    [],
+  );
 
   if (!settings) return <div className="settings" />;
 
   const lang = langFromSetting(settings.language);
+
+  const confirmSaved = () => {
+    setError(null);
+    setSaved(true);
+    if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    savedTimer.current = window.setTimeout(() => setSaved(false), SAVED_MS);
+  };
 
   const save = <K extends SettingKey>(key: K, value: Settings[K]) => {
     // Sofort zeigen, was gewählt wurde; Rust antwortet mit dem gespeicherten Stand.
@@ -48,10 +94,7 @@ export function SettingsView() {
       .setSetting(key, value)
       .then((next) => {
         setSettings(next);
-        setError(null);
-        setSaved(true);
-        if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
-        savedTimer.current = window.setTimeout(() => setSaved(false), SAVED_MS);
+        confirmSaved();
       })
       .catch((err: unknown) => {
         setSettings(settings);
@@ -59,12 +102,216 @@ export function SettingsView() {
       });
   };
 
+  const toggleExpanded = () => {
+    writeExpanded(!expanded);
+    setExpanded(!expanded);
+  };
+
   const restartPanel = () => {
     commands.restartPanel().catch((err: unknown) => setError(String(err)));
   };
 
+  const pickRepos = () => {
+    commands
+      .pickFolder(settings.reposRoot)
+      .then((path) => {
+        if (path) save("reposRoot", path);
+      })
+      .catch((err: unknown) => setError(String(err)));
+  };
+
+  const onOff = onOffOptions(lang);
+  const placeName = settings.sunPlaces.find((p) => p.id === settings.sunPlace)?.name ?? settings.sunPlace;
+  // Was die Wahl über das Deck hinaus tut: fest gilt nur für Deck und Agenten, Sonnenstand
+  // schaltet Windows selbst. „System“ braucht keinen Satz.
+  const appearanceHint =
+    settings.appearance === "sun"
+      ? t(lang, "appearanceSunHint", { place: placeName })
+      : settings.appearance === "light" || settings.appearance === "dark"
+        ? t(lang, "appearanceFixedHint")
+        : undefined;
+  const reposNotice = settings.reposState === "ok" ? null : REPOS_NOTICE[settings.reposState];
+
+  const reposField = (
+    <PathField
+      label={t(lang, "reposRoot")}
+      value={settings.reposRoot}
+      empty={t(lang, "reposRootEmpty")}
+      button={t(lang, "reposRootChange")}
+      alert={reposNotice !== null}
+      onPick={pickRepos}
+    />
+  );
+
+  const agents = (
+    <section className="set-section">
+      <div className="set-section-head">
+        <h2 className="set-h2">{t(lang, "newAgents")}</h2>
+        <span className="set-hint">{t(lang, "newAgentsHint")}</span>
+      </div>
+      <Segmented
+        label={t(lang, "model")}
+        options={modelOptions(lang)}
+        value={matchOption(modelOptions(lang), settings.model)}
+        onChange={(v) => save("model", v)}
+      />
+      <Segmented
+        label={t(lang, "mode")}
+        options={modeOptions(lang)}
+        value={matchOption(modeOptions(lang), settings.mode)}
+        onChange={(v) => save("mode", v)}
+      />
+      <Segmented
+        label={t(lang, "effort")}
+        options={effortOptions()}
+        value={matchOption(effortOptions(), settings.effort)}
+        onChange={(v) => save("effort", v)}
+      />
+      {expanded && (
+        <SwitchRow
+          label={t(lang, "autoPermissionMode")}
+          hint={t(lang, "autoPermissionModeHint")}
+          options={onOff}
+          on={settings.autoPermissionMode}
+          onChange={(v) => save("autoPermissionMode", v)}
+        />
+      )}
+    </section>
+  );
+
+  const deck = (
+    <section className="set-section">
+      <div className="set-section-head">
+        <h2 className="set-h2">{t(lang, "deck")}</h2>
+        <span className="set-spacer" />
+        <button type="button" className="tool-btn" onClick={commands.openKeys}>
+          {t(lang, "shortcuts")}
+        </button>
+        <button type="button" className="tool-btn" onClick={commands.openGlow}>
+          {t(lang, "openGlow")}
+        </button>
+        <button type="button" className="tool-btn" onClick={restartPanel}>
+          {t(lang, "restartPanel")}
+        </button>
+      </div>
+      <Segmented
+        label={t(lang, "language")}
+        options={languageOptions()}
+        value={matchOption(languageOptions(), settings.language)}
+        onChange={(v) => save("language", v)}
+      />
+      <Segmented
+        label={t(lang, "dockEdge")}
+        options={edgeOptions(lang)}
+        value={matchOption(edgeOptions(lang), settings.dockEdge)}
+        onChange={(v) => save("dockEdge", v)}
+      />
+      <Segmented
+        label={t(lang, "appearance")}
+        options={appearanceOptions(lang)}
+        value={matchOption(appearanceOptions(lang), settings.appearance)}
+        hint={appearanceHint}
+        onChange={(v) => save("appearance", v)}
+      />
+      {expanded && settings.appearance === "sun" && (
+        <SelectField
+          label={t(lang, "sunPlace")}
+          options={settings.sunPlaces.map((p) => ({ value: p.id, label: p.name }))}
+          value={settings.sunPlace}
+          onChange={(v) => save("sunPlace", v)}
+        />
+      )}
+      <SwitchRow
+        label={t(lang, "dashboard")}
+        options={onOff}
+        on={settings.dashboard}
+        onChange={(v) => save("dashboard", v)}
+      />
+      <SwitchRow
+        label={t(lang, "autoCompact")}
+        hint={t(lang, "autoCompactHint")}
+        options={onOff}
+        on={settings.autoCompact}
+        onChange={(v) => save("autoCompact", v)}
+      />
+    </section>
+  );
+
+  const account = (
+    <section className="set-section">
+      <div className="set-section-head">
+        <h2 className="set-h2">{t(lang, "account")}</h2>
+        <span className="set-hint">{t(lang, "accountHint")}</span>
+      </div>
+      {reposField}
+      <TextField
+        label={t(lang, "jiraPrefix")}
+        value={settings.jiraPrefix}
+        placeholder="ABC"
+        onCommit={(v) => save("jiraPrefix", v)}
+      />
+    </section>
+  );
+
+  const automation = (
+    <section className="set-section">
+      <div className="set-section-head">
+        <h2 className="set-h2">{t(lang, "automation")}</h2>
+        <span className="set-hint">{t(lang, "automationHint")}</span>
+      </div>
+      <SwitchRow
+        label={t(lang, "storeUpdate")}
+        hint={t(lang, "storeUpdateHint")}
+        options={onOff}
+        on={settings.storeUpdate}
+        onChange={(v) => save("storeUpdate", v)}
+      />
+      <SwitchRow
+        label={t(lang, "speechmikeVoice")}
+        hint={t(lang, "speechmikeVoiceHint")}
+        options={onOff}
+        on={settings.speechmikeVoice}
+        onChange={(v) => save("speechmikeVoice", v)}
+      />
+      <SwitchRow
+        label={t(lang, "titan")}
+        hint={t(lang, "titanHint")}
+        options={onOff}
+        on={settings.titan}
+        onChange={(v) => save("titan", v)}
+      />
+      <SwitchRow
+        label={t(lang, "prAutomation")}
+        hint={t(lang, "prAutomationHint")}
+        options={onOff}
+        on={settings.prAutomation}
+        onChange={(v) => save("prAutomation", v)}
+      />
+      {/* Immer sichtbar: wer die eigenen PRs reviewt, ist eine Frage an jeden, auch
+          bevor die Automatik an ist (der Installer fragt es ebenfalls). */}
+      <ReviewerField
+        lang={lang}
+        settings={settings}
+        onSaved={(next) => {
+          setSettings(next);
+          confirmSaved();
+        }}
+        onError={setError}
+      />
+      {settings.prAutomation && (
+        <TextField
+          label={t(lang, "githubOrg")}
+          value={settings.githubOrg}
+          onCommit={(v) => save("githubOrg", v)}
+        />
+      )}
+    </section>
+  );
+
+  const divider = <div className="set-divider" aria-hidden="true" />;
+
   const body = (
-    <div ref={root} className="settings">
+    <div className="settings" data-wide={expanded || undefined} ref={root}>
       <header className="set-header">
         <h1 className="set-title">{t(lang, "settings")}</h1>
         <span className="set-spacer" />
@@ -77,73 +324,39 @@ export function SettingsView() {
         )}
       </header>
 
-      <section className="set-section">
-        <div className="set-section-head">
-          <h2 className="set-h2">{t(lang, "newAgents")}</h2>
-          <span className="set-hint">{t(lang, "newAgentsHint")}</span>
+      {reposNotice && (
+        <p className="set-notice" role="alert">
+          {t(lang, reposNotice)}
+        </p>
+      )}
+
+      {expanded ? (
+        <div className="set-cols">
+          <div className="set-col">
+            {account}
+            {divider}
+            {agents}
+          </div>
+          <div className="set-col">
+            {deck}
+            {divider}
+            {automation}
+          </div>
         </div>
-        <Segmented
-          label={t(lang, "model")}
-          options={modelOptions()}
-          value={matchOption(modelOptions(), settings.model)}
-          onChange={(v) => save("model", v)}
-        />
-        <Segmented
-          label={t(lang, "mode")}
-          options={modeOptions(lang)}
-          value={matchOption(modeOptions(lang), settings.mode)}
-          onChange={(v) => save("mode", v)}
-        />
-        <Segmented
-          label={t(lang, "effort")}
-          options={effortOptions()}
-          value={matchOption(effortOptions(), settings.effort)}
-          onChange={(v) => save("effort", v)}
-        />
-      </section>
+      ) : (
+        <>
+          {reposNotice && reposField}
+          {agents}
+          {divider}
+          {deck}
+        </>
+      )}
 
-      <div className="set-divider" aria-hidden="true" />
-
-      <section className="set-section">
-        <div className="set-section-head">
-          <h2 className="set-h2">{t(lang, "deck")}</h2>
-          <span className="set-spacer" />
-          <button type="button" className="tool-btn" onClick={commands.openKeys}>
-            {t(lang, "shortcuts")}
-          </button>
-          <button type="button" className="tool-btn" onClick={commands.openGlow}>
-            {t(lang, "openGlow")}
-          </button>
-          <button type="button" className="tool-btn" onClick={restartPanel}>
-            {t(lang, "restartPanel")}
-          </button>
-        </div>
-        <Segmented
-          label={t(lang, "language")}
-          options={languageOptions()}
-          value={matchOption(languageOptions(), settings.language)}
-          onChange={(v) => save("language", v)}
-        />
-        <Segmented
-          label={t(lang, "dockEdge")}
-          options={edgeOptions(lang)}
-          value={matchOption(edgeOptions(lang), settings.dockEdge)}
-          onChange={(v) => save("dockEdge", v)}
-        />
-        <Segmented
-          label={t(lang, "autoCompact")}
-          options={onOffOptions(lang)}
-          value={settings.autoCompact ? "on" : "off"}
-          onChange={(v) => save("autoCompact", v === "on")}
-        />
-        <Segmented
-          label={t(lang, "dashboard")}
-          options={onOffOptions(lang)}
-          value={settings.dashboard ? "on" : "off"}
-          onChange={(v) => save("dashboard", v === "on")}
-        />
-      </section>
-
+      <footer className="set-footer">
+        <button type="button" className="tool-btn set-more" aria-expanded={expanded} onClick={toggleExpanded}>
+          {t(lang, expanded ? "less" : "more")}
+        </button>
+      </footer>
     </div>
   );
 

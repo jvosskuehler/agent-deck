@@ -118,7 +118,7 @@ impl SummaryConfig {
             model: deck_core::config::HOVER_SUMMARY_MODEL.into(),
             timeout: Duration::from_secs(120),
             gates: SummaryGates::default(),
-            project_key: Some(deck_core::config::JIRA_PROJECT_KEY.into()),
+            project_key: Some(deck_core::config::JIRA_PROJECT_KEY).filter(|k| !k.is_empty()).map(String::from),
             detect_refs: deck_core::config::TICKET_AUTODETECT,
         }
     }

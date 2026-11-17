@@ -8,6 +8,7 @@ import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { GlowSettings } from "../bindings/GlowSettings";
 import type { GlowView } from "../bindings/GlowView";
+import type { ReviewerSave } from "../bindings/ReviewerSave";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
 import type { TooltipView } from "../bindings/TooltipView";
@@ -67,6 +68,10 @@ export interface Commands {
   dash_action: { args: { command: string }; ret: void };
   open_settings: { args: Record<string, never>; ret: void };
   set_setting: { args: { key: SettingKey; value: SettingsView[SettingKey] }; ret: SettingsView };
+  /** Reviewer-Feld: Namen, Mailadressen oder Logins gegen die GitHub-Organisation auflösen (gh) und als Logins speichern. */
+  set_reviewers: { args: { text: string }; ret: ReviewerSave };
+  /** „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows; `null` = abgebrochen. Speichern danach per set_setting. */
+  pick_folder: { args: { start: string }; ret: string | null };
   /** „Panel neu starten“: frische Instanz, diese endet. */
   restart_panel: { args: Record<string, never>; ret: void };
   /** Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen, verbinden). */
@@ -80,8 +85,8 @@ export interface Commands {
   focus_block: { args: { letter: string }; ret: void };
   /** Der Tooltip meldet seine Größe, damit Rust ihn auf dem Monitor halten kann. */
   tooltip_content_size: { args: { width: number; height: number }; ret: void };
-  /** Ein Dialog (z. B. „Glow einstellen“) meldet seine Inhaltshöhe; das Fenster wächst mit. */
-  dialog_content_size: { args: { height: number }; ret: void };
+  /** Ein Dialog (z. B. „Glow einstellen“) meldet seine Inhaltshöhe; das Fenster wächst mit. `width` setzt auch die Breite (Einstellungen kompakt/erweitert). */
+  dialog_content_size: { args: { height: number; width?: number }; ret: void };
   /** Inhalt des Ticket-Dialogs (null, solange keiner geöffnet wurde). */
   get_ticket: { args: Record<string, never>; ret: TicketView | null };
   /** Ticket zuweisen (Text) oder abbrechen (null); schließt den Dialog. */

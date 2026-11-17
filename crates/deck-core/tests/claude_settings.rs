@@ -136,6 +136,15 @@ fn status_labels_are_localized_and_running_reads_as_thinking() {
 }
 
 #[test]
+fn claude_config_dir_moves_settings_transcripts_and_credentials_together() {
+    use deck_core::paths::claude_dir_in;
+    let home = std::path::Path::new(r"C:\Users\x");
+    assert_eq!(claude_dir_in(None, home), home.join(".claude"));
+    assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new("")), home), home.join(".claude"), "leer = nicht gesetzt");
+    assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new(r"D:\cc")), home), std::path::PathBuf::from(r"D:\cc"));
+}
+
+#[test]
 fn a_fresh_install_gets_bypass_and_effort_high() {
     let before = json!({"hooks": {"Stop": [1]}, "permissions": {"allow": ["Read"]}});
     let (after, notes) = fill_defaults(before.as_object().unwrap());
@@ -154,4 +163,15 @@ fn defaults_never_overwrite_a_choice_already_made() {
     let ultra = json!({"ultracode": true});
     let (after, _) = fill_defaults(ultra.as_object().unwrap());
     assert!(after.get("effortLevel").is_none(), "Ultracode ist schon eine Effort-Wahl");
+}
+
+#[test]
+fn a_settings_file_with_utf8_bom_is_read_like_one_without() {
+    // So schreibt Windows PowerShell 5.1 mit `Set-Content -Encoding UTF8`.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, "\u{FEFF}{\"effortLevel\": \"low\", \"statusLine\": {\"command\": \"x\"}}").unwrap();
+    let m = deck_core::claude::settings::load(&path);
+    assert_eq!(m.get("effortLevel").and_then(Value::as_str), Some("low"));
+    assert_eq!(deck_core::claude::settings::read_values(&path).effort, Some(Value::from("low")));
 }

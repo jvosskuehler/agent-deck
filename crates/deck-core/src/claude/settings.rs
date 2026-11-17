@@ -12,13 +12,13 @@ use std::time::SystemTime;
 
 use serde_json::{Map, Value};
 
-use crate::paths::{atomic_write, home_dir};
+use crate::paths::{atomic_write, claude_dir};
 use crate::field::flag;
 
-/// `%USERPROFILE%\.claude\settings.json`, dieselbe Datei, in der Hooks und statusLine
-/// stehen.
+/// `settings.json` in Claude Codes Konfigurationsordner (`paths::claude_dir`), dieselbe
+/// Datei, in der Hooks und statusLine stehen.
 pub fn settings_path() -> PathBuf {
-    home_dir().join(".claude").join("settings.json")
+    claude_dir().join("settings.json")
 }
 
 /// (Anzeige, Wert). Reihenfolge = Dropdown-Reihenfolge; das ERSTE Paar ist zugleich
@@ -154,7 +154,7 @@ pub fn fill_defaults(settings: &Map<String, Value>) -> (Map<String, Value>, Vec<
     let has_effort = non_null(out.get("effortLevel")).is_some() || flag(out.get("ultracode"));
     if !has_effort {
         out.insert("effortLevel".into(), DEFAULT_EFFORT.into());
-        notes.push(("info", format!("Vorgabe gesetzt: effortLevel = {DEFAULT_EFFORT}")));
+        notes.push(("info", format!("Neu eingetragen: Effort {DEFAULT_EFFORT} (änderbar in den Einstellungen des Decks)")));
     }
     let mut perms = match out.get("permissions") {
         Some(Value::Object(p)) => p.clone(),
@@ -163,7 +163,7 @@ pub fn fill_defaults(settings: &Map<String, Value>) -> (Map<String, Value>, Vec<
     if non_null(perms.get("defaultMode")).is_none() {
         perms.insert("defaultMode".into(), DEFAULT_MODE.into());
         out.insert("permissions".into(), Value::Object(perms));
-        notes.push(("info", format!("Vorgabe gesetzt: permissions.defaultMode = {DEFAULT_MODE}")));
+        notes.push(("info", format!("Neu eingetragen: Modus {DEFAULT_MODE}, Agenten fragen nicht nach (änderbar in den Einstellungen des Decks)")));
     }
     (out, notes)
 }
@@ -193,7 +193,7 @@ impl DefaultModeCache {
         let parsed = std::fs::read(path)
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok());
+            .and_then(|t| serde_json::from_str::<Value>(crate::paths::strip_bom(&t)).ok());
         let Some(data) = parsed else {
             return hit.and_then(|(_, m)| m.clone());
         };

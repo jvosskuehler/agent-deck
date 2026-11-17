@@ -1,10 +1,20 @@
-//! Hooks und statusLine in `~/.claude/settings.json` eintragen, prüfen, entfernen
+//! Hooks und statusLine in Claudes `settings.json` eintragen, prüfen, entfernen
 //! (Python `claude/hook_setup.py`, `main`). Die Regeln selbst (welche Einträge, wie sie
 //! aussehen, was ein Befund ist) stehen in `deck_core::claude::hook_setup`; hier sind
 //! Lesen, Schreiben, Sicherung und Bilanz.
 //!
 //! Eine settings.json, die da ist, aber nicht als JSON-Objekt liest, wird nicht
 //! angefasst: sie wird auch von Hand gepflegt, ein Zurückschreiben nähme alles andere mit.
+//!
+//! **Die Infozeile (`statusLine`) des Decks kommt immer hinein, ohne Rückfrage.** Eine
+//! fremde wird vorher nach `%LOCALAPPDATA%\claude-agent-deck\statusline.before.json`
+//! gesichert ([`crate::statusline_backup`]); `deck-statusline` ruft sie weiter auf und
+//! hängt ihre Ausgabe an, `uninstall` legt sie zurück. Nur wer ausdrücklich
+//! `--statusline keep` sagt, behält die fremde allein.
+//!
+//! Welche Vorgaben (Modus, Effort) neu eingetragen wurden, steht danach in
+//! `installed.json` ([`crate::installed`]); `uninstall` nimmt sie heraus, solange sie
+//! noch den geschriebenen Wert haben.
 
 use std::path::{Path, PathBuf};
 
@@ -14,11 +24,36 @@ use serde_json::{Map, Value};
 
 use crate::fsutil::{backup, normcase, real_path};
 use crate::guard;
+use crate::installed::Installed;
 use crate::report::{Grade, Report};
+use crate::statusline_backup as saved;
 
-/// `~/.claude/settings.json`.
+/// `settings.json` in Claudes Konfigurationsordner, so wie `deck_core::claude::settings`
+/// ihn bestimmt (`CLAUDE_CONFIG_DIR`, sonst `~/.claude`).
 pub fn settings_path() -> PathBuf {
     settings::settings_path()
+}
+
+/// Was mit einer statusLine geschieht, die nicht dem Deck gehört.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StatusLine {
+    /// Stehen lassen (nur auf ausdrücklichen Wunsch). Modell, Effort und Kontext-%
+    /// fehlen dann auf den Kacheln.
+    Keep,
+    /// Durch die des Decks ersetzen (Vorgabe); die bisherige wird gesichert, läuft hinter
+    /// der des Decks weiter und kommt bei `uninstall` zurück.
+    #[default]
+    Replace,
+}
+
+impl StatusLine {
+    pub fn parse(s: &str) -> Option<StatusLine> {
+        match s {
+            "keep" => Some(StatusLine::Keep),
+            "replace" => Some(StatusLine::Replace),
+            _ => None,
+        }
+    }
 }
 
 /// Gelesen: Inhalt, oder `None` mit Befund (da, aber nicht lesbar).
@@ -29,7 +64,7 @@ fn read(path: &Path, r: &mut Report) -> Option<Map<String, Value>> {
     match deck_core::paths::load_json(path) {
         Some(Value::Object(m)) => Some(m),
         _ => {
-            r.push(Grade::Fail, format!("{} ist kein lesbares JSON-Objekt, nicht angefasst. Von Hand nachsehen.", path.display()));
+            r.push(Grade::Fail, format!("Die Claude-Einstellungen ({}) sind beschädigt und bleiben unverändert. Bitte von Hand prüfen.", path.display()));
             None
         }
     }
@@ -38,28 +73,36 @@ fn read(path: &Path, r: &mut Report) -> Option<Map<String, Value>> {
 /// Die echte settings.json ist in Tests gesperrt; Wegwerf-Dateien sind frei.
 fn check_target(path: &Path) -> std::io::Result<()> {
     if normcase(&path.to_string_lossy()) == normcase(&settings_path().to_string_lossy()) {
-        guard::check("~/.claude/settings.json ändern")?;
+        guard::check("Claudes settings.json ändern")?;
     }
     Ok(())
 }
 
-fn write(path: &Path, before: &Map<String, Value>, after: Map<String, Value>, r: &mut Report) {
+/// Schreiben, wenn sich etwas ändert. `true`, wenn die Datei danach `after` enthält.
+fn write(path: &Path, before: &Map<String, Value>, after: Map<String, Value>, r: &mut Report) -> bool {
     if &after == before {
         r.push(Grade::Ok, format!("Nichts zu tun, {} ist schon auf Stand.", path.display()));
-        return;
+        return true;
     }
     if let Err(e) = check_target(path) {
         r.push(Grade::Fail, e.to_string());
-        return;
+        return false;
     }
     // Sicherung nur bei echter Änderung, sonst sammelt jeder Lauf eine an.
     r.backup = backup(path).map(|p| p.to_string_lossy().into_owned());
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     match settings::save(&after, path) {
         Ok(()) => {
             r.changed = true;
             r.push(Grade::Ok, path.to_string_lossy());
+            true
         }
-        Err(e) => r.push(Grade::Fail, format!("{} nicht geschrieben: {e}", path.display())),
+        Err(e) => {
+            r.push(Grade::Fail, format!("Die Claude-Einstellungen ({}) ließen sich nicht speichern: {e}", path.display()));
+            false
+        }
     }
 }
 
@@ -67,19 +110,91 @@ fn bin(bin_dir: &Path) -> String {
     bin_dir.to_string_lossy().into_owned()
 }
 
+/// Die Vorgaben, die `settings::fill_defaults` eintragen kann, als Punkt-Pfade.
+const DEFAULT_KEYS: [&str; 2] = ["permissions.defaultMode", "effortLevel"];
+
+fn get_path<'a>(m: &'a Map<String, Value>, key: &str) -> Option<&'a Value> {
+    match key.split_once('.') {
+        Some((outer, inner)) => m.get(outer)?.get(inner),
+        None => m.get(key),
+    }
+}
+
+fn remove_path(m: &mut Map<String, Value>, key: &str) {
+    match key.split_once('.') {
+        Some((outer, inner)) => {
+            let Some(Value::Object(o)) = m.get_mut(outer) else { return };
+            o.shift_remove(inner);
+            // Ein Behälter, den nur unsere Vorgabe gefüllt hat, geht mit.
+            if o.is_empty() {
+                m.shift_remove(outer);
+            }
+        }
+        None => {
+            m.shift_remove(key);
+        }
+    }
+}
+
+fn is_deck_statusline(m: &Map<String, Value>) -> bool {
+    let cmd = m.get("statusLine").and_then(|s| s.get("command")).and_then(Value::as_str);
+    cmd.is_some_and(|c| hook_setup::owner(c) == hook_setup::Owner::Deck)
+}
+
 /// Die sechs Hooks und die statusLine auf die Programme in `bin_dir` richten (dort liegen
-/// `deck-report.exe` und `deck-statusline.exe`). Fremde Einträge bleiben.
-/// `force_statusline` ersetzt auch eine fremde statusLine. Fehlen Modus oder Effort,
-/// kommen die Vorgaben des Decks hinein (`settings::fill_defaults`).
-pub fn install(settings_file: &Path, bin_dir: &Path, force_statusline: bool) -> Report {
+/// `deck-report.exe` und `deck-statusline.exe`). Fremde Hooks bleiben. Eine fremde
+/// statusLine kommt bei [`StatusLine::Replace`] (Vorgabe) vorher nach `saved_file`;
+/// bei [`StatusLine::Keep`] bleibt sie. Zeigt die statusLine schon auf das Deck, ändert
+/// sich an ihr nichts. Fehlen Modus oder Effort, kommen die Vorgaben des Decks hinein
+/// (`settings::fill_defaults`) und werden in `m` verzeichnet; was dasteht, bleibt.
+///
+/// Merker für den Installer: `statusline` (die Infozeile des Decks ist neu da),
+/// `statusline-chained` (eine fremde wurde gesichert und läuft dahinter weiter),
+/// `default <schlüssel>=<wert>` je neu eingetragener Vorgabe.
+pub fn install(settings_file: &Path, bin_dir: &Path, mode: StatusLine, saved_file: &Path, m: &mut Installed) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
-    let opts = MergeOptions { force_statusline };
+    let opts = MergeOptions { force_statusline: mode == StatusLine::Replace };
     let (merged, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
-    let (after, defaults) = settings::fill_defaults(&merged);
-    write(settings_file, &before, after, &mut r);
+    let (after, _) = settings::fill_defaults(&merged);
+    let mut chained = false;
+    if let Some(old) = saved::replaced(&before, &after) {
+        // Erst sichern, dann ersetzen: misslingt die Sicherung, bleibt alles, wie es ist.
+        if let Err(e) = saved::save(saved_file, old) {
+            r.push(Grade::Fail, format!("Deine bisherige Infozeile ließ sich nicht sichern ({}): {e}. Nichts geändert.", saved_file.display()));
+            return r;
+        }
+        r.push(Grade::Info, format!("Bisherige Infozeile gesichert, sie läuft hinter der des Decks weiter: {}", saved_file.display()));
+        chained = true;
+    }
+    if !write(settings_file, &before, after.clone(), &mut r) {
+        return r;
+    }
+    if chained {
+        m.statusline_backup = Some(saved_file.to_string_lossy().into_owned());
+        r.tag("statusline-chained");
+    }
+    if !is_deck_statusline(&before) && is_deck_statusline(&after) {
+        r.tag("statusline");
+    }
+    for key in DEFAULT_KEYS {
+        if let Some(v) = get_path(&after, key).filter(|v| get_path(&merged, key) != Some(*v)) {
+            m.record_default(key, v.clone());
+            r.tag(format!("default {key}={}", v.as_str().unwrap_or_default()));
+            r.push(Grade::Info, format!("Neue Vorgabe in den Claude-Einstellungen: {key} = {v}"));
+        }
+    }
+    let notes: Vec<(&str, String)> = notes
+        .into_iter()
+        .map(|(g, t)| {
+            if t.contains("anderen Werkzeug") {
+                (g, "Die Infozeile eines anderen Werkzeugs bleibt allein stehen (--statusline keep); Modell, Effort und Kontext fehlen dann auf den Kacheln.".to_string())
+            } else {
+                (g, t)
+            }
+        })
+        .collect();
     r.extend_notes(&notes);
-    r.extend_notes(&defaults);
     r
 }
 
@@ -96,102 +211,38 @@ pub fn check(settings_file: &Path, bin_dir: &Path) -> Report {
     r
 }
 
-/// Die Einträge dieser Fassung herausnehmen; alles andere bleibt.
-pub fn uninstall(settings_file: &Path) -> Report {
+/// Die Einträge dieser Fassung herausnehmen; alles andere bleibt. Hat `install` eine
+/// fremde statusLine ersetzt, kommt sie aus `saved_file` zurück, sofern inzwischen keine
+/// andere eingetragen wurde. Vorgaben aus `m` gehen nur, solange sie noch den Wert
+/// haben, den `install` geschrieben hat; eine geänderte gehört dem Menschen.
+pub fn uninstall(settings_file: &Path, saved_file: &Path, m: &mut Installed) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
-    let (after, notes) = hook_setup::remove(&before);
-    write(settings_file, &before, after, &mut r);
+    let (mut after, notes) = hook_setup::remove(&before);
     r.extend_notes(&notes);
+    for d in &m.claude_defaults {
+        if get_path(&after, &d.key) == Some(&d.value) {
+            remove_path(&mut after, &d.key);
+            r.push(Grade::Info, format!("Vorgabe {} entfernt", d.key));
+        } else {
+            r.push(Grade::Info, format!("{} wurde geändert und bleibt", d.key));
+        }
+    }
+    let restored = saved::restore_into(&mut after, saved_file, &mut r);
+    if restored {
+        r.tag("statusline-restored");
+    }
+    let written = write(settings_file, &before, after, &mut r);
+    if written {
+        m.claude_defaults.clear();
+    }
+    if restored && written {
+        saved::forget(saved_file, &mut r);
+        m.statusline_backup = None;
+    }
     r
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use deck_core::claude::hook_setup::{HOOKS, Owner, commands_of, owner};
-    use serde_json::json;
-
-    fn rig() -> (tempfile::TempDir, PathBuf, PathBuf) {
-        let d = tempfile::tempdir().unwrap();
-        let bin = d.path().join("bin");
-        std::fs::create_dir_all(&bin).unwrap();
-        std::fs::write(bin.join("deck-report.exe"), b"").unwrap();
-        std::fs::write(bin.join("deck-statusline.exe"), b"").unwrap();
-        let s = d.path().join("settings.json");
-        (d, bin, s)
-    }
-
-    fn load(p: &Path) -> Map<String, Value> {
-        settings::load(p)
-    }
-
-    #[test]
-    fn a_fresh_file_gets_all_six_hooks_and_the_statusline() {
-        let (_d, bin, s) = rig();
-        let r = install(&s, &bin, false);
-        assert!(r.is_ok() && r.changed, "{r:?}");
-        let m = load(&s);
-        for (event, _, _) in HOOKS {
-            assert_eq!(commands_of(&m, event, Owner::Deck).len(), 1, "{event}");
-        }
-        assert_eq!(owner(m["statusLine"]["command"].as_str().unwrap()), Owner::Deck);
-        assert!(r.backup.is_none(), "neu angelegt: nichts zu sichern");
-    }
-
-    #[test]
-    fn a_second_run_changes_nothing_and_backs_up_nothing() {
-        let (d, bin, s) = rig();
-        install(&s, &bin, false);
-        let r = install(&s, &bin, false);
-        assert!(!r.changed && r.backup.is_none());
-        let n = std::fs::read_dir(d.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().contains(".bak-")).count();
-        assert_eq!(n, 0);
-    }
-
-    #[test]
-    fn an_unreadable_settings_file_is_not_touched() {
-        let (_d, bin, s) = rig();
-        std::fs::write(&s, "{ kaputt").unwrap();
-        let r = install(&s, &bin, false);
-        assert_eq!(r.fails(), 1);
-        assert_eq!(std::fs::read_to_string(&s).unwrap(), "{ kaputt");
-    }
-
-    #[test]
-    fn the_check_is_clean_after_install_and_fails_when_the_programs_are_gone() {
-        let (_d, bin, s) = rig();
-        install(&s, &bin, false);
-        let c = check(&s, &bin);
-        assert_eq!((c.fails(), c.warns()), (0, 0), "{c:?}");
-        std::fs::remove_file(bin.join("deck-report.exe")).unwrap();
-        assert_eq!(check(&s, &bin).fails(), HOOKS.len());
-    }
-
-    #[test]
-    fn install_keeps_other_keys_and_foreign_hooks_and_uninstall_takes_out_only_ours() {
-        let (_d, bin, s) = rig();
-        let lint = json!([{"hooks": [{"type": "command", "command": "python C:/tools/lint.py"}]}]);
-        let mut m = Map::new();
-        m.insert("model".into(), "opus[1m]".into());
-        m.insert("hooks".into(), json!({"Stop": lint}));
-        settings::save(&m, &s).unwrap();
-        let r = install(&s, &bin, false);
-        assert!(r.backup.is_some(), "vorhandene Datei: Sicherung");
-        let m = load(&s);
-        assert_eq!(m["model"], "opus[1m]", "andere Schlüssel bleiben");
-        assert_eq!(commands_of(&m, "Stop", Owner::Foreign).len(), 1);
-        assert_eq!(commands_of(&m, "Stop", Owner::Deck).len(), 1);
-        uninstall(&s);
-        let m = load(&s);
-        assert!(commands_of(&m, "Stop", Owner::Deck).is_empty());
-        assert_eq!(commands_of(&m, "Stop", Owner::Foreign).len(), 1);
-        assert!(m.get("statusLine").is_none());
-    }
-
-    #[test]
-    fn the_real_settings_file_is_locked_in_tests() {
-        assert!(check_target(&settings_path()).is_err());
-        assert!(check_target(Path::new(r"C:\tmp\x\settings.json")).is_ok());
-    }
-}
+#[path = "install_tests.rs"]
+mod tests;

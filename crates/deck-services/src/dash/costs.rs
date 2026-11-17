@@ -56,6 +56,12 @@ impl CostScanner {
         CostScanner { root: root.into(), ledger: CostLedger::default(), offsets: HashMap::new() }
     }
 
+    /// Alles vergessen, der nächste Lauf liest jede Datei von vorn.
+    pub fn restart(&mut self) {
+        self.ledger = CostLedger::default();
+        self.offsets.clear();
+    }
+
     pub fn ledger(&self) -> &CostLedger {
         &self.ledger
     }
@@ -162,6 +168,8 @@ struct State {
     scanner: Mutex<CostScanner>,
     view: Mutex<Option<CostView>>,
     prefix: Mutex<String>,
+    /// Präfix gewechselt: der nächste Lauf liest von vorn.
+    reset: Mutex<bool>,
     health: Mutex<Health>,
     ctl: Mutex<Control>,
     cv: Condvar,
@@ -181,7 +189,8 @@ impl CostService {
             state: Arc::new(State {
                 scanner: Mutex::new(CostScanner::new(root)),
                 view: Mutex::new(None),
-                prefix: Mutex::new("ORPH".into()),
+                prefix: Mutex::new(String::new()),
+                reset: Mutex::new(false),
                 health: Mutex::new(Health::default()),
                 ctl: Mutex::new(Control::default()),
                 cv: Condvar::new(),
@@ -208,11 +217,16 @@ impl CostService {
         lock(&self.thread).take();
     }
 
-    /// Jira-Präfix für Worktree-Ordner mit Nummer (`4258-api` → `ORPH-4258`).
+    /// Jira-Präfix für Worktree-Ordner mit Nummer (`4258-api` → `ORPH-4258`; leer: `4258`).
+    /// Vor `start` setzen, sonst liest der erste Lauf mit dem falschen. Ein Wechsel liest
+    /// alles neu: gelesene Zeilen tragen ihr Ticket schon.
     pub fn set_prefix(&self, prefix: &str) {
         let mut p = lock(&self.state.prefix);
-        if *p != prefix && !prefix.is_empty() {
+        if *p != prefix {
             *p = prefix.to_string();
+            // Nicht hier neu anfangen: ein laufender Lauf hält den Leser Sekunden lang,
+            // und das hier ruft der Takt des Decks.
+            *lock(&self.state.reset) = true;
         }
     }
 
@@ -247,6 +261,9 @@ fn scan(st: &State, now: f64) -> bool {
     let began = Instant::now();
     let prefix = lock(&st.prefix).clone();
     let mut scanner = lock(&st.scanner);
+    if std::mem::take(&mut *lock(&st.reset)) {
+        scanner.restart();
+    }
     let result = scanner.scan(now, &prefix);
     let view = scanner.ledger().view(now, local_offset_s(now));
     let replies = scanner.ledger().len();

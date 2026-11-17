@@ -10,8 +10,10 @@ export interface Option {
   label: string;
 }
 
-export function modelOptions(): Option[] {
+/** `""` = „Standard“: ohne `--model`, Claude Code wählt selbst. */
+export function modelOptions(lang: Lang = "de"): Option[] {
   return [
+    { value: "", label: lang === "en" ? "Default" : "Standard" },
     { value: "opus[1m]", label: "Opus" },
     { value: "fable", label: "Fable" },
     { value: "sonnet", label: "Sonnet" },
@@ -60,6 +62,17 @@ export function edgeOptions(lang: Lang): Option[] {
   ];
 }
 
+/** Hell/Dunkel: wie Windows, fest hell, fest dunkel oder Windows nach dem Sonnenstand. */
+export function appearanceOptions(lang: Lang): Option[] {
+  const de = lang !== "en";
+  return [
+    { value: "system", label: "System" },
+    { value: "light", label: de ? "Hell" : "Light" },
+    { value: "dark", label: de ? "Dunkel" : "Dark" },
+    { value: "sun", label: de ? "Sonnenstand" : "Sunrise/sunset" },
+  ];
+}
+
 /** Ein Schalter als zwei Segmente (Schalter selbst gibt es im Fenster nicht mehr). */
 export function onOffOptions(lang: Lang): Option[] {
   const de = lang !== "en";
@@ -70,13 +83,13 @@ export function onOffOptions(lang: Lang): Option[] {
 }
 
 /**
- * Welches Segment zeigt den Wert <value>? Erst exakt, dann ohne Groß/klein, dann über
+ * Welches Segment zeigt den Wert <value>? Leer trifft nur ein leeres Segment („Standard“). Erst exakt, dann ohne Groß/klein, dann über
  * den Kern (`opus` trifft `opus[1m]`): settings.json kann ältere oder gekürzte Werte
  * enthalten, und ein Fenster ohne markiertes Segment sähe kaputt aus. Kein Treffer → null.
  */
 export function matchOption(options: readonly Option[], value: string): string | null {
   const v = value.trim();
-  if (v === "") return null;
+  if (v === "") return options.some((o) => o.value === "") ? "" : null;
   const exact = options.find((o) => o.value === v);
   if (exact) return exact.value;
   const lower = v.toLowerCase();

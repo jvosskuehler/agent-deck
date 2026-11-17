@@ -104,7 +104,8 @@ pub trait Desktop: Send + Sync {
     fn set_border(&self, _hwnd: Hwnd, _rgb: u32) -> Result<bool> {
         Ok(false)
     }
-    /// Windows-Apps im hellen Modus? `None` = unbekannt.
+    /// Hell oder dunkel für das Deck: ein festes Thema ([`crate::theme::force`]), sonst
+    /// Windows-Apps im hellen Modus. `None` = unbekannt.
     fn light_theme(&self) -> Option<bool> {
         None
     }
@@ -222,7 +223,8 @@ impl Desktop for Win32Desktop {
         focus::set_border_color(hwnd, rgb)
     }
     fn light_theme(&self) -> Option<bool> {
-        focus::apps_use_light_theme()
+        // Ein festes Thema des Decks geht vor Windows (Einstellung „Hell/Dunkel“).
+        crate::theme::forced().or_else(focus::apps_use_light_theme)
     }
     fn join_taskbar_group(&self, hwnd: Hwnd, group: &TaskbarGroup) -> Result<()> {
         taskbar::join_group(hwnd, group)

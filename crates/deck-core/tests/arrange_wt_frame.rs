@@ -60,7 +60,7 @@ fn the_launch_spec_survives_wt_and_powershell() {
 #[test]
 fn every_agent_gets_its_own_window() {
     for slot in ["A1", "A2"] {
-        let argv = wt::wt_argv("wt.exe", slot, r"C:\r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), None);
+        let argv = wt::wt_argv("wt.exe", slot, r"C:\r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), None, None);
         assert_eq!(argv[..5], ["wt.exe", "-w", &format!("deck-{slot}"), "--focus", "new-tab"]);
         assert!(!argv.iter().any(|a| a == "split-pane"));
         let after = |flag: &str| argv[argv.iter().position(|a| a == flag).unwrap() + 1].clone();
@@ -69,7 +69,17 @@ fn every_agent_gets_its_own_window() {
         assert_eq!(after("-p"), wt::PROFILE);
         assert_eq!(argv[argv.len() - 2..], ["-Spec", "SPEC"]);
     }
-    assert!(!wt::wt_argv("wt.exe", "A1", "C:\\", "pwsh.exe", "s", "S", None, None).iter().any(|a| a == "-p"));
+    assert!(!wt::wt_argv("wt.exe", "A1", "C:\\", "pwsh.exe", "s", "S", None, None, None).iter().any(|a| a == "-p"));
+}
+
+#[test]
+fn a_fixed_light_or_dark_names_the_scheme_only_for_this_window() {
+    let argv = wt::wt_argv("wt.exe", "A1", "C:/r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), Some(wt::SCHEME_DARK), None);
+    let at = argv.iter().position(|a| a == "--colorScheme").expect("--colorScheme");
+    assert_eq!(argv[at + 1], wt::SCHEME_DARK);
+    assert!(at > argv.iter().position(|a| a == "new-tab").unwrap(), "gehört zum Tab, nicht zum Fenster");
+    let follow = wt::wt_argv("wt.exe", "A1", "C:/r", "pwsh.exe", "s.ps1", "SPEC", Some(wt::PROFILE), None, None);
+    assert!(!follow.iter().any(|a| a == "--colorScheme"), "System: das Profil wählt selbst");
 }
 
 #[test]
@@ -80,7 +90,7 @@ fn a_new_window_opens_where_its_tile_will_be() {
     let s = wt::spot((-1920, 0, 1174, 587), 1.5, cell);
     assert_eq!(s, wt::Spot { x: -1920, y: 0, cols: 80, rows: 20 });
     assert_eq!(wt::spot((0, 0, 1187, 614), 1.5, cell).cols, 80, "ein angebrochenes Zeichen zählt nicht");
-    let argv = wt::wt_argv("wt.exe", "A2", r"C:\r", "pwsh.exe", "s.ps1", "SPEC", None, Some(&s));
+    let argv = wt::wt_argv("wt.exe", "A2", r"C:\r", "pwsh.exe", "s.ps1", "SPEC", None, None, Some(&s));
     assert_eq!(argv[..7], ["wt.exe", "-w", "deck-A2", "--focus", "--pos=-1920,0", "--size=80,20", "new-tab"]);
 }
 

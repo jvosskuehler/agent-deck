@@ -173,7 +173,9 @@ impl Default for FeedState {
     fn default() -> FeedState {
         FeedState {
             since: 0.0,
-            automation: true,
+            // Aus, bis die Einstellung `pr_automation` es anders sagt (`FeedService::set_config`):
+            // eine neue Installation wirkt nie nach außen, bevor jemand einschaltet.
+            automation: false,
             hold: BTreeSet::new(),
             snoozed: BTreeMap::new(),
             notified: BTreeMap::new(),

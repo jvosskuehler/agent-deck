@@ -1,7 +1,7 @@
 //! Zu welchem Konto ein Token gehört (Python `claude/usage_token.py`, Abschnitt
 //! „Kontowechsel erkennen“, Spiegelbild von `claude-usage-shared/usage_poller.py`).
 //!
-//! Vorgeschichte (2026-11-08): Jorrit hat zwei Claude-Konten. Nach `/login` auf das
+//! Vorgeschichte (2026-11-08): ein Nutzer mit zwei Claude-Konten. Nach `/login` auf das
 //! zweite zeigten Tray und Deck stundenlang weiter die Zahlen des ERSTEN. Drei Gründe:
 //! 1. Das Token blieb im Speicher, bis die API es abwies. Das alte Token ist nach einem
 //!    Kontowechsel aber noch Stunden gültig und liefert brav 200.

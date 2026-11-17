@@ -4,3 +4,4 @@ node_modules/
 /app/src-tauri/gen/
 *.log
 .claude/
+/dist/

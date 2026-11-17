@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn switched_off_there_is_no_view() {
     let mut d = Dash::inert();
-    let input = DashInput { now: crate::now(), lang: Lang::German, enabled: false, in_use: Vec::new(), jira_prefix: "ORPH", feed: Default::default() };
+    let input = DashInput { now: crate::now(), lang: Lang::German, enabled: false, titan: false, repos_root: None, in_use: Vec::new(), jira_prefix: "ORPH", feed: Default::default() };
     assert!(d.view(&input).is_none());
 }
 
@@ -19,8 +19,14 @@ fn real_dash_dump() {
     let paths = Paths::from_env();
     let src = Sources::system(&paths, Arc::new(|| {}));
     let now = crate::now();
+    // Nur lesen, nicht über BindStore: der würde die echte Datei migrieren.
+    let settings = match deck_core::paths::load_json(&paths.app_dir.join(deck_core::paths::SETTINGS_FILE)) {
+        Some(serde_json::Value::Object(m)) => m,
+        _ => serde_json::Map::new(),
+    };
     src.github.fetch_once();
-    src.costs.set_prefix("ORPH");
+    src.costs.set_prefix(&deck_core::deck_settings::jira_prefix(&settings));
+    src.cleanup.set_repos_root(deck_core::deck_settings::usable_repos_root(&settings).as_deref());
     src.costs.scan_now(now);
     src.titan.poll_once();
     src.cleanup.set_merged(src.github.snapshot().merged);
@@ -78,7 +84,7 @@ fn a_notice_shows_for_a_while_then_goes() {
     let mut d = Dash::inert();
     let now = 1000.0;
     d.say("Approve gesendet".into(), now);
-    let input = |now| DashInput { now, lang: Lang::German, enabled: true, in_use: Vec::new(), jira_prefix: "ORPH", feed: Default::default() };
+    let input = |now| DashInput { now, lang: Lang::German, enabled: true, titan: false, repos_root: None, in_use: Vec::new(), jira_prefix: "ORPH", feed: Default::default() };
     assert_eq!(d.view(&input(now + 1.0)).unwrap().notice.as_deref(), Some("Approve gesendet"));
     assert_eq!(d.view(&input(now + NOTICE_S + 1.0)).unwrap().notice, None);
 }

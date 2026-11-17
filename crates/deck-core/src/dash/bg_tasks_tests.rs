@@ -110,7 +110,7 @@ fn prompts_never_merge_and_human_replies_only_draft() {
     let p = pr(9);
     let auto = prompt(TaskKind::BotFindings, &p, None, "");
     assert!(auto.contains("Never merge") && auto.contains("resolve it") && auto.contains("ORPH-9"));
-    assert!(auto.contains("never add a Co-Authored-By"));
+    assert!(auto.contains("CLAUDE.md"), "Konventionen kommen aus der CLAUDE.md, nicht aus dem Deck");
     let target = Comment { url: "https://github.com/o/r/pull/9#c".into(), ..Comment::default() };
     let human = prompt(TaskKind::HumanReply, &p, Some(&target), "C:/d/x.md");
     assert!(human.contains("Do NOT post anything") && human.contains("C:/d/x.md") && human.contains("#c"));

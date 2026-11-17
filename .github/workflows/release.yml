@@ -1,0 +1,83 @@
+name: Release
+
+# Baut das Installationspaket (tools/package.ps1) und hängt es an ein GitHub-Release.
+# install.ps1 -Download holt es über /releases/latest. Ausgelöst durch einen Tag
+# `v<version>` (muss zur Version in app/src-tauri/tauri.conf.json passen) oder von Hand;
+# von Hand ohne Tag entsteht nur das Paket als Artefakt des Laufs.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag des Releases, z. B. v0.2.0 (leer = nur bauen, Paket als Artefakt)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Paket bauen und veröffentlichen
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: release
+
+      - name: Tag und Version abgleichen
+        if: env.TAG != ''
+        shell: pwsh
+        run: |
+          $v = (Get-Content -Raw app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ($env:TAG -ne "v$v") { Write-Host "Tag $env:TAG passt nicht zur Version $v in tauri.conf.json"; exit 1 }
+
+      - name: Paket bauen
+        id: pkg
+        shell: pwsh
+        run: ./tools/package.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-deck-${{ steps.pkg.outputs.version }}-win-x64
+          path: |
+            ${{ steps.pkg.outputs.zip }}
+            dist/install.ps1
+          if-no-files-found: error
+
+      - name: Release anlegen und Paket anhängen
+        if: env.TAG != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "Installieren: Zip laden, entpacken, darin ``powershell -ExecutionPolicy Bypass -File install.ps1``. Einzelheiten im README."
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --target $env:GITHUB_SHA --title "Agent Deck ${{ steps.pkg.outputs.version }}" --notes $notes
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          gh release upload $env:TAG "${{ steps.pkg.outputs.zip }}" dist/install.ps1 --clobber
+          if ($LASTEXITCODE -ne 0) { exit 1 }

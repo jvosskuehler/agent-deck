@@ -5,6 +5,7 @@
 //! (Einbaustellen in `services.rs`).
 
 pub mod actions;
+pub mod appearance;
 pub mod auto_compact;
 pub mod dash;
 pub mod app_paths;
@@ -25,6 +26,7 @@ pub mod native;
 pub mod orphans;
 pub mod poll;
 pub mod refs_files;
+pub mod reviewers;
 pub mod services;
 pub mod settings;
 pub mod speechmike;
@@ -49,6 +51,8 @@ pub mod pr_feed;
 mod testing;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_appearance;
 #[cfg(test)]
 mod tests_compact;
 #[cfg(test)]
@@ -105,6 +109,10 @@ pub fn run() {
     // Hängt ein laufendes Deck, übernimmt dieser Start, statt sein Signal an die tote
     // Instanz weiterzugeben (Einzelinstanz-Sperre) und still zu enden.
     instance_guard::take_over_if_stuck(&paths.app_dir);
+    // Gleiche Kennung wie die Startmenü-Verknüpfung, damit Windows beides zusammenführt.
+    if let Err(e) = deck_win::taskbar::set_process_app_id(deck_services::shortcut::APP_ID) {
+        note(format!("App-Kennung nicht gesetzt: {e}"));
+    }
     app_paths::prepare(&paths);
     let desktop: Arc<dyn Desktop> = Arc::new(Win32Desktop);
     let procs: Arc<dyn Processes> = Arc::new(Win32Processes);
@@ -150,6 +158,10 @@ pub fn run() {
     // Gemeinsamer Schatten für bündig liegende Agenten; `false` lässt jedem seinen eigenen.
     let group_shadow = deck.store.settings.get("group_shadow").and_then(serde_json::Value::as_bool).unwrap_or(true);
     let speechmike_voice = deck_core::speechmike::enabled(&deck.store.settings);
+    let repos_problem = {
+        let state = deck_core::deck_settings::repos_state(deck_core::deck_settings::repos_root(&deck.store.settings).as_deref());
+        (state != deck_core::deck_settings::ReposState::Ok).then_some(state)
+    };
     let english = deck.lang.is_english();
     let watch_dir = paths.app_dir.clone();
     let update_dir = paths.app_dir.clone();
@@ -199,6 +211,8 @@ pub fn run() {
             dash::dash_action,
             commands::open_settings,
             commands::set_setting,
+            commands::pick_folder,
+            reviewers::set_reviewers,
             commands::restart_panel,
             commands::focus_block,
             commands::get_ticket,
@@ -217,6 +231,14 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle();
             ui_windows::create_all(handle, english)?;
+            // Gleich nach den Fenstern: sie gehen schon im eingestellten Thema auf.
+            appearance::start(handle);
+            if let Some(why) = repos_problem {
+                // Ohne brauchbaren Repos-Ordner zeigt das Deck nicht still ins Leere: das
+                // Einstellungsfenster geht auf, mit Hinweis und hervorgehobener Zeile.
+                note(format!("Repos-Ordner {why:?}: Einstellungen geöffnet"));
+                ui_windows::present(handle, ui_windows::SETTINGS);
+            }
             dock::start(handle);
             poll::start(handle);
             hotkey::start(handle, combo);

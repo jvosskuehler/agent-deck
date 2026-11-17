@@ -18,28 +18,46 @@
 //! | [`summary`] | `claude/summarize.py` (`generate`, `_run_claude`), `ui/uithread.py` | nichts |
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
 //! | [`vscode_cleanup`] | (neu) die frühere VS-Code-Extension entfernen | nichts |
-//! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`install`], [`statusline_backup`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`shortcut`], [`wt_fragment`] | (neu) Startmenü-Verknüpfung, Windows-Terminal-Profil für deck-setup | nichts |
+//! | [`look`], [`autostart`], [`apps_entry`], [`installed`], [`teardown`] | (neu) Papier-Look, Autostart, Eintrag unter „Apps“, `installed.json`, Deinstallation | nichts |
+//! | [`user_system`] | (neu) Registratur des Benutzers und Schriften der Sitzung, hinter einem Trait | nichts |
 //! | [`git_fs`] | (neu) Branch aus `.git/HEAD` lesen | nichts |
 //! | [`orphans`] | (neu) „Läuft noch ohne Fenster“ | den Scan-Thread |
 //! | [`store_update`] | (neu) Terminal und PowerShell aktualisieren, wenn kein Agent läuft | den Prüf-Thread |
+//! | [`sun_theme`], [`sun_switch`], [`darkmode_task`] | (neu) Windows hell/dunkel nach dem Sonnenstand, alte geplante Aufgabe weg | den Ort, Aufwachen |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
 
+pub mod apps_entry;
+pub mod autostart;
+pub mod darkmode_task;
 pub mod git_fs;
 pub mod dash;
 pub mod guard;
 pub mod heartbeat;
 pub mod install;
+pub mod installed;
 pub mod logfile;
+pub mod look;
 pub mod orphans;
 pub mod report;
+pub mod reviewers;
+pub mod shortcut;
+pub mod statusline_backup;
 pub mod store_update;
 pub mod summary;
+pub mod sun_switch;
+pub mod sun_theme;
+pub mod teardown;
 pub mod usage;
+pub mod user_system;
 pub mod vscode_cleanup;
 pub mod watchdog;
 pub mod worktree;
 pub mod worktree_sweep;
+pub mod wt_fragment;
+pub mod wt_theme;
 
 mod fsutil;

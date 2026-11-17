@@ -12,6 +12,7 @@
 //! eigener Eingabe aufrufen können; die Programme in `src/bin` sind nur Hüllen.
 
 pub mod cache_scan;
+pub mod chain;
 pub mod env;
 pub mod report;
 pub mod status_extras;

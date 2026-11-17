@@ -36,11 +36,7 @@ const CLI_EXPIRY_KEYS: [&str; 2] = ["expiresAt", "expires_at"];
 /// `.credentials.json` der CLI. `CLAUDE_CONFIG_DIR` verlegt den Ordner; wer das gesetzt
 /// hat, soll nicht durchs Raster fallen.
 pub fn cli_credentials_path() -> PathBuf {
-    let base = std::env::var_os("CLAUDE_CONFIG_DIR")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| deck_core::paths::home_dir().join(".claude"));
-    base.join(".credentials.json")
+    deck_core::paths::claude_dir().join(".credentials.json")
 }
 
 fn num(v: Option<&Value>) -> Option<f64> {

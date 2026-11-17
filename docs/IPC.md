@@ -59,13 +59,15 @@ nicht auf das erste Ereignis warten muss.
 | `open_usage_page` | – | – | claude.ai/settings/usage im Browser |
 | `open_settings` | – | – | Einstellungsfenster zeigen |
 | `set_setting` | `key` (Feldname aus `SettingsView`), `value` | `SettingsView` | sofort speichern |
+| `set_reviewers` | `text` (Namen, Mailadressen oder Logins, mit Komma; „Name (login)“ zählt als login) | `ReviewerSave` (`settings`, `report`) | Reviewer-Feld: Rust löst die Einträge gegen die Mitglieder der GitHub-Organisation auf (`deck_services::reviewers`, gh im Hintergrund, Liste 10 min gemerkt), speichert die Logins samt Namen und, falls leer, `github_org`; sendet `deck://settings`. Mehrdeutige Einträge und mehrere Organisationen zeigt das Fenster als Wahl unter dem Feld; solange die Organisation zur Wahl steht, wird nichts gespeichert |
+| `pick_folder` | `start` (Ordner, in dem der Dialog aufgeht) | Pfad oder `null` (abgebrochen) | „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows (`deck_win::folder_pick`), modal zum fragenden Fenster; gespeichert wird danach per `set_setting` |
 | `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
 | `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen) |
 | `panel_hold` | `hold: boolean` | – | Karte oder Block wird gezogen: Panel bleibt offen (höchstens 60 s) |
 | `panel_drag` | `mode`: `move` \| `zoom` \| `slide`, `x`, `y` (Stelle des Drucks, CSS-Pixel) | – | Rust folgt dem Zeiger, bis die Taste los ist, und merkt sich das Ergebnis. `move`/`zoom` nur frei schwebend (verschieben bzw. zoomen), `slide` nur angedockt: der Streifen an der Bildschirmkante schiebt das Deck die Kante entlang (`dock_along`) |
 | `focus_block` | `letter` | – | Klick auf den Repo-Namen: Fenster des Blocks nach vorn (wie `show_window` in Python) |
 | `tooltip_content_size` | `width`, `height` (CSS-Pixel, inkl. 8 px Rand) | – | Größe des Tooltip-Fensters anpassen |
-| `dialog_content_size` | `height` (CSS-Pixel) | – | Ein Dialog meldet seine Inhaltshöhe, sein Fenster wächst bzw. schrumpft mit (höchstens Arbeitsbereich des Monitors). Bisher nur „Glow einstellen“ |
+| `dialog_content_size` | `height` (CSS-Pixel), optional `width` | – | Ein Dialog meldet seine Inhaltshöhe, sein Fenster wächst bzw. schrumpft mit (höchstens Arbeitsbereich des Monitors). `width` setzt zusätzlich die Breite: Einstellungen kompakt 480, erweitert 960 |
 | `get_ticket` | – | `TicketView` oder `null` | Inhalt des Ticket-Dialogs |
 | `submit_ticket` | `ticket`: Text oder `null` | – | zuweisen (leer = abbrechen) bzw. abbrechen; schließt den Dialog |
 | `get_glow` | – | `GlowView` | Inhalt des Fensters „Glow einstellen“ |
@@ -97,7 +99,8 @@ nicht auf das erste Ereignis warten muss.
   `reorder_tiles` alle Slots des Blocks; die Oberfläche hält die gezogene Reihenfolge
   1,5 s, bis sie im View bestätigt ist.
 - `set_setting` gibt den vollen `SettingsView` zurück und sendet `deck://settings`; bei
-  `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`.
+  `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`; bei
+  `appearance` und `sunPlace` stellt Rust Thema und Sonnenstand neu ein (`appearance.rs`).
 
 ### Blockkopf, Neustart, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
 

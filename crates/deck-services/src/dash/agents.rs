@@ -100,14 +100,19 @@ impl AgentRunner for ClaudeCli {
 }
 
 /// Den worktree für `branch` von `repo` (`owner/name`) finden oder anlegen. `repos_root`
-/// ist `%USERPROFILE%\Repos` (Haupt-Checkouts direkt darin, worktrees in `wt\`).
+/// ist der Repos-Ordner aus den Einstellungen (Haupt-Checkouts direkt darin, worktrees in
+/// `wt\`); leer = nicht gesetzt.
 /// Ist der Branch schon irgendwo ausgecheckt, gilt dieser Ordner (auch der Haupt-Checkout
 /// eines Repos, das direkt auf dem Branch steht).
 pub fn ensure_worktree(git: &dyn Git, repos_root: &Path, repo: &str, branch: &str, folder: &str) -> Result<PathBuf, String> {
+    if repos_root.as_os_str().is_empty() {
+        // Sonst hinge der Pfad am Arbeitsordner des Decks (bin\).
+        return Err("Repos-Ordner nicht gesetzt (Einstellungen)".into());
+    }
     let name = repo.rsplit('/').next().unwrap_or(repo);
     let main = repos_root.join(name);
     if !main.join(".git").exists() {
-        return Err(format!("kein Checkout von {name} unter Repos"));
+        return Err(format!("kein Checkout von {name} unter {}", repos_root.display()));
     }
     let (code, list) = git.run(&["worktree", "list", "--porcelain"], &main);
     if code == 0

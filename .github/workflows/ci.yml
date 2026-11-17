@@ -65,3 +65,17 @@ jobs:
           }
           if ($fehler) { $fehler | ForEach-Object { Write-Host $_ }; exit 1 }
           Write-Host "ok: $($files.Count) Skript(e) parsen fehlerfrei"
+
+      - name: PowerShell-Skripte unter Windows PowerShell 5.1 parsen
+        # install.ps1, uninstall.ps1 und package.ps1 laufen auch bei Kolleginnen und
+        # Kollegen ohne PowerShell 7.
+        shell: powershell
+        run: |
+          $fehler = @()
+          foreach ($f in Get-ChildItem -Path tools -Filter *.ps1) {
+            $t = $null; $e = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$t, [ref]$e) | Out-Null
+            if ($e) { $fehler += "$($f.Name): $($e -join '; ')" }
+          }
+          if ($fehler) { $fehler | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host 'ok: Skripte parsen unter 5.1 fehlerfrei'

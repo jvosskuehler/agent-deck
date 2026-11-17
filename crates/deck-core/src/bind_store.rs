@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value};
 
+use crate::deck_settings;
 use crate::paths::{
     BINDINGS_FILE, EFFORT_FILE, ORDER_FILE, SETTINGS_FILE, TICKETS_FILE, WIN_ORDER_FILE, load_json, save_json,
 };
@@ -27,7 +28,8 @@ pub struct BindStore {
     pub effort: BTreeMap<String, String>,
     /// Slot → zugewiesene Ticket-ID (Anzeige auf der Karte).
     pub tickets: BTreeMap<String, String>,
-    /// Panel-weite Einstellungen (`terminal_home`, `jira_prefix`, `jump_hotkey` …).
+    /// Panel-weite Einstellungen (`repos_root`, `jira_prefix`, `jump_hotkey` …), schon auf
+    /// die aktuelle Version gebracht (`deck_settings::migrate`).
     pub settings: Map<String, Value>,
     /// Fenster-Buchstabe → vom Nutzer gezogene Kachel-Reihenfolge.
     pub order: BTreeMap<String, Vec<String>>,
@@ -39,19 +41,38 @@ pub struct BindStore {
 impl BindStore {
     /// Alle Dateien aus `dir` (dem App-Ordner) laden.
     pub fn load(dir: &Path) -> BindStore {
+        BindStore::load_with_home(dir, &crate::paths::home_dir())
+    }
+
+    /// Wie [`BindStore::load`], mit eigenem Heimatordner für die Migration (Tests).
+    pub fn load_with_home(dir: &Path, home: &Path) -> BindStore {
         let mut s = BindStore { dir: dir.to_path_buf(), ..Default::default() };
         s.bindings = s.load_bindings();
         s.effort = string_map(load_json(&s.path(EFFORT_FILE)), |v| v.as_str().map(String::from));
         s.tickets = string_map(load_json(&s.path(TICKETS_FILE)), |v| {
             v.as_str().filter(|t| !t.trim().is_empty()).map(String::from)
         });
-        s.settings = match load_json(&s.path(SETTINGS_FILE)) {
-            Some(Value::Object(m)) => m,
-            _ => Map::new(),
-        };
+        s.settings = s.load_settings(home);
         s.order = s.load_order();
         s.win_order = s.load_win_order();
         s
+    }
+
+    /// `deck_settings.json` laden und auf die aktuelle Version bringen; hat die Migration
+    /// etwas eingetragen, steht es sofort in der Datei. Sonst hielte die nächste Änderung
+    /// (etwa die Andockkante) eine neue Installation für eine bestehende.
+    fn load_settings(&self, home: &Path) -> Map<String, Value> {
+        let path = self.path(SETTINGS_FILE);
+        let raw = std::fs::read(&path).ok();
+        let mut settings = match raw.as_deref().and_then(|b| serde_json::from_slice::<Value>(b).ok()) {
+            Some(Value::Object(m)) => m,
+            _ => Map::new(),
+        };
+        let origin = deck_settings::origin(raw.as_deref());
+        if deck_settings::migrate(&mut settings, origin, home) {
+            self.save(SETTINGS_FILE, Value::Object(settings.clone()));
+        }
+        settings
     }
 
     fn path(&self, name: &str) -> PathBuf {

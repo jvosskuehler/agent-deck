@@ -40,9 +40,13 @@ $env:COLORTERM = 'truecolor'
 
 # 4) claude mit den Argumenten aus dem Deck (Modell, beim Neustart --resume). Gibt es
 #    auf diesem Rechner eine Settings-Datei nur fuer die Terminal-Agenten (etwa ein Theme
-#    passend zum Profil "Agent Deck"), kommt sie per --settings dazu.
+#    passend zum Profil "Agent Deck"), kommt sie per --settings dazu. Der Installer legt
+#    sie an (deck-setup look, Theme "custom:papier"). Claudes Ordner wie ueberall im Deck:
+#    CLAUDE_CONFIG_DIR, sonst ~\.claude.
 $argv = @()
 if ($s.args) { $argv = @($s.args) }
-$wtSettings = Join-Path $HOME '.claude\agent-deck-wt.settings.json'
+$claudeDir = $env:CLAUDE_CONFIG_DIR
+if (-not $claudeDir) { $claudeDir = Join-Path $HOME '.claude' }
+$wtSettings = Join-Path $claudeDir 'agent-deck-wt.settings.json'
 if (Test-Path -LiteralPath $wtSettings) { $argv = @('--settings', $wtSettings) + $argv }
 & claude @argv

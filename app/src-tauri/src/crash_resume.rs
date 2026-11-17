@@ -5,7 +5,6 @@
 //! Zeit das Fenster mit `claude --resume` öffnen und warten, bis seine Shell sich meldet.
 
 use deck_core::agent_flags::flags;
-use deck_core::claude::settings::MODEL_CHOICES;
 use deck_core::crash_resume::{Pending, Step, Verdict, continue_prompt, judge, log_line, status_text};
 
 use crate::applog::note;
@@ -66,9 +65,9 @@ impl Deck {
     fn launch_resume(&mut self, p: &Pending, now: f64) -> Option<String> {
         let plan = &p.plan;
         let win = Deck::letter(&plan.slot);
-        let model = self.setting_str("model").unwrap_or_else(|| MODEL_CHOICES[0].1.to_string());
+        let model = self.chosen_model();
         let effort = plan.effort.clone().or_else(|| self.chosen_effort().map(String::from));
-        let args = flags(Some(&plan.session_id), Some(&model), effort.as_deref(), plan.mode.as_deref());
+        let args = flags(Some(&plan.session_id), model.as_deref(), effort.as_deref(), plan.mode.as_deref());
         let prompt = plan.nudge.then(|| continue_prompt(self.lang));
         let name = self.wt.resume_agent(&win, &plan.slot, plan.cwd.as_deref(), &args, prompt);
         if name.is_some() {

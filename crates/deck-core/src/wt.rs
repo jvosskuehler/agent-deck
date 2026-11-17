@@ -26,6 +26,11 @@ pub const TASKBAR_APP_ID: &str = "AgentDeck.Agents";
 pub const TASKBAR_NAME: &str = "Agent Deck";
 /// Fensterklasse aller Windows-Terminal-Fenster.
 pub const WINDOW_CLASS: &str = "CASCADIA_HOSTING_WINDOW_CLASS";
+/// Farbschemata des Profils „Agent Deck“ (Fragment `deck_services::wt_fragment` bzw. die
+/// `settings.json` des Besitzers): hell und dunkel. Mit fester Hell/Dunkel-Einstellung
+/// bekommt ein neuer Agent eines davon ausdrücklich (`--colorScheme`, [`wt_argv`]).
+pub const SCHEME_LIGHT: &str = "papier-ebenen";
+pub const SCHEME_DARK: &str = "papier-ebenen-nacht";
 /// Grund der WT-Schemata `papier-ebenen` (hell) und `papier-ebenen-nacht` (dunkel).
 /// Der Fensterrand der Agenten bekommt diese Farbe, damit gekachelte Fenster ohne
 /// sichtbare Fuge aneinanderstoßen.
@@ -287,6 +292,7 @@ pub fn wt_argv(
     script: &str,
     spec: &str,
     profile: Option<&str>,
+    scheme: Option<&str>,
     spot: Option<&Spot>,
 ) -> Vec<String> {
     // Fokus-Modus: ohne Tab-Zeile und Titelleiste, sie kosten zwei Textzeilen. Schließen,
@@ -301,6 +307,11 @@ pub fn wt_argv(
     argv.push("new-tab".into());
     if let Some(p) = profile.filter(|p| !p.is_empty()) {
         argv.extend(["-p".into(), p.into()]);
+    }
+    // Festes Hell oder Dunkel nur für dieses Fenster; ohne gilt das Schema-Paar des
+    // Profils, und Windows Terminal wählt nach seinem Thema.
+    if let Some(s) = scheme.filter(|s| !s.is_empty()) {
+        argv.extend(["--colorScheme".into(), s.into()]);
     }
     for a in ["--title", slot, "--suppressApplicationTitle", "-d", cwd, shell, "-NoLogo", "-NoExit",
         "-ExecutionPolicy", "Bypass", "-File", script, "-Spec", spec]

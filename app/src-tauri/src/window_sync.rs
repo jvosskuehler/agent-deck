@@ -3,11 +3,11 @@
 //! Agenten in ihren Startmodus treiben.
 
 use std::collections::BTreeSet;
-use std::path::Path;
 
 use deck_core::auto_mode::{AutoStep, PendingAuto, decide};
 use deck_core::claude::settings::read_values;
-use deck_core::config::{MODE_START, NEW_AGENT_MODE, WINDOWS, terminal_home};
+use deck_core::config::{MODE_START, NEW_AGENT_MODE, WINDOWS};
+use deck_core::deck_settings::{Switch, on, usable_repos_root};
 use deck_core::paths::{load_json, state_path};
 use deck_core::field::number;
 use deck_core::slot_state::{read_all, write_state};
@@ -16,16 +16,16 @@ use crate::deck::Deck;
 
 impl Deck {
     /// Den Heimat-Block sicherstellen: ein Windows-Terminal-Block über dem Ordner aller
-    /// Repos, beim Start schon da, noch ohne Agenten. Gibt es ihn (wt_hosts.json), behält
-    /// er seinen Buchstaben; sonst bekommt er den ersten freien. Läuft einmal beim Start.
+    /// Repos (`repos_root`), beim Start schon da, noch ohne Agenten. Gibt es ihn
+    /// (wt_hosts.json), behält er seinen Buchstaben; sonst bekommt er den ersten freien.
+    /// Läuft beim Start und nach einer Änderung des Repos-Ordners. Taugt der Ordner nicht
+    /// (nicht eingestellt, fehlt, kein git-Repo darin), gibt es keinen Heimat-Block; das
+    /// Einstellungsfenster zeigt dann den Befund (`lib.rs`).
     pub fn ensure_home_terminal(&mut self) {
         self.home_win = None;
-        let folder = self.store.settings.get("terminal_home").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty()).map(String::from);
-        let folder = folder.unwrap_or_else(|| terminal_home().to_string_lossy().into_owned());
-        let path = Path::new(&folder);
-        if !path.is_dir() {
-            return;
-        }
+        self.repos_root = usable_repos_root(&self.store.settings);
+        let Some(path) = self.repos_root.clone() else { return };
+        let folder = path.to_string_lossy().into_owned();
         let key = norm(&folder);
         let existing = self.wt.blocks().into_iter().find(|(_, f)| norm(f) == key).map(|(w, _)| w);
         let win = match existing {
@@ -90,7 +90,10 @@ impl Deck {
     /// Frisch angelegte Slots für den Startmodus vormerken. Gibt settings.json einen
     /// Start-Permission-Modus vor, startet claude schon darin: dann nicht weiterschalten.
     pub fn register_pending_auto(&mut self, slots: &[String], now: f64) {
-        if NEW_AGENT_MODE.is_empty() || read_values(&self.paths.claude_settings).mode.is_some() {
+        if !on(&self.store.settings, Switch::AutoPermissionMode)
+            || NEW_AGENT_MODE.is_empty()
+            || read_values(&self.paths.claude_settings).mode.is_some()
+        {
             return;
         }
         for slot in slots {

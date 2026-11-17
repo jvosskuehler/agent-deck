@@ -53,7 +53,7 @@ pub(crate) fn round(sh: &Shared) {
         let acts = {
             let i = lock(&sh.inner);
             let causes = i.causes.clone();
-            automation::plan(&snap.open, &i.st, |p| causes.get(&p.key()).copied().flatten(), &i.cfg.reviewer, &snap.viewer)
+            automation::plan(&snap.open, &i.st, |p| causes.get(&p.key()).copied().flatten(), &i.cfg.reviewers, &snap.viewer)
         };
         run_acts(sh, &snap, acts, now);
         run_jira(sh, &snap, now);

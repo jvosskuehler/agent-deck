@@ -132,7 +132,7 @@ pub struct BlockView {
     pub letter: String,
     /// Angezeigter Name: Ordnername des Blocks (Repo).
     pub name: String,
-    /// Heimat-Block (Windows Terminal in `Repos`): steht immer oben.
+    /// Heimat-Block (Windows Terminal im Repos-Ordner, `repos_root`): steht immer oben.
     pub home: bool,
     /// Fenster verbunden? Ohne Verbindung sind alle Kacheln „getrennt“.
     pub connected: bool,
@@ -273,7 +273,8 @@ pub struct DockView {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct SettingsView {
-    /// Modell-Wert für neue Agenten (`opus[1m]`, `fable` …).
+    /// Modell-Wert für neue Agenten (`opus[1m]`, `fable` …), genau das, was als `--model`
+    /// mitgeht. Leer = „Standard“: ohne `--model`, Claude Code wählt selbst.
     pub model: String,
     /// `permissions.defaultMode` (`auto`, `default`, `acceptEdits`, `plan`, `bypassPermissions`).
     pub mode: String,
@@ -284,12 +285,51 @@ pub struct SettingsView {
     /// Rand, an dem das Deck andockt: `top`, `left`, `right`, `bottom` oder `off`.
     pub dock_edge: String,
     /// Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
-    /// abläuft (`deck_settings.json` `auto_compact`, Standard an).
+    /// abläuft (`deck_settings.json` `auto_compact`; Vorgaben in `deck_settings::Switch`).
     pub auto_compact: bool,
-    /// Info-Karten in freien Kartenplätzen (`deck_settings.json` `dashboard`, Standard an).
+    /// Info-Fenster in der freien Fensterkachel (`dashboard`).
     pub dashboard: bool,
+    /// Ordner aller Repos (`repos_root`), wie eingestellt; leer = keiner.
+    pub repos_root: String,
+    /// Taugt der Ordner? Sonst zeigt das Fenster einen Hinweis und hebt die Zeile hervor.
+    pub repos_state: crate::deck_settings::ReposState,
+    /// Jira-Projekt (`jira_prefix`, „ORPH“); leer = keine Jira-Verknüpfung.
+    pub jira_prefix: String,
+    /// Neue Agenten per Shift+Tab in den Auto-Modus schalten (`auto_permission_mode`).
+    pub auto_permission_mode: bool,
+    /// Titan-Kachel samt ssh-Abfrage (`titan`).
+    pub titan: bool,
+    /// PowerShell und Windows Terminal per winget nachziehen (`store_update`).
+    pub store_update: bool,
+    /// SpeechMike-Record als Sprechtaste (`speechmike_voice`), wirkt ab dem nächsten Start.
+    pub speechmike_voice: bool,
+    /// PR-Automatik (`pr_automation`).
+    pub pr_automation: bool,
+    /// GitHub-Logins, die die PR-Automatik als Reviewer setzt (`pr_reviewer`, mit Komma).
+    pub pr_reviewer: String,
+    /// Dieselbe Liste zum Anzeigen: „Leo Müller (leo-mxyz), anna“ (Namen aus
+    /// `pr_reviewer_names`). Das Feld zeigt und nimmt diese Form; Rust liest den Login in
+    /// der Klammer (`dash::reviewers::split_input`).
+    pub pr_reviewer_label: String,
+    /// GitHub-Organisation der PR-Automatik (`github_org`).
+    pub github_org: String,
     /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
     pub shortcuts: Vec<crate::shortcuts::ShortcutRow>,
+    /// Hell/Dunkel (`appearance`): `system`, `light`, `dark` oder `sun` (`appearance.rs`).
+    pub appearance: String,
+    /// Ort für den Sonnenstand (`sun_place`), eine Kennung aus `sun::PLACES`.
+    pub sun_place: String,
+    /// Die Orte zur Auswahl, in der Sprache des Decks und nach Namen sortiert.
+    pub sun_places: Vec<SunPlaceOption>,
+}
+
+/// Ein Ort in der Auswahl „Ort für Sonnenstand“.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SunPlaceOption {
+    pub id: String,
+    pub name: String,
 }
 
 /// Inhalt des Dialogs „Ticket zuweisen“ (Kontextmenü einer Kachel). Ein Feld, die

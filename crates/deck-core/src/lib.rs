@@ -9,6 +9,7 @@
 //! Zeichen statt Bytes.
 
 pub mod agent_flags;
+pub mod appearance;
 pub mod arrange;
 pub mod attention;
 pub mod auto_compact;
@@ -21,6 +22,7 @@ pub mod crash_resume;
 pub mod dash;
 pub mod dock;
 pub mod field;
+pub mod deck_settings;
 pub mod deck_view;
 pub mod front;
 pub mod git_head;
@@ -41,6 +43,7 @@ pub mod shortcuts;
 pub mod slot_state;
 pub mod speechmike;
 pub mod status_model;
+pub mod sun;
 pub mod text;
 pub mod tile_refs;
 pub mod tooltip;

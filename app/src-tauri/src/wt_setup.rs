@@ -48,7 +48,10 @@ fn which_or(name: &str, fallback: &str) -> String {
 pub fn real_setup(app_dir: &Path, state_dir: &Path, script: PathBuf) -> WtSetup {
     let local = deck_core::paths::local_app_data();
     let wt_settings = local.join("Packages").join("Microsoft.WindowsTerminal_8wekyb3d8bbwe").join("LocalState").join("settings.json");
-    let profile = fs::read_to_string(wt_settings).ok().filter(|t| t.contains(&format!("\"{}\"", wt::PROFILE))).map(|_| wt::PROFILE.to_string());
+    // Das Profil steht entweder in der settings.json (Besitzer) oder kommt als Fragment vom
+    // Installer (deck-setup wt-profile); Windows Terminal führt beide zusammen.
+    let in_settings = fs::read_to_string(wt_settings).ok().is_some_and(|t| t.contains(&format!("\"{}\"", wt::PROFILE)));
+    let profile = (in_settings || deck_services::wt_fragment::fragment_path().exists()).then(|| wt::PROFILE.to_string());
     WtSetup {
         hosts_file: app_dir.join(WT_HOSTS_FILE),
         state_dir: state_dir.to_path_buf(),

@@ -60,7 +60,7 @@ fn open_popup(app: &AppHandle) {
         *at = Some(r);
     }
     native::show_at(raw, r);
-    settle(raw, r, |raw, r| native::show_at(raw, r));
+    settle(raw, r, native::show_at);
     let _ = app.emit("deck://dash-popup", true);
     note(format!("Info-Fenster: per Taste aufgeklappt, {}×{}", r.width(), r.height()));
 }

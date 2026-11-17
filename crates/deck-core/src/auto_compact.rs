@@ -18,16 +18,17 @@ use serde_json::{Map, Value};
 use crate::prompt_cache::{compact_due, number};
 use crate::slot_state::SlotState;
 
-/// Schlüssel in `deck_settings.json`; fehlt er, ist die Automatik an.
+/// Schlüssel in `deck_settings.json` (Vorgaben: `deck_settings::Switch::AutoCompact`).
 pub const SETTING: &str = "auto_compact";
 /// `live.json` älter: die Statuszeile läuft nicht mehr, Claude ist zu. Ein `/compact`
 /// landete dann in der Shell. Die Statuszeile zeichnet alle 15 s neu
 /// (`hook_setup::STATUSLINE_REFRESH_S`), eine laufende Session bleibt also frisch.
 pub const LIVE_STALE_S: f64 = 60.0;
 
-/// Ist die Automatik eingeschaltet? Standard an; nur ein ausdrückliches `false` schaltet ab.
+/// Ist die Automatik eingeschaltet? Neue Installationen: aus, denn jedes `/compact`
+/// verbraucht Kontingent; bestehende hat die Migration auf an gesetzt.
 pub fn enabled(settings: &Map<String, Value>) -> bool {
-    settings.get(SETTING).and_then(Value::as_bool).unwrap_or(true)
+    crate::deck_settings::on(settings, crate::deck_settings::Switch::AutoCompact)
 }
 
 /// Die Ablaufzeit, für die jetzt `/compact` fällig ist, oder `None`.

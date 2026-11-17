@@ -4,14 +4,19 @@
 //! - `~/.claude/settings.json` für die Vorgaben neuer Agenten (Modus, Effort, Sprache);
 //!   die Sprache steuert zugleich die Oberfläche des Decks.
 //! - `deck_settings.json` für alles Deck-Eigene: Modell (dort mit `[1m]`, als
-//!   `--model` erzwungen) und Andockkante. Jira-Präfix (`jira_prefix`) und Heimatordner
-//!   (`terminal_home`) werden dort weiter gelesen, aber nicht mehr im Fenster angeboten.
+//!   `--model` mitgegeben; leer = ohne), Andockkante, Repos-Ordner, Jira-Projekt und die
+//!   Schalter (`deck_core::deck_settings`). Repos-Ordner und Jira-Projekt waren vom
+//!   09.11. bis 17.11.2026 bewusst nicht im Fenster; seit Kolleginnen und Kollegen das
+//!   Deck installieren, gehören sie wieder hinein (docs/DESIGN.md).
 
+use deck_core::appearance::{self, Appearance};
 use deck_core::auto_compact;
-use deck_core::claude::settings::{MODEL_CHOICES, WriteValues, effort_label, effort_spec, read_values, write_values};
+use deck_core::claude::settings::{WriteValues, effort_label, effort_spec, read_values, write_values};
+use deck_core::dash::reviewers::{self, ReviewerReport};
+use deck_core::deck_settings::{self as ds, Switch};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
-use deck_core::view::SettingsView;
+use deck_core::view::{SettingsView, SunPlaceOption};
 use serde_json::Value;
 
 use crate::deck::Deck;
@@ -24,16 +29,34 @@ pub enum Effect {
     Language,
     /// Andockkante gewechselt.
     Edge(Edge),
+    /// Hell/Dunkel oder der Ort für den Sonnenstand gewechselt: Fenster, Rahmen und
+    /// Sonnenstand neu einstellen (`crate::appearance::apply`).
+    Appearance,
+}
+
+/// Die Orte für den Sonnenstand in der Sprache des Decks, nach Namen sortiert.
+fn sun_places(lang: Lang) -> Vec<SunPlaceOption> {
+    let mut v: Vec<SunPlaceOption> = deck_core::sun::PLACES
+        .iter()
+        .map(|p| SunPlaceOption { id: p.id.into(), name: lang.l(p.de, p.en).into() })
+        .collect();
+    // Umlaute wie ihr Grundbuchstabe: Düsseldorf zwischen Dresden und Erfurt.
+    let key = |n: &str| n.to_lowercase().replace('ä', "a").replace('ö', "o").replace('ü', "u");
+    v.sort_by_key(|o| key(&o.name));
+    v
 }
 
 impl Deck {
     pub fn settings_view(&self) -> SettingsView {
         let cur = read_values(&self.paths.claude_settings);
-        let model = self
-            .setting_str("model")
-            .or_else(|| cur.model.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).map(String::from))
-            .unwrap_or_else(|| MODEL_CHOICES[0].1.to_string());
-        let mode = cur.mode.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or("auto").to_string();
+        // Genau das, was beim Start als `--model` mitgeht: ohne Deck-Modell keins.
+        let model = self.chosen_model().unwrap_or_default();
+        let s = &self.store.settings;
+        let repos = ds::repos_root(s);
+        // Ohne Vorgabe in settings.json startet claude im Standardmodus; nur der Schalter
+        // `auto_permission_mode` treibt neue Agenten danach in Auto.
+        let unset = if ds::on(s, Switch::AutoPermissionMode) { "auto" } else { "default" };
+        let mode = cur.mode.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or(unset).to_string();
         let effort = effort_label(cur.effort.as_ref().and_then(Value::as_str), cur.ultracode).to_string();
         SettingsView {
             model,
@@ -41,9 +64,23 @@ impl Deck {
             effort,
             language: Lang::normalize(cur.language.as_ref()).setting_value().to_string(),
             dock_edge: self.dock_edge().as_str().to_string(),
-            auto_compact: auto_compact::enabled(&self.store.settings),
-            dashboard: deck_core::dash::enabled(&self.store.settings),
-            shortcuts: deck_core::shortcuts::rows(&self.store.settings, self.lang),
+            auto_compact: auto_compact::enabled(s),
+            dashboard: deck_core::dash::enabled(s),
+            repos_root: repos.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
+            repos_state: ds::repos_state(repos.as_deref()),
+            jira_prefix: ds::jira_prefix(s),
+            auto_permission_mode: ds::on(s, Switch::AutoPermissionMode),
+            titan: ds::on(s, Switch::Titan),
+            store_update: ds::on(s, Switch::StoreUpdate),
+            speechmike_voice: ds::on(s, Switch::SpeechmikeVoice),
+            pr_automation: ds::on(s, Switch::PrAutomation),
+            pr_reviewer: ds::text(s, ds::PR_REVIEWER),
+            pr_reviewer_label: reviewers::label(&ds::text(s, ds::PR_REVIEWER), s.get(ds::PR_REVIEWER_NAMES)),
+            github_org: ds::text(s, ds::GITHUB_ORG),
+            shortcuts: deck_core::shortcuts::rows(s, self.lang),
+            appearance: Appearance::from_settings(s).as_str().to_string(),
+            sun_place: appearance::sun_place(s).id.to_string(),
+            sun_places: sun_places(self.lang),
         }
     }
 
@@ -54,13 +91,54 @@ impl Deck {
     /// Eine Einstellung sofort speichern. `key` ist der Feldname aus `SettingsView`.
     pub fn set_setting(&mut self, key: &str, value: &Value) -> Result<Effect, String> {
         let text = || value.as_str().map(str::trim).map(String::from).ok_or_else(|| format!("{key}: Text erwartet"));
+        let flag = || value.as_bool().ok_or_else(|| format!("{key}: true/false erwartet"));
         let path = self.paths.claude_settings.clone();
         let claude = move |v: WriteValues| write_values(&v, &path).map(|_| ()).map_err(|e| e.to_string());
         let effect = match key {
             "model" => {
-                self.put("model", text()?.into());
+                // Leer = „Standard“: Schlüssel weg, neue Agenten starten ohne `--model`.
+                self.put_text(ds::MODEL, text()?);
                 Effect::None
             }
+            "reposRoot" => {
+                self.put_text(ds::REPOS_ROOT, text()?);
+                // Der alte Schlüssel würde sonst als Rückfall weiter gelten.
+                if self.store.settings.remove(ds::LEGACY_HOME).is_some() {
+                    self.store.save_settings();
+                }
+                self.ensure_home_terminal();
+                Effect::None
+            }
+            "jiraPrefix" => {
+                let prefix = text()?.to_uppercase();
+                if !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
+                    return Err("jiraPrefix: nur Buchstaben und Ziffern".into());
+                }
+                self.put_text(ds::JIRA_PREFIX, prefix);
+                Effect::None
+            }
+            "prReviewer" => {
+                // Ohne Nachschlagen (das macht `set_reviewers`): was als Login taugt, bleibt,
+                // „Name (login)“ zählt als login, der Rest fällt still weg.
+                let report = ReviewerReport {
+                    org: String::new(),
+                    orgs: Vec::new(),
+                    note: reviewers::ReviewerNote::None,
+                    detail: String::new(),
+                    results: reviewers::resolve_all(None, &text()?),
+                };
+                self.apply_reviewers(&report);
+                Effect::None
+            }
+            "githubOrg" => {
+                self.put_text(ds::GITHUB_ORG, text()?);
+                Effect::None
+            }
+            "autoPermissionMode" => self.put_switch(Switch::AutoPermissionMode, flag()?),
+            "titan" => self.put_switch(Switch::Titan, flag()?),
+            "storeUpdate" => self.put_switch(Switch::StoreUpdate, flag()?),
+            "speechmikeVoice" => self.put_switch(Switch::SpeechmikeVoice, flag()?),
+            "prAutomation" => self.put_switch(Switch::PrAutomation, flag()?),
             "mode" => {
                 claude(WriteValues { mode: Some(&text()?), ..Default::default() })?;
                 Effect::None
@@ -77,31 +155,75 @@ impl Deck {
                 self.services.set_lang(lang);
                 Effect::Language
             }
+            "appearance" => {
+                let a = Appearance::parse(&text()?).ok_or_else(|| format!("{key}: system, light, dark oder sun"))?;
+                self.put(appearance::KEY, a.as_str().into());
+                // Neue Agenten gleich im passenden Schema; offene wechseln beim nächsten Start.
+                self.wt.set_color_scheme(a.wt_scheme());
+                Effect::Appearance
+            }
+            "sunPlace" => {
+                let place = deck_core::sun::place(&text()?).ok_or_else(|| format!("{key}: unbekannter Ort"))?;
+                self.put(appearance::PLACE_KEY, place.id.into());
+                Effect::Appearance
+            }
             "dockEdge" => {
                 let edge = Edge::parse(Some(&text()?));
                 self.put("dock_edge", edge.as_str().into());
                 Effect::Edge(edge)
             }
-            "autoCompact" => {
-                // Wirkt sofort: `Deck::auto_compact` liest den Schalter in jedem Takt.
-                let on = value.as_bool().ok_or("autoCompact: true/false erwartet")?;
-                self.put(auto_compact::SETTING, on.into());
-                Effect::None
-            }
-            "dashboard" => {
-                // Wirkt mit dem nächsten Takt: `Deck::view` fragt den Schalter jedes Mal.
-                let on = value.as_bool().ok_or("dashboard: true/false erwartet")?;
-                self.put(deck_core::dash::SETTING, on.into());
-                Effect::None
-            }
+            // Wirkt sofort: `Deck::auto_compact` liest den Schalter in jedem Takt.
+            "autoCompact" => self.put_switch(Switch::AutoCompact, flag()?),
+            // Wirkt mit dem nächsten Takt: `Deck::view` fragt den Schalter jedes Mal.
+            "dashboard" => self.put_switch(Switch::Dashboard, flag()?),
             other => return Err(format!("unbekannte Einstellung: {other}")),
         };
         Ok(effect)
+    }
+
+    /// Ergebnis einer Reviewer-Suche speichern: die Logins (`pr_reviewer`), ihre Namen
+    /// (`pr_reviewer_names`) und, falls noch keine eingestellt war, die Organisation, gegen
+    /// die gesucht wurde. Mehrdeutige Einträge warten auf die Wahl im Fenster.
+    pub fn apply_reviewers(&mut self, report: &ReviewerReport) {
+        let s = &mut self.store.settings;
+        let logins = reviewers::logins(&report.results);
+        let names = reviewers::names_after(s.get(ds::PR_REVIEWER_NAMES), &report.results);
+        if logins.is_empty() {
+            s.remove(ds::PR_REVIEWER);
+        } else {
+            s.insert(ds::PR_REVIEWER.into(), Value::String(logins.join(", ")));
+        }
+        if names.is_empty() {
+            s.remove(ds::PR_REVIEWER_NAMES);
+        } else {
+            s.insert(ds::PR_REVIEWER_NAMES.into(), Value::Object(names));
+        }
+        if !report.org.is_empty() && ds::text(s, ds::GITHUB_ORG).is_empty() {
+            s.insert(ds::GITHUB_ORG.into(), Value::String(report.org.clone()));
+        }
+        self.store.save_settings();
     }
 
     /// Einen Wert in `deck_settings.json` setzen und sofort speichern.
     pub fn put(&mut self, key: &str, v: Value) {
         self.store.settings.insert(key.to_string(), v);
         self.store.save_settings();
+    }
+
+    /// Text setzen; leer nimmt den Schlüssel heraus (dann gilt die Vorgabe).
+    fn put_text(&mut self, key: &str, v: String) {
+        if v.is_empty() {
+            self.store.settings.remove(key);
+            self.store.save_settings();
+        } else {
+            self.put(key, v.into());
+        }
+    }
+
+    /// Schalter ausdrücklich setzen. Titan, Store-Update und PR-Automatik fragen ihn bei
+    /// jeder Gelegenheit selbst, der SpeechMike-Hook erst beim nächsten Start.
+    fn put_switch(&mut self, s: Switch, on: bool) -> Effect {
+        self.put(s.key(), on.into());
+        Effect::None
     }
 }

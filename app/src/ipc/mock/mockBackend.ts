@@ -21,7 +21,8 @@ import type { OrphanView } from "../../bindings/OrphanView";
 import { mockDash } from "./mockDash";
 import { applyFeedAction, mockFeed, mockPopup } from "./mockFeed";
 import type { DashView } from "../../bindings/DashView";
-import { initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
+import { mockApply, mockResolve } from "./mockReviewers";
+import { freshSettings, initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
 
@@ -58,6 +59,15 @@ export function createMockBackend(): Backend {
   if (params.get("lang") === "en") settings.language = "english";
   if (params.get("mode")) settings.mode = params.get("mode")!;
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
+  // `?fresh=1`: eine neue Installation (kein Repos-Ordner, alle Automatik aus).
+  if (params.get("fresh") === "1") Object.assign(settings, freshSettings());
+  // `?appearance=sun`: Hell/Dunkel vorgewählt (system, light, dark, sun).
+  if (params.get("appearance")) settings.appearance = params.get("appearance")!;
+  // `?pr=1`: PR-Automatik an (zeigt die Felder für Reviewer und Organisation).
+  if (params.get("pr") === "1") settings.prAutomation = true;
+  // `?orgs=2`: das Konto hat mehrere Organisationen, das Feld fragt nach der richtigen.
+  const severalOrgs = params.get("orgs") === "2";
+  const reviewerNames = new Map<string, string>([["leo-mxyz", "Leo Müller"]]);
 
   let lang: Lang = langFromSetting(settings.language);
   const homeRows = (params.get("rows") ?? "3,3").split(",").map(Number).filter((n) => n > 0);
@@ -224,6 +234,7 @@ export function createMockBackend(): Backend {
         orphans = mockOrphans(lang, params.get("orphanError") === "1").filter((o) => keep.has(o.id));
         pushView();
       }
+      if (key === "reposRoot") settings.reposState = String(value) === "" ? "unset" : "ok";
       if (key === "dockEdge") {
         dock = { ...dock, edge: String(value) };
         emit("deck://dock", { ...dock });
@@ -231,7 +242,21 @@ export function createMockBackend(): Backend {
       emit("deck://settings", { ...settings });
       return { ...settings };
     },
+    set_reviewers: ({ text }) => {
+      const report = mockResolve(text, settings.githubOrg, severalOrgs);
+      if (report.note === "chooseOrg") return { settings: { ...settings }, report };
+      const { logins, label } = mockApply(report, reviewerNames);
+      settings.prReviewer = logins;
+      settings.prReviewerLabel = label;
+      if (report.org && !settings.githubOrg) settings.githubOrg = report.org;
+      emit("deck://settings", { ...settings });
+      return { settings: { ...settings }, report };
+    },
     restart_panel: () => console.info("[mock] Panel neu starten"),
+    pick_folder: ({ start }) => {
+      console.info("[mock] Ordner-Dialog ab", start);
+      return "C:/Users/kollegin/src";
+    },
     show_block_menu: ({ letter }) => console.info("[mock] Kontextmenü des Kopfes", letter),
     panel_hold: () => undefined,
     panel_drag: ({ mode }) => console.info("[mock] Panel ziehen", mode),

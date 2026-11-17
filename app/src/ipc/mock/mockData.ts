@@ -180,12 +180,57 @@ export function initialSettings(): SettingsView {
     dockEdge: "top",
     autoCompact: true,
     dashboard: true,
+    reposRoot: "C:/Users/name/Repos",
+    reposState: "ok",
+    jiraPrefix: "ORPH",
+    autoPermissionMode: true,
+    titan: true,
+    storeUpdate: true,
+    speechmikeVoice: true,
+    prAutomation: true,
+    prReviewer: "leo-mxyz",
+    prReviewerLabel: "Leo Müller (leo-mxyz)",
+    githubOrg: "beispiel-org",
+    appearance: "system",
+    sunPlace: "hamburg",
+    sunPlaces: [
+      ["berlin", "Berlin"],
+      ["dresden", "Dresden"],
+      ["duesseldorf", "Düsseldorf"],
+      ["frankfurt", "Frankfurt am Main"],
+      ["hamburg", "Hamburg"],
+      ["koeln", "Köln"],
+      ["muenchen", "München"],
+      ["stuttgart", "Stuttgart"],
+      ["wien", "Wien"],
+      ["zuerich", "Zürich"],
+    ].map(([id, name]) => ({ id, name })),
     shortcuts: [
       { keys: "Strg+<", action: "Zum Agenten, der am längsten wartet" },
       { keys: "Strg+Shift+<", action: "Alle Agenten nach vorn, nochmal: zurück" },
       { keys: "Strg+Alt+G", action: "Glow einstellen" },
       { keys: "Alt+V", action: "Bild aus der Zwischenablage einfügen" },
     ],
+  };
+}
+
+/** Eine neue Installation: so sieht das Fenster beim ersten Start einer Kollegin aus. */
+export function freshSettings(): Partial<SettingsView> {
+  return {
+    model: "",
+    mode: "default",
+    autoCompact: false,
+    reposRoot: "",
+    reposState: "unset",
+    jiraPrefix: "",
+    autoPermissionMode: false,
+    titan: false,
+    storeUpdate: false,
+    speechmikeVoice: false,
+    prAutomation: false,
+    prReviewer: "",
+    prReviewerLabel: "",
+    githubOrg: "",
   };
 }
 

@@ -25,6 +25,10 @@ pub const TICKETS_FILE: &str = "tickets.json";
 pub const ORDER_FILE: &str = "slot_order.json";
 pub const WIN_ORDER_FILE: &str = "win_order.json";
 pub const WT_HOSTS_FILE: &str = "wt_hosts.json";
+/// Die Infozeile (Claude Codes `statusLine`), die vor dem Deck da war:
+/// `{"statusLine": <alter Wert>}`. `deck-setup install` legt sie an, `deck-statusline`
+/// ruft ihr Kommando weiter auf, `deck-setup uninstall` legt sie zurück.
+pub const STATUSLINE_BACKUP_FILE: &str = "statusline.before.json";
 
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())
@@ -42,6 +46,18 @@ pub fn home_dir() -> PathBuf {
         }
     }
     PathBuf::from(env_nonempty("HOME").unwrap_or_else(|| ".".into()))
+}
+
+/// Claude Codes Konfigurationsordner: `CLAUDE_CONFIG_DIR`, sonst `~/.claude`. Darin
+/// liegen `settings.json`, `projects\` (Transcripts) und `.credentials.json`. Wer den
+/// Ordner verlegt hat, soll nicht durchs Raster fallen; alle Stellen fragen hier.
+pub fn claude_dir() -> PathBuf {
+    claude_dir_in(std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(), &home_dir())
+}
+
+/// [`claude_dir`] mit hereingereichter Umgebung (Tests). Leer = nicht gesetzt.
+pub fn claude_dir_in(config_dir: Option<&std::ffi::OsStr>, home: &Path) -> PathBuf {
+    config_dir.filter(|v| !v.is_empty()).map_or_else(|| home.join(".claude"), PathBuf::from)
 }
 
 /// `%LOCALAPPDATA%`, ersatzweise der Heimatordner (wie `paths.STATE_DIR` in Python).
@@ -86,7 +102,14 @@ pub fn worktree_marker_path(dir: &Path, slot: &str) -> PathBuf {
 pub fn load_json(path: &Path) -> Option<Value> {
     let bytes = fs::read(path).ok()?;
     let text = std::str::from_utf8(&bytes).ok()?;
-    serde_json::from_str(text).ok()
+    serde_json::from_str(strip_bom(text)).ok()
+}
+
+/// Text ohne UTF-8-BOM. Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`) und manche
+/// Editoren schreiben eins vor JSON; Claude Code liest solche Dateien, serde_json nicht
+/// (gemessen 17.11.2026 auf der Test-VM: deck-setup verweigerte die settings.json).
+pub fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{FEFF}').unwrap_or(text)
 }
 
 /// Atomar schreiben: erst `<path>.tmp`, dann ersetzen, nie halbe Dateien. Legt den

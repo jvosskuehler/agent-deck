@@ -14,7 +14,7 @@ letter: string,
  */
 name: string, 
 /**
- * Heimat-Block (Windows Terminal in `Repos`): steht immer oben.
+ * Heimat-Block (Windows Terminal im Repos-Ordner, `repos_root`): steht immer oben.
  */
 home: boolean, 
 /**

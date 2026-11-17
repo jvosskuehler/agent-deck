@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deck_core::appearance::Appearance;
 use deck_core::auto_compact::CompactMemo;
 use deck_core::auto_mode::PendingAuto;
 use deck_core::bind_store::BindStore;
@@ -58,6 +59,9 @@ pub struct Deck {
     pub await_new: Option<AwaitNew>,
     /// Buchstabe des Heimat-Blocks (Windows Terminal über allen Repos).
     pub home_win: Option<String>,
+    /// Repos-Ordner, wenn er taugt (`deck_settings::usable_repos_root`); gesetzt von
+    /// `ensure_home_terminal`, beim Start und bei jeder Änderung der Einstellung.
+    pub repos_root: Option<std::path::PathBuf>,
     /// Ein Dialog des Decks hat den Fokus: Auto-Fokus auslassen (er klaute ihn sonst).
     pub modal: bool,
     pub states: HashMap<String, SlotState>,
@@ -90,8 +94,9 @@ pub struct Deck {
 }
 
 impl Deck {
-    pub fn new(paths: Paths, wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
+    pub fn new(paths: Paths, mut wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
         let store = BindStore::load(&paths.app_dir);
+        wt.set_color_scheme(Appearance::from_settings(&store.settings).wt_scheme());
         let lang = Lang::from_settings(&paths.claude_settings);
         let refs_files = RefsFiles::new(paths.state_dir.clone());
         Deck {
@@ -107,6 +112,7 @@ impl Deck {
             pending_auto: HashMap::new(),
             await_new: None,
             home_win: None,
+            repos_root: None,
             modal: false,
             states: HashMap::new(),
             live: HashMap::new(),
@@ -323,8 +329,17 @@ impl Deck {
         let slots: Vec<&str> = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| t.slot.as_str()).collect();
         let mut in_use: Vec<String> = slots.iter().flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees)).collect();
         in_use.extend(slots.iter().filter_map(|slot| chat_worktree(slot, &self.states, &self.detected_refs)));
-        let feed = crate::pr_feed::FeedSettings::from_settings(&self.store.settings);
-        let input = DashInput { now, lang: self.lang, enabled: deck_core::dash::enabled(&self.store.settings), in_use, jira_prefix: prefix, feed };
+        let settings = &self.store.settings;
+        let input = DashInput {
+            now,
+            lang: self.lang,
+            enabled: deck_core::dash::enabled(settings),
+            titan: deck_core::dash::titan_enabled(settings),
+            repos_root: self.repos_root.clone(),
+            in_use,
+            jira_prefix: prefix,
+            feed: crate::pr_feed::FeedSettings::from_settings(settings, self.repos_root.as_deref()),
+        };
         self.dash.view(&input)
     }
 
@@ -337,9 +352,9 @@ impl Deck {
         letters.into_iter().find_map(|(_, l)| self.wt.gap(&l))
     }
 
-    /// Jira-Projekt aus `deck_settings.json` (`jira_prefix`), sonst der Standard.
+    /// Jira-Projekt aus `deck_settings.json` (`jira_prefix`); leer = keins.
     pub fn jira_prefix(&self) -> String {
-        self.setting_str("jira_prefix").unwrap_or_else(|| deck_core::config::JIRA_PROJECT_KEY.to_string())
+        deck_core::deck_settings::jira_prefix(&self.store.settings)
     }
 
     /// Zustand eines Slots aus dem letzten Takt.

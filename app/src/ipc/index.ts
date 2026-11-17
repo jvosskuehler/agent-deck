@@ -46,12 +46,14 @@ export const commands = {
   dashAction: (command: string) => fire(getBackend().invoke("dash_action", { command }), "dash_action"),
   openSettings: () => fire(getBackend().invoke("open_settings", {}), "open_settings"),
   setSetting: <K extends SettingKey>(key: K, value: SettingsView[K]) => getBackend().invoke("set_setting", { key, value }),
+  setReviewers: (text: string) => getBackend().invoke("set_reviewers", { text }),
   restartPanel: () => getBackend().invoke("restart_panel", {}),
+  pickFolder: (start: string) => getBackend().invoke("pick_folder", { start }),
   focusBlock: (letter: string) => fire(getBackend().invoke("focus_block", { letter }), "focus_block"),
   tooltipContentSize: (width: number, height: number) =>
     fire(getBackend().invoke("tooltip_content_size", { width, height }), "tooltip_content_size"),
-  dialogContentSize: (height: number) =>
-    fire(getBackend().invoke("dialog_content_size", { height }), "dialog_content_size"),
+  dialogContentSize: (height: number, width?: number) =>
+    fire(getBackend().invoke("dialog_content_size", width === undefined ? { height } : { height, width }), "dialog_content_size"),
   showBlockMenu: (letter: string) => fire(getBackend().invoke("show_block_menu", { letter }), "show_block_menu"),
   panelHold: (hold: boolean) => fire(getBackend().invoke("panel_hold", { hold }), "panel_hold"),
   panelDrag: (mode: PanelDragMode, x: number, y: number) =>

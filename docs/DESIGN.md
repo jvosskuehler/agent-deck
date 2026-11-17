@@ -20,7 +20,10 @@ Aufbau ist derselbe wie im Python-Deck: oben angedockt, Repo-Blöcke, vier Karte
 ＋ am Reihenende, unten Nutzung und Einstellungen, eingeklappt nur der Griff.
 
 **Hell oder dunkel folgt dem System** (`prefers-color-scheme`; die Fenster setzen kein
-festes Thema), wie das Terminal-Profil. Hell = Rosé Pine Dawn, dunkel = Rosé Pine. Die
+eigenes Thema), wie das Terminal-Profil. Hell = Rosé Pine Dawn, dunkel = Rosé Pine. Die
+Einstellung „Hell/Dunkel“ (seit 18.11.2026) kann Deck und Agenten fest hell oder dunkel
+stellen: dann gibt Rust allen Fenstern das Thema vor (`AppHandle::set_theme`), und
+`prefers-color-scheme` folgt ihm; das CSS bleibt dasselbe. Die
 festen Farben stehen als CSS-Variablen in `app/src/styles/base.css`, die je Zustand
 gerechneten in `app/src/logic/palette.ts`.
 
@@ -90,7 +93,7 @@ Blöcke; Hover in der Ticketfarbe); ist der Block nicht verbunden, steht daneben
 „nicht verbunden“ (11 px gedämpft). Einen Host nennt der Kopf nicht: alle Agenten laufen
 in Windows Terminal. Eine Schiene links neben dem Block gibt es seit 11.11.2026 nicht
 mehr: sie stammte aus der Zeit, als die Blöcke VS-Code-Fenster waren. Heimat-Block
-(`Repos`) steht immer oben.
+(der Repos-Ordner) steht immer oben; ohne brauchbaren Repos-Ordner gibt es keinen.
 
 Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nach vorn,
 Rechtsklick öffnet das native Menü (vergessen; beim Heimat-Block kein Menü). Ein ✕ für
@@ -123,9 +126,9 @@ oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es gan
   (`dash.css`, `--c1` … `--c8`). Ein Ticket behält seine Farbe in jedem Zeitraum
   (`CostView.colored`); weitere Tickets und „ohne Ticket“ sind grau.
 - **Unten, Leiste:** Kacheln PRs (offen, bereit, bei dir, warten), Reviews für dich, Titan
-  (nur mit verwaisten Läufen, rot getönt), Worktrees (nur mit Entfernbarem). Klick auf eine
-  Kachel zeigt ihre Liste statt des Graphen; nochmal, Esc oder „Tokenkosten“ in den
-  Brotkrumen zurück.
+  (nur mit eingeschaltetem Schalter „Titan“ und verwaisten Läufen, rot getönt), Worktrees
+  (nur mit Entfernbarem). Klick auf eine Kachel zeigt ihre Liste statt des Graphen;
+  nochmal, Esc oder „Tokenkosten“ in den Brotkrumen zurück.
 - **Listen:** PRs mit Status nach „wer ist am Zug“ (mergebereit, CI rot, Änderungen offen,
   Reviewer anfragen, wartet auf Re-Review, wartet auf Review, Draft), Klick öffnet GitHub.
   Reviews mit „Ausblenden“, „Ansehen“ und „Approve“. Ausgeblendete wandern in einen
@@ -229,9 +232,55 @@ Bleibt auf dem Monitor der Karte.
 
 Eigenes Fenster im Aufbau von `einstellungen-glas.html`, im Papier-Look: Grund in
 Panelfarbe, Segmente auf dem Overlay (gewählt hell als Blatt im Kartengrund, dunkel eine
-Stufe heller). Zwei Bereiche, beide nur aus Segmenten: **Neue Agenten** (Modell, Modus,
-Effort) und **Deck** (Sprache, Andocken). „Panel neu starten“ steht als kleiner, leiser
-Knopf rechts in der Kopfzeile von **Deck**, so hoch wie der Hinweis neben „Neue Agenten“.
+Stufe heller). Die Höhe folgt dem Inhalt (`useDialogFit`), höchstens bis zur
+Arbeitsfläche, darüber rollt es.
+
+**Kompakt und erweitert** (seit 17.11.2026, Wunsch von Jorrit): Das Fenster geht kompakt
+auf wie vor den Einstellungen für Kolleginnen und Kollegen, eine Spalte, 480 breit, nur
+„Neue Agenten“ (Modell, Modus, Effort) und „Deck“ (Sprache, Andocken, Info-Fenster,
+Hell/Dunkel, Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
+(`tool-btn`) zieht das Fenster auf 960 und zwei Spalten mit allen vier Bereichen auf,
+dort heißt er „Weniger“. Die Wahl merkt sich die Oberfläche (`localStorage`). Taugt der
+Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt über „Neue Agenten“.
+Erweitert sind es vier Bereiche, durch Haarlinien getrennt (links Konto und Ordner, Neue
+Agenten; rechts Deck, Automatik):
+
+- **Konto und Ordner** („gilt für dieses Konto“): Repos-Ordner als Pfad in Plex Mono auf
+  dem Overlay (Radius 9, zu lang: vorn gekürzt) mit dem leisen Knopf „Ändern…“ rechts
+  darin, der den Ordner-Dialog von Windows öffnet; darunter das Jira-Projekt als
+  Textfeld (Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px; gespeichert beim
+  Verlassen oder mit Enter, Escape verwirft).
+- **Neue Agenten** (Modell mit „Standard“ = ohne `--model`, Modus, Effort als Segmente;
+  erweitert dazu der Schalter „Neue Agenten in Auto schalten“).
+- **Deck** (Sprache, Andocken, Hell/Dunkel als Segmente; Schalter Info-Fenster und
+  Auto-Compact). Hell/Dunkel hat vier Segmente „System | Hell | Dunkel | Sonnenstand“
+  (englisch „System | Light | Dark | Sunrise/sunset“) und steht auch kompakt. Darunter klein
+  und gedämpft, was die Wahl über das Deck hinaus tut: bei Hell und Dunkel „Nur Deck und
+  Agenten. Offene Agentenfenster wechseln beim nächsten Start.“, bei Sonnenstand „Schaltet
+  Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel (Hamburg).“; bei System
+  nichts. Den Ort gibt es nur erweitert und nur bei Sonnenstand, als Auswahlliste „Ort für
+  Sonnenstand“ (wie das Textfeld: Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px,
+  Pfeil gedämpft), so wie die GitHub-Organisation erst mit der PR-Automatik erscheint. „Panel neu starten“
+  steht als kleiner, leiser Knopf rechts in der Kopfzeile, so hoch wie der Hinweis neben
+  „Neue Agenten“.
+- **Automatik** („läuft nur, was du einschaltest“): PowerShell und Terminal
+  aktualisieren, SpeechMike, Titan, PR-Automatik. Darunter das Reviewer-Feld (immer) und
+  bei eingeschalteter PR-Automatik die GitHub-Organisation. Ins Reviewer-Feld kommen
+  Namen, Mailadressen oder Logins; nach Enter oder Verlassen sucht das Deck sie in der
+  Organisation und zeigt sie als „Leo Müller (leo-mxyz)“. Darunter klein (11 px): bei
+  mehreren Treffern „„Anna“: wen meinst du?“ mit je einem leisen Knopf pro Person
+  (Plex Mono), bei mehreren Organisationen dieselbe Wahl für die Organisation, ohne
+  Treffer in Achtung-Farbe „nicht in <org> gefunden, als Login übernommen“ bzw.
+  „… übersprungen“, ohne gh gedämpft „Namen nicht nachgeschlagen (…)“.
+
+Ein Schalter ist eine Zeile: links der Name (12 px, Textfarbe) und darunter klein und
+gedämpft, was er nach außen tut; rechts „An | Aus“ als schmale Segmente (118 px, 26 px
+hoch). So bleiben viele Schalter kurz, ohne eine zweite Bedienform einzuführen.
+
+Taugt der Repos-Ordner nicht (nicht gewählt, nicht gefunden, kein git-Repo darin), steht
+unter der Kopfzeile ein Hinweis in der Farbe von „Rückfrage“ (Fläche Pigment 22 % über
+Panel, Schrift Ink, halbfett, Radius 10), und die Ordnerzeile trägt einen Ring im
+Pigment, ihr Name die Ink-Farbe. Das Deck öffnet das Fenster dann beim Start selbst.
 Kein Speichern-Knopf: jede Änderung gilt sofort, ein kurzes „Gespeichert“ bestätigt.
 
 **Kein Dialog zeigt von sich aus einen Rollbalken** (Einstellungen, Tastenkürzel, Ticket,
@@ -239,11 +288,12 @@ Glow und jeder neue): das Fenster ist so hoch wie sein Inhalt (`useDialogFit` +
 `fit_dialog`). Gerollt wird nur, wenn der Inhalt höher als der Bildschirm ist. Wer einem
 Dialog Zeilen hinzufügt oder einen neuen baut, prüft das am Screenshot.
 
-Bewusst **nicht** (seit 09.11.2026, Jorrit arbeitet nur noch in Windows Terminal): kein
-Warnsatz und kein Rot bei Bypass, kein Ring um den Chat, kein Jira-Präfix, kein
-Heimatordner und kein „Repo öffnen“. Jira-Präfix
-(`jira_prefix`) und Heimatordner (`terminal_home`) liest das Deck weiter aus
-`deck_settings.json`, wenn sie dort von Hand stehen.
+Bewusst **nicht** (seit 09.11.2026): kein Warnsatz und kein Rot bei Bypass, kein Ring um
+den Chat, kein „Repo öffnen“. Jira-Projekt und Repos-Ordner waren vom 09.11. bis
+17.11.2026 ebenfalls draußen, weil nur der Autor das Deck benutzte. Diese Entscheidung
+ist zurückgenommen: seit Kolleginnen und Kollegen das Deck installieren, darf nichts
+Persönliches fest eingebaut sein, und beides muss sich ohne Handarbeit an
+`deck_settings.json` einstellen lassen.
 
 ## Schrift und Texte
 

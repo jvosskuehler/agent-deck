@@ -5,7 +5,9 @@
 //!
 //! Die Dienste laufen nur, solange das Info-Fenster eingeschaltet ist (Einstellung
 //! „Info-Fenster in der freien Fensterkachel“): gh, ssh und git sollen nicht im
-//! Hintergrund arbeiten, wenn niemand hinsieht. Tests bauen [`Dash::inert`] ohne Dienst.
+//! Hintergrund arbeiten, wenn niemand hinsieht. Titan (ssh) hat einen eigenen Schalter
+//! (`titan`, neue Installationen: aus); aus heißt: kein ssh. Tests bauen [`Dash::inert`]
+//! ohne Dienst.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -70,7 +72,6 @@ impl Sources {
         self.feed.start(self.wake.clone());
         let w = self.wake.clone();
         self.costs.start(move || w());
-        self.titan.start(self.wake.clone());
         self.cleanup.start(self.wake.clone());
     }
 
@@ -78,7 +79,6 @@ impl Sources {
         self.github.stop();
         self.feed.stop();
         self.costs.stop();
-        self.titan.stop();
         self.cleanup.stop();
     }
 }
@@ -88,6 +88,11 @@ pub struct DashInput<'a> {
     pub now: f64,
     pub lang: Lang,
     pub enabled: bool,
+    /// Titan-Kachel und ssh-Abfrage (`deck_core::dash::titan_enabled`).
+    pub titan: bool,
+    /// Repos-Ordner, nur wenn er taugt (`deck_settings::usable_repos_root`): dort sucht das
+    /// Aufräumen nach `wt`.
+    pub repos_root: Option<std::path::PathBuf>,
     /// Ordner der offenen Agenten (cwd, gemeldete worktrees): die räumt niemand weg.
     pub in_use: Vec<String>,
     pub jira_prefix: &'a str,
@@ -99,6 +104,7 @@ pub struct Dash {
     /// Geteilt, damit eine Aktion (gh, ssh: Sekunden) ohne Deck-Sperre laufen kann.
     sources: Option<Arc<Sources>>,
     running: bool,
+    titan_running: bool,
     /// Stand der gemergten PRs, den der Aufräum-Dienst zuletzt bekam.
     merged_at: f64,
     in_use_at: f64,
@@ -116,6 +122,7 @@ impl Dash {
         Dash {
             sources: None,
             running: false,
+            titan_running: false,
             merged_at: 0.0,
             in_use_at: f64::NEG_INFINITY,
             notice: Mutex::new(None),
@@ -132,7 +139,12 @@ impl Dash {
 
     /// Die Ansicht dieses Takts; `None`, wenn abgeschaltet.
     pub fn view(&mut self, input: &DashInput) -> Option<DashView> {
-        self.switch(input.enabled);
+        // Präfix und Ordner vor dem Start: der erste Lauf soll schon mit ihnen lesen.
+        if let Some(src) = &self.sources {
+            src.costs.set_prefix(input.jira_prefix);
+            src.cleanup.set_repos_root(input.repos_root.as_deref());
+        }
+        self.switch(input.enabled, input.enabled && input.titan);
         if !input.enabled {
             return None;
         }
@@ -159,7 +171,6 @@ impl Dash {
         };
         let prs = src.github.snapshot();
         feed_cleanup(src, &prs, input, &mut self.merged_at, &mut self.in_use_at);
-        src.costs.set_prefix(input.jira_prefix);
         let (feed, popup) = crate::pr_feed::tick(&src.feed, &src.cleanup, &input.feed, input.jira_prefix, &input.in_use, input.now, input.lang);
         if board::prune_hidden(&mut self.hidden, &prs) {
             self.save_hidden("vergessen (Anfrage erledigt)");
@@ -170,7 +181,7 @@ impl Dash {
             prs: board::prs(&prs, input.now, input.lang),
             reviews,
             hidden_reviews,
-            titan: board::titan(&src.titan.snapshot(), input.lang),
+            titan: if input.titan { board::titan(&src.titan.snapshot(), input.lang) } else { None },
             cleanup: board::cleanup(&src.cleanup.snapshot(), input.lang),
             notice,
             feed: Some(feed),
@@ -178,8 +189,8 @@ impl Dash {
         })
     }
 
-    /// Dienste an- bzw. abschalten, wenn der Schalter wechselt.
-    fn switch(&mut self, on: bool) {
+    /// Dienste an- bzw. abschalten, wenn ein Schalter wechselt.
+    fn switch(&mut self, on: bool, titan: bool) {
         let Some(src) = &self.sources else { return };
         if on && !self.running {
             src.start();
@@ -188,7 +199,15 @@ impl Dash {
             src.stop();
             note("Info-Fenster: abgeschaltet, Datenquellen angehalten");
         }
+        if titan && !self.titan_running {
+            src.titan.start(src.wake.clone());
+            note("Info-Fenster: Titan-Abfrage gestartet");
+        } else if !titan && self.titan_running {
+            src.titan.stop();
+            note("Info-Fenster: Titan-Abfrage angehalten");
+        }
         self.running = on;
+        self.titan_running = titan;
     }
 
     fn say(&self, text: String, now: f64) {
@@ -287,12 +306,21 @@ pub async fn dash_action(app: AppHandle, command: String) -> Result<(), String> 
 
 fn run_action(app: &AppHandle, command: &str) -> Result<(), String> {
     let s = shared(app);
-    let (src, lang) = {
+    let (src, lang, titan) = {
         let d = lock(&s.deck);
-        (d.dash.sources.clone(), d.lang)
+        (d.dash.sources.clone(), d.lang, d.dash.titan_running)
     };
     let src = src.ok_or("Info-Fenster ohne Dienste")?;
+    if command.starts_with("titanKill") && !titan {
+        // Titan ist abgeschaltet: kein ssh, auch nicht auf Knopfdruck.
+        return Err("Titan ist abgeschaltet".into());
+    }
     let l = |de: &'static str, en: &'static str| lang.l(de, en);
+    if let Some(on) = command.strip_prefix("automation:").map(|v| v == "on") {
+        // Der Not-Aus im Feed ist derselbe Schalter wie in den Einstellungen
+        // (`pr_automation`): eine Quelle, sonst stellt der nächste Takt ihn zurück.
+        lock(&s.deck).set_setting("prAutomation", &serde_json::Value::Bool(on))?;
+    }
     if FeedService::handles(command) {
         let outcome = crate::pr_feed::action(app, &src.feed, &src.github, command);
         let text = match &outcome {
