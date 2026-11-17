@@ -1,8 +1,9 @@
 // Ansicht `#/dash`: das Info-Fenster (`dash_window.rs`). Oben die Tokenkosten je Ticket
 // mit Zeitraum und Rangliste, unten eine Leiste aus Kacheln (PRs, Reviews, Titan nur bei
 // verwaisten Läufen, Aufräumen nur mit Entfernbarem). Ein Klick auf eine Kachel zeigt ihre
-// Liste statt des Graphen, nochmal oder „← Tokenkosten“ zurück. Per Info-Taste
-// aufgeklappt (`deck://dash-popup`) steht oben eine Leiste mit ×.
+// Liste statt des Graphen, nochmal, Esc oder „Tokenkosten“ in den Brotkrumen zurück. Per Info-Taste
+// aufgeklappt (`deck://dash-popup`) steht oben eine Leiste mit ×. Hinter „PRs offen“ steht der
+// PR-Feed (FeedPane) mit Umschalter auf die bisherige Liste und dem Not-Aus der Automatik.
 
 import { useEffect, useState } from "react";
 import type { DashView } from "../../bindings/DashView";
@@ -12,6 +13,7 @@ import { chartModel, fmtCost, nameOf, rangeLabel, RANGE_KEYS, type Focus, type R
 import { langFromView, type Lang } from "../../logic/i18n";
 import { CostChart } from "./CostChart";
 import { CleanupList, PrList, ReviewList, TitanList } from "./DashLists";
+import { FeedHeadControls, FeedPane } from "./FeedPane";
 import "../../styles/dash.css";
 
 type Pane = "chart" | "prs" | "rev" | "titan" | "wt";
@@ -41,11 +43,21 @@ export function DashBoardView() {
   const [pane, setPane] = useState<Pane>(() => (new URLSearchParams(window.location.search).get("pane") as Pane | null) ?? "chart");
   const [range, setRange] = useState<RangeKey>(storedRange);
   const [focus, setFocus] = useState<Focus>(null);
+  // Hinter „PRs offen“: der Feed oder die bisherige Liste (?feedtab=list im Browser-Mock).
+  const [feedTab, setFeedTab] = useState<"feed" | "list">(() => (new URLSearchParams(window.location.search).get("feedtab") === "list" ? "list" : "feed"));
   // Verschwindet die Kachel (letzter Lauf beendet), zurück zum Graphen.
   const gone = dash !== null && ((pane === "titan" && !dash.titan) || (pane === "wt" && !dash.cleanup));
   useEffect(() => {
     if (gone) setPane("chart");
   }, [gone]);
+  useEffect(() => {
+    if (pane === "chart") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPane("chart");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pane]);
   const pickRange = (k: RangeKey) => {
     setRange(k);
     setFocus(null);
@@ -77,12 +89,19 @@ export function DashBoardView() {
       <div className="dash-body">
         <section className="dcard dmain">
           <header className="dhead">
-            {pane !== "chart" && (
-              <button type="button" className="dbtn dback" onClick={() => setPane("chart")}>
-                ← {titles.chart}
-              </button>
+            {/* Brotkrumen statt Zurück-Knopf: „Tokenkosten“ bleibt an seiner Stelle, die Liste
+                hängt sich dahinter, so springt beim Wechsel nichts. Esc geht ebenfalls zurück. */}
+            {pane === "chart" ? (
+              <span>{titles.chart}</span>
+            ) : (
+              <nav className="dcrumbs" aria-label={t(lang, "Ansicht", "View")}>
+                <button type="button" className="dcrumb" title={t(lang, "Zurück (Esc)", "Back (Esc)")} onClick={() => setPane("chart")}>
+                  {titles.chart}
+                </button>
+                <span className="dcrumb-sep" aria-hidden="true">›</span>
+                <span className="dcrumb-here" aria-current="page">{titles[pane]}</span>
+              </nav>
             )}
-            <span>{titles[pane]}</span>
             {pane === "chart" && dash?.costs && <span className="dhead-sub">{standText(dash.costs.stand, lang)}</span>}
             {pane === "chart" && (
               <div className="dseg" role="group" aria-label={t(lang, "Zeitraum", "Range")}>
@@ -93,9 +112,11 @@ export function DashBoardView() {
                 ))}
               </div>
             )}
+            {pane === "prs" && <FeedHeadControls tab={feedTab} setTab={setFeedTab} automation={dash?.feed?.automation ?? null} lang={lang} onAction={commands.dashAction} />}
           </header>
           {pane === "chart" && <CostPane dash={dash} range={range} focus={focus} setFocus={setFocus} lang={lang} />}
-          {listProps && pane === "prs" && <PrList {...listProps} />}
+          {listProps && pane === "prs" && feedTab === "feed" && <FeedPane feed={listProps.dash.feed} lang={lang} onOpen={commands.openDashUrl} onAction={commands.dashAction} />}
+          {listProps && pane === "prs" && feedTab === "list" && <PrList {...listProps} />}
           {listProps && pane === "rev" && <ReviewList {...listProps} />}
           {listProps && pane === "titan" && <TitanList {...listProps} />}
           {listProps && pane === "wt" && <CleanupList {...listProps} />}

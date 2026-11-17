@@ -5,6 +5,7 @@
 import type { CostRange } from "../../bindings/CostRange";
 import type { DashView } from "../../bindings/DashView";
 import type { Lang } from "../../logic/i18n";
+import { mockFeed } from "./mockFeed";
 
 const TICKETS = ["agent-deck", "ORPH-4258", "ORPH-4259", "ORPH-3289", "ORPH-3879", "ORPH-4256", "ORPH-4254", "ORPH-4260"];
 const SMALL = ["ORPH-4081", "ORPH-4220", "ORPH-4173", "ORPH-4096", "ORPH-4189"];
@@ -20,20 +21,20 @@ interface Spec {
 }
 
 const SPECS: Spec[] = [
-  { key: "h1", step: 300, n: 12, total: 1.8e6, prev: 1.1e6, mix: [["agent-deck", 0.9, 0.6], ["", 0.1, 0.5]] },
-  { key: "d1", step: 3600, n: 24, total: 42e6, prev: 197e6, mix: [["agent-deck", 0.38, 0.95], ["ORPH-4254", 0.32, 0.7], ["ORPH-4259", 0.17, 0.75], ["ORPH-4260", 0.1, 0.65], ["", 0.03, 0.5]] },
+  { key: "h1", step: 60, n: 60, total: 1.8e6, prev: 1.1e6, mix: [["agent-deck", 0.9, 0.6], ["", 0.1, 0.5]] },
+  { key: "d1", step: 900, n: 96, total: 42e6, prev: 197e6, mix: [["agent-deck", 0.38, 0.95], ["ORPH-4254", 0.32, 0.7], ["ORPH-4259", 0.17, 0.75], ["ORPH-4260", 0.1, 0.65], ["", 0.03, 0.5]] },
   {
     key: "w1",
-    step: 21600,
-    n: 28,
+    step: 3600,
+    n: 168,
     total: 637e6,
     prev: 351e6,
     mix: [["agent-deck", 0.13, 0.9], ["ORPH-4258", 0.13, 0.4], ["ORPH-4259", 0.1, 0.55], ["ORPH-3289", 0.08, 0.2], ["ORPH-3879", 0.05, 0.3], ["ORPH-4256", 0.05, 0.6], ["ORPH-4254", 0.03, 0.95], ["ORPH-4081", 0.12, 0.45], ["ORPH-4220", 0.11, 0.5], ["ORPH-4173", 0.06, 0.35], ["ORPH-4096", 0.05, 0.25], ["", 0.08, 0.5]],
   },
   {
     key: "m1",
-    step: 86400,
-    n: 30,
+    step: 21600,
+    n: 120,
     total: 988e6,
     prev: 0,
     mix: [["agent-deck", 0.13, 0.9], ["ORPH-4258", 0.08, 0.75], ["ORPH-4259", 0.06, 0.8], ["ORPH-3289", 0.05, 0.6], ["ORPH-3879", 0.03, 0.7], ["ORPH-4256", 0.03, 0.8], ["ORPH-4189", 0.1, 0.6], ["ORPH-4173", 0.1, 0.65], ["", 0.37, 0.55]],
@@ -48,7 +49,7 @@ function range(spec: Spec, now: number): CostRange {
   const series = spec.mix.map(([ticket, share, mid]) => {
     const raw = starts.map((s, i) => {
       const hour = new Date(s * 1000).getHours();
-      const day = spec.step >= 86400 || (hour >= 8 && hour < 23) ? 1 : 0.05;
+      const day = hour >= 8 && hour < 23 ? 1 : 0.05;
       const x = i / (spec.n - 1);
       return day * Math.exp(-((x - mid) ** 2) / 0.02) * (0.6 + rnd());
     });
@@ -109,6 +110,7 @@ export function mockDash(lang: Lang, now: number): DashView {
       { repo: "ui", number: 141, title: "Angabe Auftragsverarbeitung für Dritte bei der Buchung", url: gh("management-ui", 141), meta: "seit 21 Tagen · +1128 −47" },
       { repo: "api", number: 119, title: "Donation option in the checkout", url: gh("management-api", 119), meta: "seit 40 Tagen · +15302 −51 · CI rot" },
     ],
+    hiddenReviews: [{ repo: "dotnet", number: 88, title: "Spike: alternative transcription backend", url: gh("orpheus-services-dotnet", 88), meta: "seit 63 Tagen · +2210 −340" }],
     titan: {
       runs: [
         { name: "4258-w201-c59673", label: "4258-w201", age: en ? "for 42 h" : "seit 42 Std." },
@@ -123,5 +125,7 @@ export function mockDash(lang: Lang, now: number): DashView {
       result: "",
     },
     notice: null,
+    feed: mockFeed(lang, now),
+    popup: null,
   };
 }

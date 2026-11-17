@@ -1,17 +1,21 @@
 // Ansicht `#/keys`: das Fenster „Tastenkürzel“, nur zum Ansehen. Der Inhalt kommt aus
 // SettingsView.shortcuts (deck_core::shortcuts), so stimmt er mit den Einstellungen überein.
 
+import { useRef } from "react";
 import { isNative } from "../../ipc";
 import { useSettings } from "../../ipc/hooks";
 import { langFromSetting, t } from "../../logic/i18n";
 import "../../styles/settings.css";
+import { useDialogFit } from "../useDialogFit";
 
 export function KeysView() {
   const [settings] = useSettings();
+  const root = useRef<HTMLDivElement>(null);
+  useDialogFit(root, settings != null);
   if (!settings) return <div className="settings" />;
   const lang = langFromSetting(settings.language);
   const body = (
-    <div className="settings">
+    <div ref={root} className="settings">
       <header className="set-header">
         <h1 className="set-title">{t(lang, "shortcuts")}</h1>
         <span className="set-spacer" />

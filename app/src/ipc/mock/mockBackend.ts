@@ -19,6 +19,7 @@ import { langFromSetting, type Lang } from "../../logic/i18n";
 import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRect, Unlisten } from "../contract";
 import type { OrphanView } from "../../bindings/OrphanView";
 import { mockDash } from "./mockDash";
+import { applyFeedAction, mockFeed, mockPopup } from "./mockFeed";
 import type { DashView } from "../../bindings/DashView";
 import { freshSettings, initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
@@ -67,11 +68,14 @@ export function createMockBackend(): Backend {
   // ?dash=real: Info-Fenster aus einem echten Probelauf (dash::tests::real_dash_dump schreibt
   // app/dash-real.json; die Datei ist nicht eingecheckt). ?dash=0: abgeschaltet.
   let dashView: DashView | null = dashParam === "0" ? null : mockDash(lang, now());
+  // Kommentar-Fenster (#/comment): ?popup=0 leer, ?popup=draft mit fertigem Entwurf.
+  if (dashView) dashView.popup = mockPopup(lang, now(), params.get("popup"));
   if (dashParam === "real") {
     fetch("/dash-real.json")
       .then((r) => r.json())
       .then((d: DashView) => {
-        dashView = d;
+        // Ein Probelauf ohne Feed (älterer Stand) bekommt den Beispiel-Feed.
+        dashView = { ...d, feed: d.feed ?? mockFeed(lang, now()), popup: d.popup ?? mockPopup(lang, now(), params.get("popup")) };
         emit("deck://dash", dashView);
       })
       .catch((e) => console.warn("[mock] dash-real.json fehlt", e));
@@ -189,11 +193,26 @@ export function createMockBackend(): Backend {
       if (!dashView) return;
       // Wie im echten Deck: Approve nimmt die Zeile weg, Beenden den Lauf.
       if (command.startsWith("approve:")) dashView.reviews = dashView.reviews.filter((r) => `approve:${r.url}` !== command);
+      // Aus- und Einblenden schiebt die Zeile zwischen den Listen hin und her.
+      const [verb, url] = [command.split(":")[0], command.slice(command.indexOf(":") + 1)];
+      if (verb === "hideReview" || verb === "showReview") {
+        const [from, to] = verb === "hideReview" ? ["reviews", "hiddenReviews"] as const : ["hiddenReviews", "reviews"] as const;
+        const r = dashView[from].find((x) => x.url === url);
+        if (r) {
+          dashView[from] = dashView[from].filter((x) => x !== r);
+          dashView[to] = [...dashView[to], r];
+        }
+      }
       if (command.startsWith("titanKill") && dashView.titan) {
         const runs = command === "titanKillAll" ? [] : dashView.titan.runs.filter((r) => `titanKill:${r.name}` !== command);
         dashView.titan = runs.length ? { ...dashView.titan, runs } : null;
       }
       if (command === "cleanupWorktrees") dashView.cleanup = null;
+      if (dashView.feed) {
+        const next = applyFeedAction(dashView.feed, dashView.popup, command);
+        dashView.feed = next.feed;
+        dashView.popup = next.popup;
+      }
       dashView.notice = `Aktion ${command.split(":")[0]} (Mock)`;
       emit("deck://dash", dashView);
     },

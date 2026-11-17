@@ -1,5 +1,5 @@
 // Einstieg: alle Fenster laden dieselbe Seite und wählen ihre Ansicht über den Hash
-// (#/panel, #/handle, #/tooltip, #/settings, #/ticket, #/glow, #/keys, #/dash; siehe
+// (#/panel, #/handle, #/tooltip, #/settings, #/ticket, #/glow, #/keys, #/dash, #/comment; siehe
 // docs/IPC.md).
 
 // IBM Plex wie im Terminal-Profil „Agent Deck“: Mono für alles, Sans für Prosa
@@ -13,6 +13,7 @@ import "@fontsource/ibm-plex-sans/600.css";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { commands, getBackend, isNative } from "./ipc";
+import { CommentView } from "./views/comment/CommentView";
 import { DashBoardView } from "./views/dash/DashBoardView";
 import { GlowView } from "./views/glow/GlowView";
 import { HandleView } from "./views/handle/HandleView";
@@ -23,9 +24,9 @@ import { TicketView } from "./views/ticket/TicketView";
 import { TooltipView } from "./views/tooltip/TooltipView";
 import "./styles/base.css";
 
-type Route = "panel" | "handle" | "tooltip" | "settings" | "ticket" | "glow" | "keys" | "dash";
+type Route = "panel" | "handle" | "tooltip" | "settings" | "ticket" | "glow" | "keys" | "dash" | "comment";
 
-const ROUTES: readonly Route[] = ["panel", "handle", "tooltip", "settings", "ticket", "glow", "keys", "dash"];
+const ROUTES: readonly Route[] = ["panel", "handle", "tooltip", "settings", "ticket", "glow", "keys", "dash", "comment"];
 
 function routeOf(hash: string): Route {
   const name = hash.replace(/^#\/?/, "").split(/[/?]/)[0];
@@ -55,6 +56,8 @@ function App() {
       return <KeysView />;
     case "dash":
       return <DashBoardView />;
+    case "comment":
+      return <CommentView />;
     default:
       return <PanelView />;
   }

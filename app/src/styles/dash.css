@@ -105,6 +105,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* So hoch wie die Zeitraum-Leiste, damit „Tokenkosten“ beim Wechsel zur Liste nicht springt. */
+  min-height: 32px;
   color: var(--subtle);
   font-weight: 700;
 }
@@ -517,6 +519,33 @@
   grid-template-columns: 140px minmax(0, 1fr) auto auto;
 }
 
+.dli-rev[data-hidden] > :not(.dli-acts) {
+  opacity: 0.55;
+}
+
+/* Klappt die ausgeblendeten Reviews auf; leise wie eine Zwischenüberschrift. */
+.dli-fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--subtle);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dli-fold:hover {
+  background: var(--overlay);
+  color: var(--ink);
+}
+
 .dli-run {
   grid-template-columns: 130px 110px minmax(0, 1fr) auto;
 }
@@ -601,6 +630,18 @@
   background: var(--hl-med);
 }
 
+.dbtn-quiet {
+  /* Aus- und Einblenden gleich breit, sonst springt die Spalte davor. */
+  min-width: 96px;
+  border-color: transparent;
+  color: var(--subtle);
+  font-weight: 500;
+}
+
+.dbtn-quiet:hover {
+  color: var(--ink);
+}
+
 .dbtn[data-tone="ok"] {
   border-color: color-mix(in srgb, var(--ok-ink) 55%, transparent);
   color: var(--ok-ink);
@@ -626,8 +667,39 @@
   opacity: 0.7;
 }
 
-.dback {
-  padding: 3px 9px;
+.dcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dcrumb {
+  margin: -3px -6px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dcrumb:hover {
+  background: var(--soft-hover);
+  color: var(--ink);
+}
+
+.dcrumb-sep {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.dcrumb-here {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dfacts {

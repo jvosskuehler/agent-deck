@@ -336,6 +336,7 @@ impl Deck {
             repos_root: self.repos_root.clone(),
             in_use,
             jira_prefix: prefix,
+            feed: crate::pr_feed::FeedSettings::from_settings(settings, self.repos_root.as_deref()),
         };
         self.dash.view(&input)
     }

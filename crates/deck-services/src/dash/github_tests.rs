@@ -21,6 +21,10 @@ impl FakeGh {
 
 impl GhApi for FakeGh {
     fn graphql(&self, query: &str) -> Result<String, String> {
+        // Die Detail-Abfrage läuft parallel und nimmt keine der vorbereiteten Antworten.
+        if query.contains("detail:") {
+            return Ok("{\"data\":{\"detail\":{\"nodes\":[]}}}".into());
+        }
         lock(&self.queries).push(query.to_string());
         lock(&self.answers).pop_front().unwrap_or_else(|| Err("keine Antwort mehr".into()))
     }

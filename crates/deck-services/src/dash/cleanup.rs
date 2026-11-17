@@ -345,7 +345,13 @@ fn recheck(st: &State, c: &WtCandidate) -> Result<(), &'static str> {
 }
 
 fn remove(st: &State) -> CleanupOutcome {
-    let todo: Vec<WtCandidate> = lock(&st.snap).removable().cloned().collect();
+    remove_some(st, None)
+}
+
+/// Wie [`remove`], aber nur die worktrees dieser (Repo, Branch)-Paare (`None` = alle).
+fn remove_some(st: &State, only: Option<&[(String, String)]>) -> CleanupOutcome {
+    let wanted = |c: &WtCandidate| only.is_none_or(|o| o.iter().any(|(r, b)| r.eq_ignore_ascii_case(&c.repo) && *b == c.branch));
+    let todo: Vec<WtCandidate> = lock(&st.snap).removable().filter(|c| wanted(c)).cloned().collect();
     let mut out = CleanupOutcome::default();
     {
         let _op = lock(&st.op);
@@ -392,6 +398,9 @@ fn run(st: &State, generation: u64) {
         ctl.force = false;
     }
 }
+
+#[path = "cleanup_targeted.rs"]
+mod targeted;
 
 #[cfg(test)]
 #[path = "cleanup_tests.rs"]

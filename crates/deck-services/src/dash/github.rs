@@ -1,6 +1,7 @@
 //! Datenquelle `github`: die eigenen PRs über `gh api graphql`, alle 3 Min.
 //!
-//! Ein Aufruf holt alles mit Aliassen (Vertrag in `deck_core::dash::prs`): offene PRs,
+//! Zwei parallele Aufrufe: [`detail_query`] holt Kommentare, Threads, Checks und Dateien der
+//! offenen PRs für den Feed (`deck_core::dash::pr_extra`); der andere holt mit Aliassen (Vertrag in `deck_core::dash::prs`): offene PRs,
 //! heute erstellte und heute gemergte (Anzahl, Ortszeit) und die gemergten PRs der
 //! letzten 30 Tage in sechs Fenstern zu fünf Tagen. Eine Suche liefert höchstens 100
 //! Treffer; am 15.11.2026 waren es 130 in 30 Tagen, davon 107 in den letzten zehn.
@@ -15,6 +16,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use chrono::{Days, NaiveDate};
+use deck_core::dash::pr_extra::{self, ALIAS_DETAIL};
 use deck_core::dash::prs::{self, ALIAS_CREATED_TODAY, ALIAS_MERGED_PREFIX, ALIAS_MERGED_TODAY, ALIAS_OPEN, ALIAS_REVIEWS, PrSnapshot};
 use serde_json::Value;
 
@@ -27,7 +29,7 @@ pub const POLL: Duration = Duration::from_secs(180);
 /// Takt nach einem gescheiterten.
 pub const RETRY: Duration = Duration::from_secs(60);
 /// Zeitlimit für gh.
-pub const TIMEOUT: Duration = Duration::from_secs(30);
+pub const TIMEOUT: Duration = Duration::from_secs(45);
 pub const LOG_FILE: &str = "dash-github.log";
 /// Gemergte PRs: so viele Fenster zu [`WINDOW_DAYS`] Tagen.
 const WINDOWS: u64 = 6;
@@ -40,6 +42,11 @@ pub trait GhApi: Send + Sync {
     fn graphql(&self, query: &str) -> Result<String, String>;
     /// Einen PR freigeben (`gh pr review <url> --approve`). Attrappen können es nicht.
     fn approve(&self, _url: &str) -> Result<(), String> {
+        Err("nicht unterstützt".into())
+    }
+    /// Log eines Actions-Jobs als Text (`ci_cause`: liegt die rote CI an Code Security?).
+    /// Nur lesend. Attrappen können es nicht.
+    fn job_log(&self, _repo: &str, _job_id: u64) -> Result<String, String> {
         Err("nicht unterstützt".into())
     }
 }
@@ -72,6 +79,18 @@ impl GhApi for GhCli {
         Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
     }
 
+    fn job_log(&self, repo: &str, job_id: u64) -> Result<String, String> {
+        let mut cmd = Command::new("gh");
+        cmd.args(["api", &format!("repos/{repo}/actions/jobs/{job_id}/logs")]);
+        cmd.env_remove("GITHUB_TOKEN").env_remove("GH_TOKEN");
+        let out = hidden_cmd::run(cmd, self.timeout)?;
+        if out.code == 0 {
+            return Ok(out.stdout);
+        }
+        let why = hidden_cmd::short_error(&out.stderr);
+        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+    }
+
     fn approve(&self, url: &str) -> Result<(), String> {
         // Wirkung nach außen: in Tests nie.
         if cfg!(test) || deck_win::effects_forbidden() {
@@ -95,13 +114,10 @@ pub fn build_query(today: NaiveDate, offset_s: i32) -> String {
     let off = offset_s.unsigned_abs();
     let since = format!("{today}T00:00:00{sign}{:02}:{:02}", off / 3600, (off % 3600) / 60);
     let day = |n: u64| today.checked_sub_days(Days::new(n)).unwrap_or(today);
-    let pr_fields = "number title url repository{nameWithOwner} isDraft createdAt mergeable reviewDecision headRefName \
-                     commits(last:1){nodes{commit{statusCheckRollup{state}}}} reviewThreads(first:100){nodes{isResolved}} \
-                     reviewRequests(first:10){nodes{requestedReviewer{... on User{login} ... on Team{name}}}} \
-                     timelineItems(last:60,itemTypes:[PULL_REQUEST_REVIEW,PULL_REQUEST_COMMIT]){nodes{... on PullRequestReview{state submittedAt} ... on PullRequestCommit{commit{committedDate}}}}";
+    let pr_fields = "number title url repository{nameWithOwner} isDraft createdAt mergeable reviewDecision headRefName                      commits(last:1){nodes{commit{statusCheckRollup{state}}}} reviewThreads(first:100){nodes{isResolved}}                      reviewRequests(first:10){nodes{requestedReviewer{... on User{login} ... on Team{name}}}}                      timelineItems(last:60,itemTypes:[PULL_REQUEST_REVIEW,PULL_REQUEST_COMMIT]){nodes{... on PullRequestReview{state submittedAt} ... on PullRequestCommit{commit{committedDate}}}}";
     let review_fields = "number title url repository{nameWithOwner} createdAt additions deletions commits(last:1){nodes{commit{statusCheckRollup{state}}}}";
     let mut q = format!(
-        "query{{ {ALIAS_OPEN}: search(query:\"is:pr author:@me is:open archived:false\", type:ISSUE, first:50){{ nodes{{ ... on PullRequest{{ {pr_fields} }} }} }} \
+        "query{{ viewer{{login}} {ALIAS_OPEN}: search(query:\"is:pr author:@me is:open archived:false\", type:ISSUE, first:50){{ nodes{{ ... on PullRequest{{ {pr_fields} }} }} }} \
          {ALIAS_REVIEWS}: search(query:\"is:pr is:open review-requested:@me archived:false\", type:ISSUE, first:30){{ nodes{{ ... on PullRequest{{ {review_fields} }} }} }} \
          {ALIAS_CREATED_TODAY}: search(query:\"is:pr author:@me created:>={since}\", type:ISSUE, first:0){{ issueCount }} \
          {ALIAS_MERGED_TODAY}: search(query:\"is:pr author:@me is:merged merged:>={since}\", type:ISSUE, first:0){{ issueCount }} "
@@ -113,11 +129,22 @@ pub fn build_query(today: NaiveDate, offset_s: i32) -> String {
         let range = if i == 0 { format!(">={}", day(oldest)) } else { format!("{}..{}", day(oldest), day(newest)) };
         q.push_str(&format!(
             "{ALIAS_MERGED_PREFIX}{i}: search(query:\"is:pr author:@me is:merged merged:{range}\", type:ISSUE, first:100){{ issueCount \
-             nodes{{ ... on PullRequest{{ repository{{nameWithOwner}} headRefName headRefOid mergedAt }} }} }} "
+             nodes{{ ... on PullRequest{{ number title url repository{{nameWithOwner}} headRefName headRefOid mergedAt }} }} }} "
         ));
     }
     q.push('}');
     q
+}
+
+/// Die zweite Abfrage: Details der eigenen offenen PRs für Feed und Automatik
+/// (`deck_core::dash::pr_extra`). Getrennt von [`build_query`] und parallel dazu, weil
+/// GitHub eine einzige Abfrage mit allem nach 10 s mit HTTP 502 abbricht (17.11.2026).
+pub fn detail_query() -> String {
+    // Autoren mit `__typename`: ein Konto vom Typ Bot ist ein Bot (`pr_extra::comment`).
+    let who = "author{login __typename}";
+    format!(
+        "query{{ {ALIAS_DETAIL}: search(query:\"is:pr author:@me is:open archived:false\", type:ISSUE, first:50){{ nodes{{ ... on PullRequest{{          number repository{{nameWithOwner}} body mergeable mergeStateStatus assignees(first:10){{nodes{{login}}}} files(first:40){{nodes{{path}}}}          commits(last:1){{nodes{{commit{{oid committedDate statusCheckRollup{{state contexts(first:40){{nodes{{__typename            ... on CheckRun{{name conclusion completedAt databaseId checkSuite{{workflowRun{{workflow{{name}}}}}}}}            ... on StatusContext{{context state createdAt}}}}}}}}}}}}}}          comments(last:10){{nodes{{id {who} createdAt bodyText url}}}}          reviewThreads(first:60){{nodes{{id isResolved head: comments(first:1){{nodes{{id {who} createdAt bodyText url}}}}            tail: comments(last:2){{nodes{{id {who} createdAt bodyText url}}}}}}}}          timelineItems(last:25,itemTypes:[PULL_REQUEST_REVIEW,CONVERT_TO_DRAFT_EVENT,READY_FOR_REVIEW_EVENT]){{nodes{{            ... on PullRequestReview{{id {who} state submittedAt bodyText url raw: body commit{{oid}}}}            ... on ConvertToDraftEvent{{actor{{login}} createdAt}} ... on ReadyForReviewEvent{{actor{{login}} createdAt}}}}}} }} }} }} }}"
+    )
 }
 
 /// Fenster mit mehr Treffern als geliefert (dort fehlen gemergte PRs fürs Aufräumen).
@@ -264,9 +291,18 @@ impl Drop for GithubService {
 fn fetch(st: &State) -> bool {
     let (today, offset) = (st.today)();
     let started = Instant::now();
-    let result = st.api.graphql(&build_query(today, offset)).and_then(|text| {
-        let v: Value = serde_json::from_str(&text).map_err(|e| format!("Antwort kein JSON (Zeile {})", e.line()))?;
-        prs::parse(&v).map(|s| (s, truncated_windows(&v))).map_err(|e| hidden_cmd::short_error(&e))
+    let (main, detail) = std::thread::scope(|s| {
+        let detail = s.spawn(|| st.api.graphql(&detail_query()));
+        let main = st.api.graphql(&build_query(today, offset));
+        (main, detail.join().unwrap_or_else(|_| Err("Detail-Abruf abgestürzt".into())))
+    });
+    let json = |text: String| serde_json::from_str::<Value>(&text).map_err(|e| format!("Antwort kein JSON (Zeile {})", e.line()));
+    let result = main.and_then(json).and_then(|v| {
+        let mut snap = prs::parse(&v).map_err(|e| hidden_cmd::short_error(&e))?;
+        // Ohne Details kein Stand: die Automatik darf nie auf halben Daten mergen.
+        let d = detail.and_then(json)?;
+        pr_extra::attach(&mut snap.open, &d).map_err(|e| hidden_cmd::short_error(&e))?;
+        Ok((snap, truncated_windows(&v)))
     });
     let ms = started.elapsed().as_millis();
     let mut health = lock(&st.health);

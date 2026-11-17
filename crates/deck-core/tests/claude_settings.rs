@@ -143,3 +143,24 @@ fn claude_config_dir_moves_settings_transcripts_and_credentials_together() {
     assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new("")), home), home.join(".claude"), "leer = nicht gesetzt");
     assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new(r"D:\cc")), home), std::path::PathBuf::from(r"D:\cc"));
 }
+
+#[test]
+fn a_fresh_install_gets_bypass_and_effort_high() {
+    let before = json!({"hooks": {"Stop": [1]}, "permissions": {"allow": ["Read"]}});
+    let (after, notes) = fill_defaults(before.as_object().unwrap());
+    assert_eq!(after["effortLevel"], "high");
+    assert_eq!(after["permissions"], json!({"allow": ["Read"], "defaultMode": "bypassPermissions"}));
+    assert_eq!(after["hooks"], json!({"Stop": [1]}));
+    assert_eq!(notes.len(), 2);
+}
+
+#[test]
+fn defaults_never_overwrite_a_choice_already_made() {
+    let before = json!({"effortLevel": "low", "permissions": {"defaultMode": "plan"}});
+    let (after, notes) = fill_defaults(before.as_object().unwrap());
+    assert_eq!(Value::Object(after), before);
+    assert!(notes.is_empty());
+    let ultra = json!({"ultracode": true});
+    let (after, _) = fill_defaults(ultra.as_object().unwrap());
+    assert!(after.get("effortLevel").is_none(), "Ultracode ist schon eine Effort-Wahl");
+}

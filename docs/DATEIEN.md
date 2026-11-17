@@ -14,7 +14,9 @@ daran. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 
 Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts,
 `orphans.json`, `ui-alive.json` …) liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht
-neben dem Code. Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die
+neben dem Code. Darunter `dash-hidden-reviews.json`: JSON-Liste der PR-Adressen, deren
+Review-Anfrage im Info-Fenster ausgeblendet ist; nur die App schreibt sie, kaputt = leer.
+Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die
 fremde statusLine, die `deck-setup install --statusline replace` ersetzt hat;
 `deck-setup uninstall` legt sie zurück und löscht die Datei.
 
@@ -48,11 +50,39 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
 | `auto_compact` | bool | `false` | `true` | `/compact` vor Ablauf des Prompt-Caches |
 | `dashboard` | bool | `true` | `true` | Info-Fenster |
 | `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
-| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik |
+| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos |
 | `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik |
 
 Dazu wie bisher ohne Version: `dock_edge`, `dock_along`, `panel_pos`, `panel_zoom`, die
 Tastenkürzel (`jump_hotkey` …), `glow`, `group_shadow`, `frame_season`.
+
+## PR-Feed: `state\pr-feed.json`, `feed\runs\`, `feed\drafts\`
+
+Das Gedächtnis des PR-Feeds (`deck_core::dash::feed_state::FeedState`), nur die App
+schreibt es, atomar, kaputt = frisch. Felder (camelCase): `since` (erster Start; ältere
+Kommentare und Funde lösen nichts aus), `automation` (früher der Not-Aus; seit 17.11.2026 gilt allein `pr_automation` in
+`deck_settings.json`, der Not-Aus-Knopf schreibt dorthin), `hold`
+(Halteliste: PR-Schlüssel `owner/repo#12`, nie mergen), `snoozed` und `notified` („Später“
+bzw. vom Kommentar-Fenster gezeigt, je PR der Zeitpunkt des neuesten Kommentars),
+`conflictSince`, `handled` (was die Hintergrund-Agenten und die Mechanik je PR schon
+erledigt haben), `verdicts` (Job-Id → Log erklärt rote CI mit Code Security),
+`activity` (Zeitleiste, 48 Std.), `runs` (Hintergrund-Agenten mit Bericht), `drafts`
+(Antwort-Entwürfe), `jiraChecked` (gemergte PRs, deren Ticket schon nachgezogen ist), `seenAny` (erster
+gelungener Abruf gesehen: Konflikte, die schon dabei bestehen, gelten als alt), `verdictRule`
+(Regelstand der Log-Urteile; ändert sich die Regel, werden `verdicts` neu geholt).
+Ein Lauf, der beim Beenden des Decks noch lief, gilt beim nächsten Start als gescheitert.
+
+`feed\runs\<id>.jsonl` (+ `.err`): Ausgabe von `claude -p --output-format stream-json`;
+der Bericht ist die letzte Zeile vom Typ `result`. `feed\drafts\<key>.md`: Antwort-Entwurf
+als reiner Text; „Ändern“ öffnet die Datei, „Absenden“ liest sie frisch.
+
+Einstellungen dazu in `deck_settings.json` (Einstellungsfenster, Bereich Automatik):
+`pr_automation` (aus = keine Wirkung nach außen, der Feed zeigt nur), `pr_reviewer`
+(GitHub-Logins, mehrere mit Komma, die als Reviewer nachgetragen werden; leer = keiner)
+und `github_org` (Organisation für die Jira-Suche; leer = Jira wird nicht nachgezogen,
+Hinweis im Feed). Hintergrund-Agenten arbeiten in `<repos_root>\<repo>` bzw.
+`<repos_root>\wt\<ordner>`.
+Protokoll: `state\dash-feed.log` (nur PR-Kürzel, Tickets, Ids, Dauern, Fehlercodes).
 
 ## Chat-Titel: `summaries\<session>.json`, `areas.json`
 

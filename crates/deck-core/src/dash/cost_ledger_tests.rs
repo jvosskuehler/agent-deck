@@ -59,12 +59,14 @@ fn buckets_align_to_local_time_and_the_period_before_is_summed() {
     l.add_line("s", None, &reply("b", "2026-11-15T07:00:00Z", "claude-opus-5-5", ""), "ORPH");
     let v = l.view(NOW, MEZ);
     let d1 = v.ranges.iter().find(|r| r.key == "d1").unwrap();
-    assert_eq!(d1.starts.len(), 24);
-    assert_eq!(*d1.starts.last().unwrap(), NOW, "letzter Eimer beginnt zur vollen Stunde");
+    assert_eq!(d1.starts.len(), 96, "24 Std. in Viertelstunden");
+    assert_eq!(*d1.starts.last().unwrap(), NOW, "letzter Eimer beginnt zur vollen Viertelstunde");
     let w1 = v.ranges.iter().find(|r| r.key == "w1").unwrap();
-    assert_eq!((*w1.starts.last().unwrap() + 3600.0).rem_euclid(21_600.0), 0.0, "Viertel-Tage ab 00:00 Ortszeit");
+    assert_eq!(w1.starts.len(), 168, "7 Tage in Stunden");
     assert!(d1.prev > 0.0, "b liegt in den 24 Std. davor");
     let m1 = v.ranges.iter().find(|r| r.key == "m1").unwrap();
+    assert_eq!(m1.starts.len(), 120, "30 Tage in Viertel-Tagen");
+    assert_eq!((*m1.starts.last().unwrap() + 3600.0).rem_euclid(21_600.0), 0.0, "Viertel-Tage ab 00:00 Ortszeit");
     assert_eq!(m1.prev, 0.0);
     assert_eq!(v.first_at, Some(NOW - 86_400.0 - 4.0 * 3600.0));
 }

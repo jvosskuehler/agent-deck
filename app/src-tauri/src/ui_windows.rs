@@ -7,10 +7,15 @@
 //! | `handle` | dasselbe, klein, nie aktiv |
 //! | `tooltip` | dasselbe, klickt durch |
 //! | `dash` | Info-Karten in der freien Fensterkachel: rahmenlos, nicht in der Taskleiste, nie aktiv, aber **nicht** immer oben (liegt hinter dem vordersten Agenten, `dash_window.rs`) |
+//! | `comment` | Kommentar-Fenster (neuer Kommentar eines Menschen): rahmenlos, nicht in der Taskleiste, nie aktiv, nicht immer oben (liegt direkt über dem vordersten Agenten, `comment_window.rs`) |
 //! | `settings` | normales Fenster, Titelleiste folgt dem System-Thema, Schließen versteckt nur |
 //! | `ticket` | kleiner Dialog „Ticket zuweisen“, Schließen versteckt nur |
 //! | `keys` | „Tastenkürzel“, nur zum Ansehen, Schließen versteckt nur |
-//! | `glow` | „Glow einstellen“ (Strg+Alt+G), Schließen versteckt nur, Höhe folgt dem Inhalt (`fit_dialog`) |
+//! | `glow` | „Glow einstellen“ (Strg+Alt+G), Schließen versteckt nur |
+//!
+//! Jeder Dialog (`dialog()`) ist so hoch wie sein Inhalt: die Ansicht misst sich mit
+//! `useDialogFit`, Rust setzt die Höhe (`fit_dialog`). Ein Rollbalken erscheint nur, wenn
+//! der Inhalt höher als der Bildschirm ist. Wer einen Dialog dazubaut, hängt ihn dort an.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -25,6 +30,7 @@ pub const TICKET: &str = "ticket";
 pub const GLOW: &str = "glow";
 pub const KEYS: &str = "keys";
 pub const DASH: &str = "dash";
+pub const COMMENT: &str = "comment";
 
 /// Rahmenlose Überlagerung (Panel, Griff, Tooltip): versteckt angelegt, gezeigt wird
 /// sie über `native::show_at`.
@@ -56,6 +62,26 @@ fn info(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, DASH, WebviewUrl::App(format!("index.html#/{DASH}").into()))
         .title("Agent Deck Info")
         .inner_size(600.0, 400.0)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(false)
+        .skip_taskbar(true)
+        .resizable(false)
+        .minimizable(false)
+        .maximizable(false)
+        .focusable(false)
+        .focused(false)
+        .visible(false)
+        .theme(None)
+        .build()
+}
+
+/// Das Kommentar-Fenster: klein, wie das Info-Fenster nie aktiv und nicht immer oben.
+fn comment(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    WebviewWindowBuilder::new(app, COMMENT, WebviewUrl::App(format!("index.html#/{COMMENT}").into()))
+        .title("Agent Deck Kommentar")
+        .inner_size(420.0, 190.0)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -104,8 +130,9 @@ pub fn create_all(app: &AppHandle, english: bool) -> tauri::Result<()> {
     let tip = overlay(app, TOOLTIP, "Agent Deck Tooltip", (360.0, 120.0))?;
     tip.set_ignore_cursor_events(true)?;
     info(app)?;
-    // Zwei Spalten (Konto/Agenten links, Deck/Automatik rechts); die Höhe ist nur der
-    // Start, `fit_dialog` bringt das Fenster auf die gemessene Inhaltshöhe.
+    comment(app)?;
+    // Zwei Spalten (Konto/Agenten links, Deck/Automatik rechts); die Höhen hier sind nur
+    // der Start, useDialogFit zieht sie auf die Inhaltshöhe.
     dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (960.0, 640.0))?;
     dialog(app, TICKET, "Ticket", (380.0, 150.0))?;
     dialog(app, KEYS, if english { "Shortcuts" } else { "Tastenkürzel" }, (500.0, 250.0))?;

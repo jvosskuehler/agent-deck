@@ -81,6 +81,7 @@ Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`. Erste Stellen je F
 |---|---|
 | Leiste weg, Neustart tut nichts | „Oberfläche hängt: …“ (sagt Hauptthread oder Webview), „Vorgänger-Deck … hing“ |
 | Agentenfenster plötzlich zu | „… ohne das Deck beendet …“; schweigt das Log, im Ereignisprotokoll nachsehen (AppXDeploymentServer/Operational, „Application Hang pwsh.exe … was closed“) |
+| PR nicht gemergt, Agent nicht gestartet, Jira nicht nachgezogen | `state\dash-feed.log` (je Merge, Agent, Ticket eine Zeile mit Grund); im Feed steht unter „Automatik“, worauf jeder PR wartet |
 
 ### Hängendes Deck (11.11.2026)
 
@@ -108,6 +109,11 @@ mit einem Anstoß, wenn sie gerade arbeitete (`deck_core::crash_resume`, App:
 ## Im Betrieb noch zu prüfen
 
 Nur gegen Attrappen getestet:
+
+- PR-Feed-Mechanik echt (17.11.2026 nur gegen Attrappen und mit echten Lese-Abfragen):
+  Merge per `gh pr merge --merge`, Branch löschen, Reviewer/Assignee nachtragen, Jira
+  per `acli`, Hintergrund-Agent `claude -p` samt worktree anlegen, Antwort senden und
+  Thread auflösen, Kommentar-Fenster über dem vordersten Agenten.
 
 - Strg+< springt zum Wartenden, Klick auf eine Karte holt das richtige Terminal, ＋ legt
   einen Agenten an.

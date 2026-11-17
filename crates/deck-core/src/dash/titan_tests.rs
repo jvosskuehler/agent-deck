@@ -91,3 +91,26 @@ end=1
     let k = kill_script("x-abcdef").unwrap();
     assert!(k.contains("sshd*) echo attached=1"), "prüft auf dem Titan noch einmal");
 }
+
+/// Beide Skripte gehen als ssh-Argument über die Windows-Kommandozeile: ein NUL-Byte darin
+/// lässt den Start scheitern („invalid input parameter“, 17.11.2026 beim Beenden).
+#[test]
+fn the_scripts_carry_no_control_characters() {
+    let kill = kill_script("x-abcdef").unwrap();
+    for (name, script) in [("status", STATUS_SH), ("kill", kill.as_str())] {
+        assert!(!script.chars().any(|c| c.is_control() && c != '\n'), "{name}");
+    }
+}
+
+#[test]
+fn only_a_host_entry_with_exactly_that_name_counts_as_titan_set_up() {
+    let cfg = "# Titan\nHost gpu titanserver\n  HostName 10.0.0.5\n\nHost *\n  ServerAliveInterval 30\n";
+    assert!(ssh_config_knows_host(cfg, "gpu"));
+    assert!(ssh_config_knows_host(cfg, "TitanServer"), "Groß-/Kleinschreibung egal");
+    assert!(ssh_config_knows_host("host=gpu\n", "gpu"), "auch mit =");
+    assert!(!ssh_config_knows_host(cfg, "gp"));
+    assert!(!ssh_config_knows_host("Host *\n  User x\n", "gpu"), "Host * ist keine Einrichtung");
+    assert!(!ssh_config_knows_host("  HostName gpu\n", "gpu"), "HostName ist kein Host-Eintrag");
+    assert!(!ssh_config_knows_host("", "gpu"));
+    assert!(ssh_config_knows_host("Include ~/.ssh/titan.conf\n", "gpu"), "Include: lieber abfragen");
+}

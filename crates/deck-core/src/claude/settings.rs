@@ -139,6 +139,35 @@ pub fn write_values(v: &WriteValues, path: &Path) -> std::io::Result<Map<String,
     Ok(d)
 }
 
+/// Vorgaben einer frischen Installation (Jorrits Wahl vom 17.11.2026): Bypass und Effort
+/// high. Das Modell ist `MODEL_CHOICES[0]`, die Sprache ohne Eintrag Deutsch; beides
+/// braucht keinen Eintrag.
+pub const DEFAULT_MODE: &str = BYPASS_MODE;
+pub const DEFAULT_EFFORT: &str = "high";
+
+/// Fehlende Vorgaben (Modus, Effort) in eine settings.json eintragen. Was schon dasteht,
+/// auch ein bewusst anderer Wert oder `ultracode`, bleibt: das ist eine Entscheidung des
+/// Menschen, kein Loch. Gibt das neue Objekt und je Eintrag eine Notiz zurück.
+pub fn fill_defaults(settings: &Map<String, Value>) -> (Map<String, Value>, Vec<(&'static str, String)>) {
+    let mut out = settings.clone();
+    let mut notes = Vec::new();
+    let has_effort = non_null(out.get("effortLevel")).is_some() || flag(out.get("ultracode"));
+    if !has_effort {
+        out.insert("effortLevel".into(), DEFAULT_EFFORT.into());
+        notes.push(("info", format!("Neu eingetragen: Effort {DEFAULT_EFFORT} (änderbar in den Einstellungen des Decks)")));
+    }
+    let mut perms = match out.get("permissions") {
+        Some(Value::Object(p)) => p.clone(),
+        _ => Map::new(),
+    };
+    if non_null(perms.get("defaultMode")).is_none() {
+        perms.insert("defaultMode".into(), DEFAULT_MODE.into());
+        out.insert("permissions".into(), Value::Object(perms));
+        notes.push(("info", format!("Neu eingetragen: Modus {DEFAULT_MODE}, Agenten fragen nicht nach (änderbar in den Einstellungen des Decks)")));
+    }
+    (out, notes)
+}
+
 /// `permissions.defaultMode` für den Panel-Takt: neu gelesen wird nur, wenn sich die
 /// Datei geändert hat. Ist sie gerade halb geschrieben (Claude Code und das Deck
 /// schreiben beide hinein), gilt der letzte gute Stand weiter, statt für einen Takt auf

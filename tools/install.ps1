@@ -14,8 +14,9 @@ Läuft unter Windows PowerShell 5.1 und PowerShell 7. Woher die Programme kommen
 
 Schritte: Voraussetzungen prüfen, laufendes Deck und Wächter beenden, Programme nach
 %LOCALAPPDATA%\claude-agent-deck\bin kopieren, beim ersten Mal ein paar Fragen
-(Repos-Ordner, Jira-Kürzel, fremde statusLine, Autostart), Hooks in Claudes settings.json
-(deck-setup install), Windows-Terminal-Profil (deck-setup wt-profile),
+(Repos-Ordner, Jira-Kürzel, Reviewer, fremde statusLine, Autostart), Hooks in Claudes
+settings.json (deck-setup install; trägt fehlende Vorgaben ein: Modus Bypass, Effort high,
+Vorhandenes bleibt), Windows-Terminal-Profil (deck-setup wt-profile),
 Startmenü-Verknüpfung (deck-setup shortcut), Autostart, Deck starten und prüfen.
 
 Ein zweiter Lauf ist ein Update: er fragt nichts mehr und lässt deck_settings.json stehen.

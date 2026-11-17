@@ -13,6 +13,8 @@ use serde_json::Value;
 
 use crate::isotime::parse_iso;
 
+use super::pr_extra::PrExtra;
+
 /// Alias der offenen PRs.
 pub const ALIAS_OPEN: &str = "open";
 /// Alias der offenen PRs, bei denen ein Review von mir erbeten ist.
@@ -70,6 +72,25 @@ pub struct PrInfo {
     pub waiting_on: Vec<String>,
     /// Nach dem letzten „Änderungen gewünscht“ kamen Commits (umgesetzt).
     pub changed_since_request: bool,
+    /// Kommentare, Threads, Checks, Dateien … für Feed und Automatik (`pr_extra.rs`).
+    pub extra: PrExtra,
+}
+
+impl PrInfo {
+    /// Schlüssel eines PRs in Zustandsdateien und Befehlen: `owner/repo#12`.
+    pub fn key(&self) -> String {
+        pr_key(&self.repo, self.number)
+    }
+
+    /// Kurz für die Anzeige: `client#393`.
+    pub fn label(&self) -> String {
+        format!("{}#{}", short_repo(&self.repo), self.number)
+    }
+}
+
+/// `owner/repo#12`.
+pub fn pr_key(repo: &str, number: u64) -> String {
+    format!("{repo}#{number}")
 }
 
 /// Wer bei einem PR am Zug ist. „Änderungen gewünscht“ bleibt bei GitHub stehen, bis der
@@ -130,14 +151,20 @@ impl PrInfo {
     }
 }
 
-/// Ein gemergter PR (für das Aufräumen: ist der Kopf eines worktree schon gemergt?).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// Ein gemergter PR (für das Aufräumen: ist der Kopf eines worktree schon gemergt? Und
+/// für die Zeitleiste des Feeds).
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MergedPr {
     /// `owner/name`.
     pub repo: String,
     pub head_ref: String,
     /// Commit, auf dem der Branch beim Merge stand.
     pub head_oid: String,
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    /// Unix-Sekunden; 0 = unbekannt.
+    pub merged_at: f64,
 }
 
 /// Ein PR, bei dem ein Review von mir erbeten ist.
@@ -170,6 +197,8 @@ pub struct PrSnapshot {
     pub fetched_at: f64,
     /// Der letzte Abruf scheiterte (kurz, ohne Token); die Daten sind dann die alten.
     pub error: Option<String>,
+    /// Mein Login (`viewer.login`); leer = unbekannt.
+    pub viewer: String,
 }
 
 fn s(v: &Value, key: &str) -> String {
@@ -231,6 +260,7 @@ fn parse_pr(n: &Value) -> Option<PrInfo> {
         open_threads,
         waiting_on,
         changed_since_request,
+        extra: PrExtra::default(),
     })
 }
 
@@ -282,6 +312,10 @@ pub fn parse(v: &Value) -> Result<PrSnapshot, String> {
                     repo: n.pointer("/repository/nameWithOwner").and_then(Value::as_str).unwrap_or("").to_string(),
                     head_ref: s(n, "headRefName"),
                     head_oid: s(n, "headRefOid"),
+                    number: n.get("number").and_then(Value::as_u64).unwrap_or(0),
+                    title: s(n, "title"),
+                    url: s(n, "url"),
+                    merged_at: n.get("mergedAt").and_then(Value::as_str).and_then(parse_iso).unwrap_or(0.0),
                 };
                 if !m.repo.is_empty() && !m.head_ref.is_empty() && !m.head_oid.is_empty() {
                     merged.push(m);
@@ -297,6 +331,7 @@ pub fn parse(v: &Value) -> Result<PrSnapshot, String> {
         merged,
         fetched_at: 0.0,
         error: None,
+        viewer: data.pointer("/viewer/login").and_then(Value::as_str).unwrap_or("").to_string(),
     })
 }
 

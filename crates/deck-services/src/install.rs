@@ -106,12 +106,14 @@ fn bin(bin_dir: &Path) -> String {
 /// `deck-report.exe` und `deck-statusline.exe`). Fremde Hooks bleiben. Eine fremde
 /// statusLine bleibt bei [`StatusLine::Keep`]; bei [`StatusLine::Replace`] kommt sie
 /// vorher nach `saved_file`, und `uninstall` legt sie zurück. Zeigt die statusLine schon
-/// auf das Deck, ändert sich an ihr nichts.
+/// auf das Deck, ändert sich an ihr nichts. Fehlen Modus oder Effort, kommen die
+/// Vorgaben des Decks hinein (`settings::fill_defaults`); was dasteht, bleibt.
 pub fn install(settings_file: &Path, bin_dir: &Path, mode: StatusLine, saved_file: &Path) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
     let opts = MergeOptions { force_statusline: mode == StatusLine::Replace };
-    let (after, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
+    let (merged, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
+    let (after, defaults) = settings::fill_defaults(&merged);
     if let Some(old) = saved::replaced(&before, &after) {
         // Erst sichern, dann ersetzen: misslingt die Sicherung, bleibt alles, wie es ist.
         if let Err(e) = saved::save(saved_file, old) {
@@ -124,6 +126,7 @@ pub fn install(settings_file: &Path, bin_dir: &Path, mode: StatusLine, saved_fil
     // deck-core nennt den Schalter in seinem Hinweis `--force`; deck-setup heißt er so.
     let notes: Vec<(&str, String)> = notes.into_iter().map(|(g, t)| (g, t.replace("--force", "--statusline replace"))).collect();
     r.extend_notes(&notes);
+    r.extend_notes(&defaults);
     r
 }
 

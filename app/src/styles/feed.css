@@ -1,0 +1,341 @@
+/* PR-Feed im Info-Fenster (views/dash/FeedPane.tsx, Entwurf F1 „Zeitleiste“). Farben,
+ * Knöpfe und Entwurf stehen in feedParts.css. */
+
+.feed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px -10px 0 0;
+  padding-right: 10px;
+  overflow: auto;
+  font-size: 13px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hl-high) transparent;
+}
+
+.fsec {
+  margin: 8px 0 0;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fsec-off {
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.fempty {
+  margin: 0;
+  color: var(--subtle);
+}
+
+.fmuted {
+  color: var(--subtle);
+}
+
+.flink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ref);
+  font: inherit;
+  cursor: pointer;
+}
+
+.flink:hover {
+  color: var(--ink);
+}
+
+/* ── Braucht dich ─────────────────────────────────────────────────────── */
+
+.fcard {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--overlay);
+}
+
+.fcard-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.fcard-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fcard-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.fcard-who span {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.fcard-pr,
+.fcard-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fcard-text {
+  color: var(--meta);
+}
+
+.fcard-acts {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+/* „Claude soll umsetzen“ über die ganze Breite, „Öffnen“ und „Später“ darunter. */
+.fcard-acts > :first-child {
+  grid-column: 1 / -1;
+}
+
+/* ── Hintergrund-Agenten ──────────────────────────────────────────────── */
+
+.fagents,
+.fauto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fagent,
+.fautorow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.fagent:hover,
+.fautorow:hover {
+  background: var(--overlay);
+}
+
+.fagent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--f-agent);
+  animation: fbreathe 3s ease-in-out infinite;
+}
+
+.fagent[data-waiting] .fagent-dot {
+  background: var(--f-minor);
+  animation: none;
+}
+
+.fagent-task {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes fbreathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ── Zeitleiste ───────────────────────────────────────────────────────── */
+
+.ftimeline {
+  display: grid;
+  grid-template-columns: 52px 22px minmax(0, 1fr);
+  column-gap: 8px;
+}
+
+.ftime {
+  padding: 7px 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.fdot-cell {
+  padding-top: 10px;
+}
+
+.fdot-cell .fdot {
+  display: block;
+}
+
+.fdot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--f-minor);
+  vertical-align: -1px;
+}
+
+.fdot[data-kind="merged"] {
+  background: var(--f-merged);
+}
+
+.fdot[data-kind="agent"] {
+  background: var(--f-agent);
+}
+
+.fdot[data-kind="review"] {
+  background: var(--f-review);
+}
+
+.fdot[data-kind="problem"] {
+  background: var(--f-problem);
+}
+
+.fevent {
+  min-width: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--overlay);
+  line-height: 1.45;
+}
+
+.fevent[data-last] {
+  border-bottom: 0;
+}
+
+.freport {
+  max-height: 160px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--overlay);
+  scrollbar-width: thin;
+  color: var(--meta);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+/* ── Automatik je PR ──────────────────────────────────────────────────── */
+
+.fauto-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fauto-state {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--subtle);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fautorow[data-held] .fauto-state {
+  color: var(--warn-ink);
+}
+
+/* ── Legende, Kopf ────────────────────────────────────────────────────── */
+
+.flegend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px -18px -16px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--overlay);
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.flegend .fdot {
+  width: 8px;
+  height: 8px;
+  vertical-align: 0;
+}
+
+.fhead-ctl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.fswitch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--subtle);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fswitch:hover {
+  color: var(--ink);
+}
+
+.fswitch-track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--hl-high);
+  transition: background 150ms;
+}
+
+.fswitch-track[data-on] {
+  background: var(--f-merged);
+}
+
+.fswitch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--card);
+  transition: left 150ms;
+}
+
+.fswitch-track[data-on] .fswitch-knob {
+  left: 14px;
+}
