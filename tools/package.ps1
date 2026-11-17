@@ -7,7 +7,8 @@ Läuft unter Windows PowerShell 5.1 und PowerShell 7 (auch in GitHub Actions).
 
   1. baut die Release-Fassung (überspringen mit -SkipBuild: nimmt target\release)
   2. legt die sechs Programme, install.ps1, uninstall.ps1, LICENSE und version.txt flach
-     in das Zip (Rechtsklick > Alle extrahieren ergibt genau einen Ordner)
+     in das Zip, dazu resources\papier (Schrift, Farben und Shader für den Papier-Look);
+     Rechtsklick > Alle extrahieren ergibt genau einen Ordner
   3. legt install.ps1 zusätzlich einzeln nach dist\ (Release-Anhang für den Einzeiler)
 
 Die Version steht in app\src-tauri\tauri.conf.json.
@@ -63,6 +64,10 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 foreach ($exe in $Exes) { Copy-Item -LiteralPath (Join-Path $Release $exe) -Destination $stage }
 foreach ($f in 'tools\install.ps1', 'tools\uninstall.ps1', 'LICENSE') { Copy-Item -LiteralPath (Join-Path $Repo $f) -Destination $stage }
+$papier = Join-Path $Repo 'resources\papier'
+if (-not (Test-Path -LiteralPath (Join-Path $papier 'fonts\IBMPlexMono-Regular.ttf'))) { Fail "$papier ist unvollständig" }
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'resources') | Out-Null
+Copy-Item -LiteralPath $papier -Destination (Join-Path $stage 'resources\papier') -Recurse
 [IO.File]::WriteAllText((Join-Path $stage 'version.txt'), "$Version`r`n", (New-Object Text.UTF8Encoding $false))
 
 $zip = Join-Path $OutDir "$Name.zip"

@@ -8,7 +8,8 @@
 //! `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck\agent-deck.json`
 //!
 //! Das Profil braucht das Deck für `closeOnExit: always` (sonst bleibt nach `/exit`
-//! „[process exited …]“ stehen) und für Farben, an die Rand und Nähte passen. Die
+//! „[process exited …]“ stehen) und für Farben, an die Rand und Nähte passen; Schrift
+//! und Shader kommen aus dem Papier-Look ([`crate::look`]). Die
 //! Kommandozeile gibt das Deck bei jedem Start selbst mit (`deck_core::wt::wt_argv`).
 //!
 //! Hat der Nutzer schon ein eigenes Profil „Agent Deck“ in seiner `settings.json` (der
@@ -18,10 +19,11 @@
 use std::path::{Path, PathBuf};
 
 use deck_core::wt::PROFILE;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::fsutil::normcase;
 use crate::guard;
+use crate::installed::Installed;
 use crate::report::{Grade, Report};
 
 /// Ordnername unter `Fragments`: zugleich die Quelle (`source`), unter der Windows
@@ -45,23 +47,34 @@ pub fn wt_settings_path() -> PathBuf {
         .join("settings.json")
 }
 
-/// Das Fragment. `icon`: Pfad zu `claude.exe`, falls bekannt (das Profil-Symbol zeigt
-/// sich nur im Tab, den der Fokus-Modus ausblendet; ohne ist auch gut).
-pub fn fragment(icon: Option<&str>) -> Value {
-    let mut profile = json!({
-        "name": PROFILE,
-        "hidden": true,
-        "closeOnExit": "always",
-        "commandline": "powershell.exe -NoLogo",
-        "colorScheme": {"light": SCHEME_LIGHT, "dark": SCHEME_DARK},
-        "font": {"size": 10.5},
-        "scrollbarState": "hidden",
-        "suppressApplicationTitle": true,
-        "intenseTextStyle": "bold",
-    });
+/// Kommandozeile der Shell im Profil: PowerShell 7, wenn es sie gibt.
+pub fn shell_commandline(pwsh_found: bool) -> &'static str {
+    if pwsh_found { "pwsh.exe -NoLogo" } else { "powershell.exe -NoLogo" }
+}
+
+/// Das Fragment, genau wie das Profil des Autors: Schrift IBM Plex Mono (installiert
+/// `deck-setup look`), Papier-Farben, `shader` macht den blassen Vorschlagstext von
+/// Claude im hellen Schema lesbar. `icon`: Pfad zu `claude.exe`, falls bekannt (zeigt
+/// sich nur im Tab, den der Fokus-Modus ausblendet); `shader` nur, wenn die Datei da ist,
+/// sonst meldet das Terminal einen Fehler.
+pub fn fragment(icon: Option<&str>, shell: &str, shader: Option<&str>) -> Value {
+    let mut p = Map::new();
+    p.insert("closeOnExit".into(), "always".into());
+    p.insert("colorScheme".into(), json!({"light": SCHEME_LIGHT, "dark": SCHEME_DARK}));
+    p.insert("commandline".into(), shell.into());
+    p.insert("font".into(), json!({"face": crate::look::FONT_FACE, "size": 10.5}));
+    p.insert("hidden".into(), true.into());
     if let Some(i) = icon.filter(|i| !i.is_empty()) {
-        profile["icon"] = i.into();
+        p.insert("icon".into(), i.into());
     }
+    p.insert("name".into(), PROFILE.into());
+    p.insert("scrollbarState".into(), "hidden".into());
+    p.insert("suppressApplicationTitle".into(), true.into());
+    p.insert("intenseTextStyle".into(), "bold".into());
+    if let Some(sh) = shader.filter(|s| !s.is_empty()) {
+        p.insert("experimental.pixelShaderPath".into(), sh.into());
+    }
+    let profile = Value::Object(p);
     json!({
         "profiles": [profile],
         "schemes": [
@@ -111,7 +124,8 @@ fn check_target(path: &Path) -> std::io::Result<()> {
 }
 
 /// Fragment schreiben (oder erneuern), außer der Nutzer hat ein eigenes Profil.
-pub fn install(path: &Path, wt_settings: &Path, icon: Option<&str>) -> Report {
+/// `profile` ist das fertige Fragment ([`fragment`]).
+pub fn install(path: &Path, wt_settings: &Path, profile: &Value, m: &mut Installed) -> Report {
     let mut r = Report::default();
     if let Ok(text) = std::fs::read_to_string(wt_settings)
         && has_own_profile(&text)
@@ -123,8 +137,9 @@ pub fn install(path: &Path, wt_settings: &Path, icon: Option<&str>) -> Report {
         r.push(Grade::Fail, e.to_string());
         return r;
     }
-    let want = serde_json::to_vec_pretty(&fragment(icon)).expect("JSON");
+    let want = serde_json::to_vec_pretty(profile).expect("JSON");
     if std::fs::read(path).is_ok_and(|have| have == want) {
+        m.wt_fragment = Some(path.to_string_lossy().into_owned());
         r.push(Grade::Ok, format!("Windows-Terminal-Profil „{PROFILE}“ ist auf Stand"));
         return r;
     }
@@ -135,6 +150,7 @@ pub fn install(path: &Path, wt_settings: &Path, icon: Option<&str>) -> Report {
     match written {
         Ok(()) => {
             r.changed = true;
+            m.wt_fragment = Some(path.to_string_lossy().into_owned());
             r.push(Grade::Ok, format!("Windows-Terminal-Profil „{PROFILE}“: {}", path.display()));
         }
         Err(e) => r.push(Grade::Fail, format!("{} nicht geschrieben: {e}", path.display())),
@@ -142,9 +158,11 @@ pub fn install(path: &Path, wt_settings: &Path, icon: Option<&str>) -> Report {
     r
 }
 
-/// Fragment und seinen Ordner entfernen; fehlt es, ist das gut.
-pub fn remove(path: &Path) -> Report {
+/// Fragment und seinen Ordner entfernen; fehlt es, ist das gut. Die Datei gehört dem
+/// Deck (eigener Ordner), sie geht immer.
+pub fn remove(path: &Path, m: &mut Installed) -> Report {
     let mut r = Report::default();
+    m.wt_fragment = None;
     if let Err(e) = check_target(path) {
         r.push(Grade::Fail, e.to_string());
         return r;

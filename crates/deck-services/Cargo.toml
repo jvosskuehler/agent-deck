@@ -30,9 +30,13 @@ serde_json = { version = "1.0.154", features = ["preserve_order"] }
 # HTTP für den Usage-Endpoint. native-tls = Schannel mit dem Zertifikatsspeicher von
 # Windows, win-system-proxy = Proxy aus den Windows-Einstellungen: beides wie bei
 # Pythons urllib, damit ein Firmennetz hier nicht anders aussieht als vorher.
+# Registratur des Benutzers (Schriften, Autostart, Eintrag unter „Apps“). Steckt über
+# Tauri schon im Baum.
+winreg = "0.56.0"
 ureq = { version = "3.5.1", default-features = false, features = ["native-tls", "win-system-proxy"] }
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
@@ -41,6 +45,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Variant",
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [dev-dependencies]

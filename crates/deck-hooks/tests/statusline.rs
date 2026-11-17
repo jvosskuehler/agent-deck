@@ -223,3 +223,18 @@ fn ticket_and_pr_shorten_the_title_so_the_line_never_grows() {
     // Ein kurzer Titel wird nicht gekürzt, nur weil ein Ticket dazukommt.
     assert!(header("B3", &refs(Some(("ORPH-4116", false)), None), Some("Kurz"), None, Lang::German).ends_with("Kurz\x1b[0m"));
 }
+
+#[test]
+fn a_saved_previous_status_line_runs_with_the_same_input_and_follows_the_decks_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path(), None);
+    let stdin = br#"{"model": {"display_name": "Opus"}}"#;
+    assert_eq!(run(&env, Some(stdin)), "Opus", "ohne Sicherung nur die eigene Zeile");
+    // `echo` läuft in Git Bash wie in cmd: der Test hängt nicht davon ab, was installiert ist.
+    let saved = json!({"statusLine": {"type": "command", "command": "echo meine-zeile", "padding": 0}});
+    save_json(&dir.path().join(deck_core::paths::STATUSLINE_BACKUP_FILE), &saved).unwrap();
+    assert_eq!(run(&env, Some(stdin)), "Opus  ·  meine-zeile");
+    let failing = json!({"statusLine": {"type": "command", "command": "exit 7"}});
+    save_json(&dir.path().join(deck_core::paths::STATUSLINE_BACKUP_FILE), &failing).unwrap();
+    assert_eq!(run(&env, Some(stdin)), "Opus", "ein Fehler der alten Zeile kostet nichts");
+}

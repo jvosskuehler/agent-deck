@@ -2,18 +2,27 @@
 //! Gebraucht von `tools/install.ps1` und `tools/uninstall.ps1`.
 //!
 //! ```text
-//! deck-setup install   --bin <ordner> [--statusline keep|replace]
-//!                         Hooks und statusLine in Claudes settings.json auf die Programme
-//!                         in <ordner> richten. Fremde Hooks bleiben. Eine fremde statusLine
-//!                         bleibt bei keep (Vorgabe); replace sichert sie nach
-//!                         %LOCALAPPDATA%\claude-agent-deck\statusline.before.json.
+//! deck-setup install   --bin <ordner> [--statusline replace|keep]
+//!                         Hooks und Infozeile (statusLine) in Claudes settings.json auf die
+//!                         Programme in <ordner> richten, fehlende Vorgaben (Modus, Effort)
+//!                         eintragen. Fremde Hooks bleiben. Eine fremde Infozeile wird nach
+//!                         %LOCALAPPDATA%\claude-agent-deck\statusline.before.json gesichert und
+//!                         läuft hinter der des Decks weiter; `keep` lässt sie allein stehen.
 //! deck-setup check     --bin <ordner>   Befunde: fehlende Einträge, cmd /c, Pfade ins Leere …
-//! deck-setup uninstall                  Einträge dieser Fassung heraus, gesicherte statusLine
-//!                                       zurück, alles andere bleibt.
+//! deck-setup look      --from <papier> [--remove]
+//!                                       Papier-Look: Schrift IBM Plex Mono (pro Benutzer),
+//!                                       Claude-Theme, Einstellungen der Deck-Agenten, Shader.
 //! deck-setup shortcut  [--bin <ordner>] [--remove]
 //!                                       Startmenü-Verknüpfung „Agent Deck“ (mit App-Kennung).
 //! deck-setup wt-profile [--remove]      Windows-Terminal-Fragment mit dem Profil „Agent Deck“
 //!                                       und den Farbschemata papier-ebenen(-nacht).
+//! deck-setup autostart [--bin <ordner>] [--remove]
+//!                                       HKCU\…\Run\AgentDeck.
+//! deck-setup apps-entry --bin <ordner> --version <v> [--remove]
+//!                                       Eintrag unter „Apps“ (HKCU\…\Uninstall\AgentDeck).
+//! deck-setup uninstall                  Alles heraus, was die Einrichtung hinzugefügt hat
+//!                                       (laut installed.json und am Namen), gesicherte
+//!                                       Infozeile zurück. Programme und Daten bleiben.
 //! deck-setup remove-vscode-extension    Eintrag in ~/.vscode/extensions/extensions.json und
 //!                                       Ordner agent-deck-bridge entfernen (mehrfach harmlos).
 //! deck-setup resolve-reviewers --names "<text>" [--org <org>]
@@ -24,20 +33,28 @@
 //!                                       Installer; scheitert nie an gh, `note` sagt warum.
 //! ```
 //!
+//! Was eingerichtet wurde, verzeichnet jeder Befehl in
+//! `%LOCALAPPDATA%\claude-agent-deck\installed.json` (`deck_services::installed`).
 //! Claudes settings.json liegt in `CLAUDE_CONFIG_DIR`, sonst in `~/.claude`.
-//! Ausgabe: eine Zeile je Befund (`ok|info|warn|fail: …`), am Ende `## fails=N warns=N`.
-//! Exit-Code 1, wenn es einen Fehler gab, 2 bei falschem Aufruf. `resolve-reviewers` druckt
-//! nur das JSON und endet mit 0.
+//! Ausgabe: eine Zeile je Befund (`ok|info|warn|fail: …`), dann je Merker für den
+//! Installer `## <merker>`, am Ende `## fails=N warns=N`. Exit-Code 1, wenn es einen
+//! Fehler gab, 2 bei falschem Aufruf. `resolve-reviewers` druckt nur das JSON und endet
+//! mit 0.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use deck_services::install::{self, StatusLine};
+use deck_services::installed::{self, Installed};
+use deck_services::look::{self, LookPaths};
 use deck_services::report::{Grade, Report};
-use deck_services::{shortcut, statusline_backup, vscode_cleanup, wt_fragment};
+use deck_services::user_system::RealSystem;
+use deck_services::{apps_entry, autostart, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment};
 
-const USAGE: &str = "deck-setup install --bin <ordner> [--statusline keep|replace] | check --bin <ordner> | uninstall \
-                     | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] | remove-vscode-extension                      | resolve-reviewers --names <text> [--org <org>]";
+const USAGE: &str = "deck-setup install --bin <ordner> [--statusline replace|keep] | check --bin <ordner> | uninstall \
+                     | look --from <ordner> [--remove] | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] \
+                     | autostart [--bin <ordner>] [--remove] | apps-entry --bin <ordner> --version <v> [--remove] \
+                     | remove-vscode-extension | resolve-reviewers --names <text> [--org <org>]";
 
 fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
@@ -55,6 +72,9 @@ fn print(r: &Report) {
     }
     if let Some(b) = &r.backup {
         println!("info: Sicherung: {b}");
+    }
+    for t in &r.tags {
+        println!("## {t}");
     }
     println!("## fails={} warns={}", r.fails(), r.warns());
 }
@@ -80,8 +100,7 @@ fn main() -> ExitCode {
     let remove = args.iter().any(|a| a == "--remove");
     if cmd == Some("resolve-reviewers") {
         let Some(names) = arg_value(&args, "--names") else {
-            eprintln!("--names fehlt
-{USAGE}");
+            eprintln!("--names fehlt\n{USAGE}");
             return ExitCode::from(2);
         };
         let org = arg_value(&args, "--org").unwrap_or("");
@@ -95,24 +114,53 @@ fn main() -> ExitCode {
         }
         return ExitCode::SUCCESS;
     }
-    let r = match (cmd, bin) {
+    let manifest_file = installed::path();
+    let mut m = Installed::load(&manifest_file);
+    let sys = RealSystem;
+    let mut r = match (cmd, bin) {
         (Some("install"), Some(bin)) => {
-            let Some(mode) = StatusLine::parse(arg_value(&args, "--statusline").unwrap_or("keep")) else {
-                eprintln!("--statusline: keep oder replace\n{USAGE}");
+            let Some(mode) = StatusLine::parse(arg_value(&args, "--statusline").unwrap_or("replace")) else {
+                eprintln!("--statusline: replace oder keep\n{USAGE}");
                 return ExitCode::from(2);
             };
-            install::install(&settings_file, &bin, mode, &statusline_backup::path())
+            install::install(&settings_file, &bin, mode, &statusline_backup::path(), &mut m)
         }
         (Some("check"), Some(bin)) => install::check(&settings_file, &bin),
-        (Some("uninstall"), _) => install::uninstall(&settings_file, &statusline_backup::path()),
-        (Some("shortcut"), _) if remove => shortcut::remove(&shortcut::link_path()),
+        (Some("uninstall"), _) => teardown::uninstall_all(&teardown::Targets::real(), &sys, &mut m),
+        (Some("look"), _) if remove => look::remove(&LookPaths::real(), &sys, &mut m),
+        (Some("look"), _) => {
+            let Some(from) = arg_value(&args, "--from") else {
+                eprintln!("--from fehlt\n{USAGE}");
+                return ExitCode::from(2);
+            };
+            look::install(Path::new(from), &LookPaths::real(), &sys, &mut m)
+        }
+        (Some("shortcut"), _) if remove => {
+            m.shortcut = None;
+            shortcut::remove(&shortcut::link_path())
+        }
         (Some("shortcut"), bin) => {
             let exe = bin.unwrap_or_else(default_bin).join("agent-deck.exe");
-            shortcut::create(&shortcut::link_path(), &exe, shortcut::APP_ID)
+            let r = shortcut::create(&shortcut::link_path(), &exe, shortcut::APP_ID);
+            if r.is_ok() {
+                m.shortcut = Some(shortcut::link_path().to_string_lossy().into_owned());
+            }
+            r
         }
-        (Some("wt-profile"), _) if remove => wt_fragment::remove(&wt_fragment::fragment_path()),
+        (Some("wt-profile"), _) if remove => wt_fragment::remove(&wt_fragment::fragment_path(), &mut m),
         (Some("wt-profile"), _) => {
-            wt_fragment::install(&wt_fragment::fragment_path(), &wt_fragment::wt_settings_path(), claude_icon().as_deref())
+            let shader = LookPaths::real().shader();
+            let shader = shader.is_file().then(|| shader.to_string_lossy().into_owned());
+            let shell = wt_fragment::shell_commandline(deck_win::which::which("pwsh.exe").is_some());
+            let profile = wt_fragment::fragment(claude_icon().as_deref(), shell, shader.as_deref());
+            wt_fragment::install(&wt_fragment::fragment_path(), &wt_fragment::wt_settings_path(), &profile, &mut m)
+        }
+        (Some("autostart"), _) if remove => autostart::remove(&sys, &mut m),
+        (Some("autostart"), bin) => autostart::set(&bin.unwrap_or_else(default_bin), &sys, &mut m),
+        (Some("apps-entry"), _) if remove => apps_entry::remove(&sys, &mut m),
+        (Some("apps-entry"), Some(bin)) => {
+            let version = arg_value(&args, "--version").unwrap_or("unbekannt");
+            apps_entry::set(&bin, version, &sys, &mut m)
         }
         (Some("remove-vscode-extension"), _) => vscode_cleanup::remove_extension(&vscode_cleanup::extensions_dir()),
         _ => {
@@ -120,6 +168,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Err(e) = m.save(&manifest_file) {
+        r.push(Grade::Warn, format!("Liste der Änderungen ({}) nicht gespeichert: {e}", manifest_file.display()));
+    }
     print(&r);
     if r.fails() > 0 { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }

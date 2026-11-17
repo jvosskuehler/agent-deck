@@ -11,6 +11,7 @@ struct Rig {
     bin: PathBuf,
     settings: PathBuf,
     saved: PathBuf,
+    m: std::cell::RefCell<Installed>,
 }
 
 impl Rig {
@@ -22,15 +23,15 @@ impl Rig {
         std::fs::write(bin.join("deck-statusline.exe"), b"").unwrap();
         let settings = d.path().join("claude").join("settings.json");
         let saved = d.path().join("deck").join("statusline.before.json");
-        Rig { _d: d, bin, settings, saved }
+        Rig { _d: d, bin, settings, saved, m: Default::default() }
     }
 
     fn install(&self, mode: StatusLine) -> Report {
-        install(&self.settings, &self.bin, mode, &self.saved)
+        install(&self.settings, &self.bin, mode, &self.saved, &mut self.m.borrow_mut())
     }
 
     fn uninstall(&self) -> Report {
-        uninstall(&self.settings, &self.saved)
+        uninstall(&self.settings, &self.saved, &mut self.m.borrow_mut())
     }
 
     fn with(&self, m: Value) {
@@ -115,14 +116,15 @@ fn install_keeps_other_keys_and_foreign_hooks_and_uninstall_takes_out_only_ours(
 }
 
 #[test]
-fn a_foreign_statusline_stays_unless_replace_is_asked_for() {
+fn a_foreign_statusline_stays_only_when_keep_is_asked_for() {
     let g = Rig::new();
     g.with(json!({"statusLine": foreign()}));
     let r = g.install(StatusLine::Keep);
     assert_eq!(g.statusline(), Some(foreign()));
     assert!(!g.saved.exists());
     assert_eq!(r.warns(), 1, "{r:?}");
-    assert!(r.lines.iter().any(|l| l.text.contains("--statusline replace")), "Hinweis nennt den Schalter von deck-setup");
+    assert!(r.lines.iter().any(|l| l.text.contains("--statusline keep")), "Hinweis nennt den Schalter von deck-setup");
+    assert!(!r.tags.iter().any(|t| t.starts_with("statusline")));
 }
 
 #[test]
@@ -134,11 +136,15 @@ fn replacing_a_foreign_statusline_saves_it_and_uninstall_puts_it_back() {
     assert_eq!(owner(g.statusline().unwrap()["command"].as_str().unwrap()), Owner::Deck);
     let kept = deck_core::paths::load_json(&g.saved).unwrap();
     assert_eq!(kept["statusLine"], foreign());
+    assert!(r.tags.contains(&"statusline-chained".to_string()) && r.tags.contains(&"statusline".to_string()), "{:?}", r.tags);
+    assert_eq!(g.m.borrow().statusline_backup.as_deref(), Some(g.saved.to_string_lossy().as_ref()));
 
     let r = g.uninstall();
     assert!(r.is_ok(), "{r:?}");
     assert_eq!(g.statusline(), Some(foreign()), "genau der alte Wert, samt eigener Felder");
     assert!(!g.saved.exists(), "zurückgelegt: Sicherung weg");
+    assert!(r.tags.contains(&"statusline-restored".to_string()));
+    assert!(g.m.borrow().statusline_backup.is_none());
 }
 
 #[test]
@@ -187,11 +193,52 @@ fn the_mode_is_parsed_from_its_two_words_only() {
     assert_eq!(StatusLine::parse("keep"), Some(StatusLine::Keep));
     assert_eq!(StatusLine::parse("replace"), Some(StatusLine::Replace));
     assert_eq!(StatusLine::parse("force"), None);
-    assert_eq!(StatusLine::default(), StatusLine::Keep);
+    assert_eq!(StatusLine::default(), StatusLine::Replace, "ohne Rückfrage: die Zeile des Decks");
 }
 
 #[test]
 fn the_real_settings_file_is_locked_in_tests() {
     assert!(check_target(&settings_path()).is_err());
     assert!(check_target(Path::new(r"C:\tmp\x\settings.json")).is_ok());
+}
+
+#[test]
+fn new_defaults_are_recorded_and_tagged_but_existing_ones_are_not() {
+    let g = Rig::new();
+    g.with(json!({"effortLevel": "xhigh"}));
+    let r = g.install(StatusLine::Replace);
+    assert_eq!(r.tags, ["statusline", "default permissions.defaultMode=bypassPermissions"]);
+    let m = g.m.borrow().clone();
+    assert_eq!(m.claude_defaults.len(), 1);
+    assert_eq!(m.claude_defaults[0].key, "permissions.defaultMode");
+    let again = g.install(StatusLine::Replace);
+    assert!(again.tags.is_empty(), "ein Update meldet nichts Neues: {:?}", again.tags);
+    assert_eq!(g.m.borrow().claude_defaults.len(), 1, "die erste Installation bleibt verzeichnet");
+}
+
+#[test]
+fn uninstall_removes_a_default_only_while_it_still_has_the_written_value() {
+    let g = Rig::new();
+    g.with(json!({"permissions": {"allow": ["Bash(ls)"]}}));
+    g.install(StatusLine::Replace);
+    let mut m = load(&g.settings);
+    assert_eq!(m["effortLevel"], "high");
+    assert_eq!(m["permissions"]["defaultMode"], "bypassPermissions");
+    m.insert("effortLevel".into(), "medium".into());
+    settings::save(&m, &g.settings).unwrap();
+    let r = g.uninstall();
+    assert!(r.is_ok(), "{r:?}");
+    let m = load(&g.settings);
+    assert_eq!(m["effortLevel"], "medium", "geändert: gehört dem Menschen");
+    assert_eq!(m["permissions"], json!({"allow": ["Bash(ls)"]}), "unser Modus weg, das Fremde bleibt");
+    assert!(g.m.borrow().claude_defaults.is_empty());
+}
+
+#[test]
+fn a_permissions_block_that_only_held_our_default_goes_away_with_it() {
+    let g = Rig::new();
+    g.install(StatusLine::Replace);
+    g.uninstall();
+    let m = load(&g.settings);
+    assert!(m.get("permissions").is_none() && m.get("effortLevel").is_none() && m.get("hooks").is_none(), "{m:?}");
 }

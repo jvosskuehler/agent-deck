@@ -25,6 +25,10 @@ pub const TICKETS_FILE: &str = "tickets.json";
 pub const ORDER_FILE: &str = "slot_order.json";
 pub const WIN_ORDER_FILE: &str = "win_order.json";
 pub const WT_HOSTS_FILE: &str = "wt_hosts.json";
+/// Die Infozeile (Claude Codes `statusLine`), die vor dem Deck da war:
+/// `{"statusLine": <alter Wert>}`. `deck-setup install` legt sie an, `deck-statusline`
+/// ruft ihr Kommando weiter auf, `deck-setup uninstall` legt sie zurück.
+pub const STATUSLINE_BACKUP_FILE: &str = "statusline.before.json";
 
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())

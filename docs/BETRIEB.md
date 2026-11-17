@@ -17,7 +17,9 @@ Exe eingebaut und werden beim Start in den App-Ordner geschrieben.
 `tools\package.ps1` (`-SkipBuild` nimmt `target\release`) legt
 `dist\agent-deck-<version>-win-x64.zip` an, flach: die sechs Programme (`agent-deck`,
 `deck-report`, `deck-statusline`, `deck-console`, `deck-watchdog`, `deck-setup`),
-`install.ps1`, `uninstall.ps1`, `LICENSE`, `version.txt`. Dazu `dist\install.ps1` einzeln.
+`install.ps1`, `uninstall.ps1`, `LICENSE`, `version.txt`, dazu der Ordner
+`resources\papier` (Schrift samt `OFL.txt`, Claude-Theme, Einstellungen der Deck-Agenten,
+Shader). Dazu `dist\install.ps1` einzeln.
 Ein Tag `v<version>` startet `.github/workflows/release.yml`: baut auf `windows-latest`,
 prüft Tag gegen `tauri.conf.json` und hängt Zip und `install.ps1` an das Release, das
 `install.ps1 -Download` über die GitHub-API (`/releases/latest`, ohne Anmeldung) findet.
@@ -25,43 +27,67 @@ prüft Tag gegen `tauri.conf.json` und hängt Zip und `install.ps1` an das Relea
 ## Installieren
 
 `tools\install.ps1` läuft unter Windows PowerShell 5.1 und PowerShell 7 (UTF-8 mit BOM,
-sonst zerlegt 5.1 die Umlaute). Quelle: neben dem Skript liegende Programme (entpacktes
-Paket), `-Package <zip>`, `-Download` oder `-FromSource`/`-SkipBuild` (Vorgabe im
-Checkout). Ablauf:
+sonst zerlegt 5.1 die Umlaute), ohne Administratorrechte. Quelle: neben dem Skript
+liegende Programme (entpacktes Paket), `-Package <zip>`, `-Download` oder
+`-FromSource`/`-SkipBuild` (Vorgabe im Checkout). Den Papier-Look findet es in
+`resources\papier` neben sich (Paket) bzw. im Checkout.
+
+Die Texte sind für Menschen, die nichts über Claude Code wissen wollen: je Frage ein
+Satz, keine Fachwörter (Infozeile statt statusLine, Claude-Einstellungen statt
+settings.json), Fortschritt als ✓-Zeilen, am Ende höchstens fünf Zeilen. Was
+`deck-setup` meldet, zeigt der Installer nur bei `warn`/`fail`; alles andere mit
+`-Verbose`. Die Zusammenfassung baut er aus den Merkern (`## statusline`,
+`## statusline-chained`, `## default <schlüssel>=<wert>`), nicht aus Meldungstexten.
+Ablauf:
 
 1. Voraussetzungen: Windows Terminal, WebView2-Laufzeit, `claude` (PATH oder
-   `~\.local\bin\claude.exe`) sind Pflicht; PowerShell 7, `gh` (mit `gh auth status`),
-   `acli`, OpenSSH-Client nur Hinweise. Jeder `winget`-Hinweis trägt `--source winget`:
-   auf einem frischen Server 2025 scheitert die msstore-Quelle am Zertifikat
-   (0x8a15005e).
-2. Deck und Wächter beenden (Wächter zuerst), Programme nach
-   `%LOCALAPPDATA%\claude-agent-deck\bin`, dazu `uninstall.ps1` und `version.txt`;
-   Herkunftsmarke entfernen (`Unblock-File`), sonst fragt SmartScreen.
-3. Nur wenn es `deck_settings.json` noch nicht gibt: Fragen nach Repos-Ordner, Jira-Kürzel,
-   Autostart; daraus eine neue Datei mit `settings_version: 1`, `repos_root`,
+   `~\.local\bin\claude.exe`) sind Pflicht; `gh` nur ein Hinweis. `gh auth status` läuft
+   über `cmd /d /c "… >nul 2>&1"`: direkt aufgerufen schreibt 5.1 sein stderr als roten
+   NativeCommandError, auch ins Transcript. Jeder `winget`-Hinweis trägt
+   `--source winget`: auf einem frischen Server 2025 scheitert die msstore-Quelle am
+   Zertifikat (0x8a15005e).
+2. Nur wenn es `deck_settings.json` noch nicht gibt: Fragen nach Repos-Ordner, Jira-Kürzel,
+   Reviewern, Autostart; daraus eine neue Datei mit `settings_version: 1`, `repos_root`,
    `jira_prefix` und allen Schaltern mit Wirkung nach außen auf `false`. Eine vorhandene
    Datei wird nie überschrieben, ein Update fragt nichts.
+3. Deck und Wächter beenden (Wächter zuerst), Programme nach
+   `%LOCALAPPDATA%\claude-agent-deck\bin`, dazu `uninstall.ps1` und `version.txt`;
+   Herkunftsmarke entfernen (`Unblock-File`), sonst fragt SmartScreen.
 4. `deck-setup remove-vscode-extension`, nur wenn `~\.vscode\extensions\agent-deck-bridge*`
    da ist (Übergangsschritt, kann entfallen).
-5. `deck-setup install --statusline keep|replace` und `check`, `deck-setup wt-profile`,
-   `deck-setup shortcut` (beim ersten Mal, danach nur, wenn die Verknüpfung noch da ist),
-   Autostart als Wert `AgentDeck` unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+5. `deck-setup install` und `check`, `look --from <papier>`, `wt-profile` (nach `look`,
+   weil das Profil den Shader nennt), `shortcut` (beim ersten Mal, danach nur, wenn die
+   Verknüpfung noch da ist), `autostart` bzw. `autostart --remove`, `apps-entry`.
 6. Deck starten und prüfen, dass es läuft.
 
-`tools\uninstall.ps1` (liegt nach der Installation in `bin`): Deck und Wächter beenden,
-`deck-setup uninstall`, `shortcut --remove`, `wt-profile --remove`, Autostart weg, dann
-nach Rückfrage (`-KeepData`, `-RemoveData`) den ganzen Ordner
-`%LOCALAPPDATA%\claude-agent-deck`; sonst nur die Programme.
+`-StatusLine keep` (nicht in der Hilfe) lässt eine fremde Infozeile allein stehen.
+
+`tools\uninstall.ps1` (liegt nach der Installation in `bin`, gestartet meist über
+„Apps“): liegt es in `bin`, kopiert es sich nach `%TEMP%` und läuft dort weiter (mit
+`-Relaunched`), damit `bin` gelöscht werden kann; hat es ein eigenes Konsolenfenster
+(`GetConsoleProcessList` = 1, also aus „Apps“ gestartet), wartet es am Ende auf Enter.
+Dann Deck und Wächter beenden, `deck-setup uninstall`, nach Rückfrage (`-KeepData`,
+`-RemoveData`; `-Quiet` fragt nichts und behält die Daten) den ganzen Ordner
+`%LOCALAPPDATA%\claude-agent-deck`, sonst nur `bin`.
 
 ### deck-setup
 
+Jeder Befehl verzeichnet, was er angelegt hat, in
+`%LOCALAPPDATA%\claude-agent-deck\installed.json` (`deck_services::installed`, Format in
+`docs/DATEIEN.md`). Was Registratur und Schriften der Sitzung anfasst, steckt hinter
+`deck_services::user_system::UserSystem`; Tests nehmen `MemSystem`, die echte Fassung
+schreibt in Tests nur unter `HKCU\Software\AgentDeckTest`.
+
 | Befehl | Wirkung |
 |---|---|
-| `install --bin <ordner> [--statusline keep\|replace]` | sechs Hooks in Claudes `settings.json` (`CLAUDE_CONFIG_DIR`, sonst `~\.claude`). Eine fremde statusLine bleibt bei `keep` (Vorgabe); `replace` sichert sie vorher nach `%LOCALAPPDATA%\claude-agent-deck\statusline.before.json`. Zeigt die statusLine schon auf das Deck, ändert sich an ihr nichts. Vor jeder Änderung `settings.json.bak-<zeit>` daneben. |
+| `install --bin <ordner> [--statusline replace\|keep]` | sechs Hooks und die Infozeile (`statusLine`) in Claudes `settings.json` (`CLAUDE_CONFIG_DIR`, sonst `~\.claude`). Eine fremde Infozeile kommt vorher nach `%LOCALAPPDATA%\claude-agent-deck\statusline.before.json`; `deck-statusline` ruft sie weiter auf und hängt ihre Ausgabe an (`deck_hooks::chain`: Git Bash wie Claude Code, sonst `cmd`, höchstens 1 s, Fehler fallen still weg). `keep` lässt sie allein stehen. Fehlen Modus oder Effort: Bypass und high, verzeichnet. Vor jeder Änderung `settings.json.bak-<zeit>` daneben. |
 | `check --bin <ordner>` | Befunde: fehlende Einträge, `cmd /c`, Pfade ins Leere |
-| `uninstall` | unsere Einträge heraus, gesicherte statusLine zurück (nicht, wenn inzwischen eine andere eingetragen ist; dann bleibt die Sicherung liegen) |
+| `look --from <ordner> [--remove]` | Papier-Look (`deck_services::look`): IBM Plex Mono nach `%LOCALAPPDATA%\Microsoft\Windows\Fonts`, angemeldet unter `HKCU\Software\Microsoft\Windows NT\CurrentVersion\Fonts` und in der Sitzung geladen (`AddFontResource`, `WM_FONTCHANGE`); übersprungen, wenn es die Datei oder den Namen beim Benutzer oder im System schon gibt. `themes\papier.json` und `agent-deck-wt.settings.json` in Claudes Ordner, `wt-faint-hell.hlsl` im App-Ordner. Eine vorhandene Datei, die nicht vom Deck stammt oder geändert wurde, bleibt. |
 | `shortcut [--bin <ordner>] [--remove]` | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Agent Deck.lnk` auf `bin\agent-deck.exe`, Arbeitsordner `bin`, Symbol aus der Exe, `System.AppUserModel.ID` = `de.idm.agentdeck` |
-| `wt-profile [--remove]` | Fragment `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck\agent-deck.json`: verstecktes Profil „Agent Deck“ (`closeOnExit: always`) und die Schemata `papier-ebenen`, `papier-ebenen-nacht`. Kein Fragment, wenn die `settings.json` des Terminals schon ein eigenes Profil „Agent Deck“ hat. |
+| `wt-profile [--remove]` | Fragment `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck\agent-deck.json`: verstecktes Profil „Agent Deck“ genau wie das des Autors (`closeOnExit: always`, `pwsh.exe -NoLogo` bzw. `powershell.exe -NoLogo`, IBM Plex Mono 10.5, Shader mit absolutem Pfad, wenn er da ist) und die Schemata `papier-ebenen`, `papier-ebenen-nacht`. Kein Fragment, wenn die `settings.json` des Terminals schon ein eigenes Profil „Agent Deck“ hat. |
+| `autostart [--bin <ordner>] [--remove]` | Wert `AgentDeck` unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` |
+| `apps-entry --bin <ordner> --version <v> [--remove]` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentDeck`: Name, Version, Herausgeber „Agent Deck“, Symbol, `UninstallString` (`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<bin>\uninstall.ps1"`), `QuietUninstallString` (dasselbe mit `-Quiet -KeepData`), `NoModify`, `NoRepair`, `EstimatedSize` |
+| `uninstall` | alles heraus (`deck_services::teardown`): Hooks und Infozeile, die gesicherte Infozeile zurück (nicht, wenn inzwischen eine andere eingetragen ist; dann bleibt die Sicherung liegen), Vorgaben nur mit unverändertem Wert, Schriften (eine geladene wird beim nächsten Anmelden über `RunOnce` gelöscht), Theme- und Einstellungsdateien nur mit unverändertem Inhalt, Verknüpfung, Fragment, Autostart, Eintrag unter „Apps“. Ohne `installed.json` nur, was am Namen dem Deck gehört. |
 | `remove-vscode-extension` | Eintrag und Ordner der früheren VS-Code-Extension weg |
 
 Das Deck läuft aus `bin`: eine Änderung ist erst nach Build und Installation sichtbar.
@@ -121,6 +147,11 @@ Nur gegen Attrappen getestet:
 - `deck-setup remove-vscode-extension` auf dem echten Rechner.
 - Installation aus dem Paket auf einem frischen Rechner (Server 2025, nur PowerShell 5.1):
   Windows-Suche findet „Agent Deck“, das Terminal lädt das Fragment.
+- Papier-Look und Deinstallation auf einem frischen Rechner (17.11.2026 nur gegen
+  Attrappen): Schrift ohne Neuanmeldung im Terminal, Shader greift, Theme `custom:papier`
+  in den Deck-Agenten, die frühere Infozeile hinter der des Decks (Git Bash), „Apps“ ›
+  Deinstallieren aus dem eigenen Fenster samt Rückfrage und Enter am Ende, eine geladene
+  Schrift verschwindet nach dem nächsten Anmelden.
 - `crash_resume` bei einem echten Absturz.
 - Ob `live.json` `cwd` bei Agenten im `wt/`-Ordner den worktree trägt.
 - „Ohne Fenster“ echt (startet node/pwsh/cmd versteckt):

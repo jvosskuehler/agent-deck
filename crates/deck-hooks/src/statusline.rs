@@ -8,6 +8,9 @@
 //! Leerlauf weiter, und `live.json` bleibt frisch genug, dass das Deck vor dem Ablauf
 //! kompaktieren kann (`deck_core::auto_compact`).
 //!
+//! Stand vor dem Deck schon eine andere Infozeile, läuft deren Kommando weiter und steht
+//! hinter der eigenen Zeile (`crate::chain`).
+//!
 //! Gibt IMMER eine Zeile aus (auch ohne Slot), als UTF-8-Bytes: über die
 //! Konsolen-Codepage wurde aus „für“ „f◆r“. Felder mit falschem Typ gelten als fehlend
 //! (`deck_core::field`). Prozent und Kosten behalten in `live.json` ihren JSON-Typ,
@@ -223,5 +226,8 @@ pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
     let shows_cache = !rec.get("cache_until").is_none_or(Value::is_null);
     let shows_pr = !rec.get("pr").is_none_or(Value::is_null);
     let lang = if shows_cache || shows_pr { Lang::from_settings(&env.claude_settings) } else { Lang::German };
-    line(&rec, &shown_slot, &refs, lang)
+    let own = line(&rec, &shown_slot, &refs, lang);
+    // Die Infozeile, die vor dem Deck da war, steht dahinter (`chain`).
+    let previous = crate::chain::previous_line(&env.app_dir, stdin.unwrap_or_default());
+    crate::chain::append(&own, previous.as_deref())
 }

@@ -3,7 +3,8 @@
 Installiert oder aktualisiert das Agent Deck für den angemeldeten Benutzer.
 
 .DESCRIPTION
-Läuft unter Windows PowerShell 5.1 und PowerShell 7. Woher die Programme kommen:
+Läuft unter Windows PowerShell 5.1 und PowerShell 7, ohne Administratorrechte.
+Woher die Programme kommen:
 
   aus einem entpackten Paket   install.ps1 liegt neben agent-deck.exe (Vorgabe)
   -Package <zip>               aus einem heruntergeladenen Paket
@@ -12,21 +13,18 @@ Läuft unter Windows PowerShell 5.1 und PowerShell 7. Woher die Programme kommen
                                das Skript in tools\ eines Checkouts liegt
   -SkipBuild                   wie -FromSource, aber das schon gebaute target\release nehmen
 
-Schritte: Voraussetzungen prüfen, laufendes Deck und Wächter beenden, Programme nach
-%LOCALAPPDATA%\claude-agent-deck\bin kopieren, beim ersten Mal ein paar Fragen
-(Repos-Ordner, Jira-Kürzel, Reviewer, fremde statusLine, Autostart), Hooks in Claudes
-settings.json (deck-setup install; trägt fehlende Vorgaben ein: Modus Bypass, Effort high,
-Vorhandenes bleibt), Windows-Terminal-Profil (deck-setup wt-profile),
-Startmenü-Verknüpfung (deck-setup shortcut), Autostart, Deck starten und prüfen.
+Beim ersten Mal fragt der Installer nach dem Repos-Ordner, dem Jira-Kürzel, den
+Reviewern und dem Autostart. Ein zweiter Lauf ist ein Update und fragt nichts.
+Was er am Rechner ändert, steht in README.md; Einzelheiten in docs\BETRIEB.md.
+-Verbose zeigt jeden Schritt.
 
-Ein zweiter Lauf ist ein Update: er fragt nichts mehr und lässt deck_settings.json stehen.
-Entfernen: %LOCALAPPDATA%\claude-agent-deck\bin\uninstall.ps1
+Entfernen: Windows-Einstellungen > Apps > Agent Deck.
 
 .EXAMPLE
 powershell -ExecutionPolicy Bypass -File install.ps1
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "Leo, Anna Schmidt" -StatusLine keep -Autostart
+powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "Leo, Anna Schmidt" -Autostart
 #>
 [CmdletBinding()]
 param(
@@ -38,7 +36,9 @@ param(
     [string]$ReposRoot,
     [string]$JiraPrefix,
     [string]$PrReviewer,
-    [ValidateSet('keep', 'replace')][string]$StatusLine,
+    # Nur für Fachleute: keep lässt eine fremde Infozeile allein stehen (dann fehlen
+    # Modell, Effort und Kontext auf den Kacheln). Vorgabe: die des Decks, die alte dahinter.
+    [ValidateSet('keep', 'replace')][string]$StatusLine = 'replace',
     [switch]$Autostart,
     [switch]$NoShortcut
 )
@@ -52,19 +52,16 @@ $Bin = Join-Path $AppDir 'bin'
 $SettingsFile = Join-Path $AppDir 'deck_settings.json'
 $Setup = Join-Path $Bin 'deck-setup.exe'
 $Exes = @('agent-deck.exe', 'deck-report.exe', 'deck-statusline.exe', 'deck-console.exe', 'deck-watchdog.exe', 'deck-setup.exe')
-$RunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$RunValue = 'AgentDeck'
 $Winget = 'winget install --source winget -e --id'
 
 # Fehler enden in Fail. Aus einer Datei gestartet beendet das den Prozess mit Exit 1; aus
 # dem Speicher gestartet (Einzeiler) nur das Skript, das Fenster bleibt offen.
 $script:Failed = $false
-function Step($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
-function Ok($text) { Write-Host "   ok: $text" -ForegroundColor Green }
-function Info($text) { Write-Host "   $text" }
-function Warn($text) { Write-Host "   Hinweis: $text" -ForegroundColor Yellow }
+function Say($text) { Write-Host "  $text" }
+function Ok($text) { Write-Host "  ✓ $text" -ForegroundColor Green }
+function Hint($text) { Write-Host "  Hinweis: $text" -ForegroundColor Yellow }
 function Fail($text) {
-    Write-Host "   FEHLER: $text" -ForegroundColor Red
+    Write-Host "  FEHLER: $text" -ForegroundColor Red
     $script:Failed = $true
     throw 'agent-deck-install-failed'
 }
@@ -79,14 +76,21 @@ function Invoke-Native {
     try { & $Exe @Arguments } finally { $ErrorActionPreference = $old }
 }
 
+# deck-setup aufrufen. Gezeigt werden nur Hinweise und Fehler; alles andere mit -Verbose.
+# Merker (`## <merker>`) landen in $script:Tags, daraus entsteht die Zusammenfassung.
 function Invoke-Setup([string[]]$SetupArgs) {
     $old = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try { $out = & $Setup @SetupArgs 2>&1 } finally { $ErrorActionPreference = $old }
-    $out | ForEach-Object { Write-Host "   $_" }
-    # Was deck-setup an Claudes Vorgaben neu eingetragen hat, steht am Ende noch einmal.
-    $script:NewDefaults += @($out | Where-Object { "$_" -match 'Neu eingetragen: (.*)$' } | ForEach-Object { $Matches[1] })
-    if ($LASTEXITCODE -ne 0) { Fail "deck-setup $($SetupArgs -join ' ') ist gescheitert" }
+    $code = $LASTEXITCODE
+    foreach ($line in @($out | ForEach-Object { "$_" })) {
+        if ($line -match '^## fails=') { continue }
+        if ($line -match '^## (.+)$') { $script:Tags += $Matches[1]; continue }
+        if ($line -match '^warn: (.*)$') { Hint $Matches[1] }
+        elseif ($line -match '^fail: (.*)$') { Write-Host "  FEHLER: $($Matches[1])" -ForegroundColor Red }
+        else { Write-Verbose "deck-setup $($SetupArgs[0]): $line" }
+    }
+    if ($code -ne 0) { Fail "Einrichtung gescheitert (deck-setup $($SetupArgs[0])). Mit -Verbose noch einmal starten, um mehr zu sehen." }
 }
 
 function Find-Command([string]$Name) {
@@ -105,7 +109,7 @@ function Test-Interactive {
 function Read-Answer([string]$Prompt, [string]$Default) {
     $suffix = ''
     if ($Default) { $suffix = " [$Default]" }
-    $a = Read-Host "   $Prompt$suffix"
+    $a = Read-Host "$Prompt$suffix"
     if ([string]::IsNullOrWhiteSpace($a)) { return $Default }
     return $a.Trim()
 }
@@ -114,7 +118,7 @@ function Read-YesNo([string]$Prompt, [bool]$Default) {
     $hint = 'j/N'
     if ($Default) { $hint = 'J/n' }
     while ($true) {
-        $a = Read-Host "   $Prompt ($hint)"
+        $a = Read-Host "$Prompt ($hint)"
         if ([string]::IsNullOrWhiteSpace($a)) { return $Default }
         switch -regex ($a.Trim()) {
             '^(j|ja|y|yes)$' { return $true }
@@ -177,54 +181,45 @@ function Resolve-ReposRoot([bool]$Ask) {
         $p = [Environment]::ExpandEnvironmentVariables($ReposRoot)
         switch (Test-ReposRoot $p) {
             'ok' { return (Resolve-Path -LiteralPath $p).Path }
-            'norepos' {
-                # Ausdrücklich angegeben: das ist die Bestätigung.
-                Warn "$p enthält keinen Unterordner mit .git. Übernommen, weil ausdrücklich angegeben."
-                return (Resolve-Path -LiteralPath $p).Path
-            }
-            default { Fail "Repos-Ordner $p gibt es nicht." }
+            # Ausdrücklich angegeben: das ist die Bestätigung.
+            'norepos' { return (Resolve-Path -LiteralPath $p).Path }
+            default { Fail "Den Ordner $p gibt es nicht." }
         }
     }
     $suggest = Get-ReposSuggestion
     if (-not $Ask) {
         if ($suggest -and (Test-ReposRoot $suggest) -eq 'ok') {
-            Info "Repos-Ordner: $suggest (gefunden)"
+            Write-Verbose "Repos-Ordner: $suggest (gefunden)"
             return $suggest
         }
-        Fail 'Kein Repos-Ordner mit git-Repos gefunden. Bitte -ReposRoot <Ordner> angeben.'
+        Fail 'Kein Ordner mit Git-Repos gefunden. Bitte mit -ReposRoot <Ordner> angeben.'
     }
-    Write-Host ''
-    Write-Host '   Der Repos-Ordner ist der Ordner, in dem alle deine git-Repos liegen (je Repo ein'
-    Write-Host '   Unterordner). Dort starten die Agenten, dort sucht das Deck nach worktrees.'
     while ($true) {
-        $p = Read-Answer 'Repos-Ordner' $suggest
+        $p = Read-Answer 'In welchem Ordner liegen deine Git-Repos?' $suggest
         if (-not $p) { continue }
         $p = [Environment]::ExpandEnvironmentVariables($p.Trim('"'))
         switch (Test-ReposRoot $p) {
-            'ok' {
-                $p = (Resolve-Path -LiteralPath $p).Path
-                Ok "$p ($(Get-RepoCount $p) Repos)"
-                return $p
-            }
-            'missing' { Warn "$p gibt es nicht." }
+            'ok' { return (Resolve-Path -LiteralPath $p).Path }
+            'missing' { Hint 'Den Ordner gibt es nicht.' }
             'norepos' {
-                Warn "$p enthält keinen Unterordner mit .git."
-                if (Read-YesNo 'Trotzdem diesen Ordner nehmen?' $false) { return (Resolve-Path -LiteralPath $p).Path }
+                if (Read-YesNo 'In diesem Ordner liegt kein Git-Repo. Trotzdem nehmen?' $false) { return (Resolve-Path -LiteralPath $p).Path }
             }
         }
     }
 }
 
 function Resolve-JiraPrefix([bool]$Ask) {
-    if ($script:JiraGiven) { $v = $JiraPrefix }
-    elseif ($Ask) {
-        Write-Host ''
-        Write-Host '   Jira-Projektkürzel (z. B. ORPH): Ticketnummern wie ORPH-123 werden dann erkannt.'
-        $v = Read-Answer 'Jira-Kürzel, leer = keins' ''
-    } else { $v = '' }
-    $v = "$v".Trim().ToUpper()
-    if ($v -and $v -notmatch '^[A-Z][A-Z0-9_]*$') { Fail "Jira-Kürzel '$v' ist ungültig (nur Buchstaben, Ziffern, _)." }
-    return $v
+    if ($script:JiraGiven) {
+        $v = "$JiraPrefix".Trim().ToUpper()
+        if ($v -and $v -notmatch '^[A-Z][A-Z0-9_]*$') { Fail "Jira-Kürzel '$v' geht nicht: nur Buchstaben, Ziffern und _." }
+        return $v
+    }
+    if (-not $Ask) { return '' }
+    while ($true) {
+        $v = "$(Read-Answer 'Jira-Projektkürzel für Ticketnummern (z. B. ORPH, leer = keins)' '')".Trim().ToUpper()
+        if (-not $v -or $v -match '^[A-Z][A-Z0-9_]*$') { return $v }
+        Hint 'Nur Buchstaben, Ziffern und _, zum Beispiel ORPH.'
+    }
 }
 
 # ── Reviewer der PR-Automatik ─────────────────────────────────────────────
@@ -250,9 +245,9 @@ function Test-GitHubLogin([string]$Text) {
 
 # Nummerierte Wahl; -1 = übersprungen.
 function Read-Choice([string]$Prompt, [string[]]$Items) {
-    for ($i = 0; $i -lt $Items.Count; $i++) { Info "  $($i + 1)  $($Items[$i])" }
+    for ($i = 0; $i -lt $Items.Count; $i++) { Say "$($i + 1)  $($Items[$i])" }
     while ($true) {
-        $a = Read-Host "   $Prompt (1-$($Items.Count), leer = überspringen)"
+        $a = Read-Host "$Prompt (1-$($Items.Count), leer = überspringen)"
         if ([string]::IsNullOrWhiteSpace($a)) { return -1 }
         $n = 0
         if ([int]::TryParse($a.Trim(), [ref]$n) -and $n -ge 1 -and $n -le $Items.Count) { return ($n - 1) }
@@ -275,28 +270,25 @@ function Resolve-PrReviewer([bool]$Ask, [string]$Exe) {
     $names = [ordered]@{}
     $orgOut = ''
     if ($script:ReviewerGiven) { $text = $PrReviewer }
-    elseif ($Ask) {
-        Write-Host ''
-        Write-Host '   Die PR-Automatik (zunächst aus) kann deine PRs Reviewern zuweisen.'
-        $text = Read-Answer 'Wer soll deine PRs reviewen? Namen oder GitHub-Logins, mehrere mit Komma, leer = Vorgabe des Repos' ''
-    } else { $text = '' }
+    elseif ($Ask) { $text = Read-Answer 'Wer soll deine PRs reviewen? Namen, mehrere mit Komma (leer = keiner)' '' }
+    else { $text = '' }
     $org = ''
     $warned = $false
     while ("$text".Trim()) {
         $r = Invoke-ReviewerLookup $Exe $text $org
         if ($r -and $r.note -eq 'chooseOrg' -and $Ask) {
             $orgs = @($r.orgs)
-            Write-Host '   Dein GitHub-Konto gehört zu mehreren Organisationen.'
+            Say 'Dein GitHub-Konto gehört zu mehreren Organisationen.'
             $i = Read-Choice 'In welcher sollen die Namen gesucht werden?' $orgs
             if ($i -ge 0) { $org = $orgs[$i]; continue }
         }
         $looked = [bool]($r -and $r.note -eq 'none')
         if (-not $looked -and -not $warned) {
-            $why = 'gh fehlt oder ist nicht angemeldet'
-            if ($r -and $r.note -eq 'chooseOrg') { $why = 'mehrere GitHub-Organisationen, keine gewählt' }
+            $why = 'GitHub CLI fehlt oder ist nicht angemeldet'
+            if ($r -and $r.note -eq 'chooseOrg') { $why = 'keine Organisation gewählt' }
             elseif ($r -and $r.note -eq 'noOrg') { $why = 'keine GitHub-Organisation gefunden' }
             elseif ($r -and $r.note -eq 'membersFailed') { $why = "Mitglieder von $($r.org) nicht lesbar" }
-            Warn "Namen nicht nachgeschlagen ($why): Logins werden ungeprüft übernommen."
+            Hint "Namen nicht geprüft ($why), übernommen wie getippt."
             $warned = $true
         }
         if ($r) { $results = @($r.results) }
@@ -320,32 +312,28 @@ function Resolve-PrReviewer([bool]$Ask, [string]$Exe) {
             switch ("$($x.status)") {
                 'unique' {
                     $pick = "$($x.login)"; $pickName = "$($x.name)"
-                    Ok (Format-Person $pick $pickName)
+                    Ok "Reviewer: $(Format-Person $pick $pickName)"
                 }
                 'ambiguous' {
                     $cands = @($x.candidates)
                     $labels = @($cands | ForEach-Object { Format-Person $_.login $_.name })
                     if ($Ask) {
-                        Write-Host "   '$($x.input)' passt auf mehrere:"
+                        Say "'$($x.input)' passt auf mehrere:"
                         $i = Read-Choice 'Wen meinst du?' $labels
                         if ($i -ge 0) {
                             $pick = "$($cands[$i].login)"; $pickName = "$($cands[$i].name)"
-                            Ok (Format-Person $pick $pickName)
-                        } else { Info "'$($x.input)' übersprungen" }
+                            Ok "Reviewer: $(Format-Person $pick $pickName)"
+                        }
                     } else {
-                        Warn "'$($x.input)' passt auf mehrere ($($labels -join ', ')), übersprungen."
+                        Hint "'$($x.input)' passt auf mehrere ($($labels -join ', ')), übersprungen."
                     }
                 }
                 default {
                     if ($x.login) {
                         $pick = "$($x.login)"
-                        if ($looked) { Warn "'$($x.input)' nicht in $where gefunden, als Login übernommen." }
-                        else { Info "'$($x.input)' als Login übernommen (ungeprüft)" }
-                    } elseif ($looked) {
-                        Warn "'$($x.input)' nicht in $where gefunden und kein GitHub-Login, übersprungen."
-                        $retry += "$($x.input)"
+                        if ($looked) { Hint "'$($x.input)' nicht in $where gefunden, als GitHub-Login übernommen." }
                     } else {
-                        Warn "'$($x.input)' ist kein GitHub-Login, übersprungen."
+                        Hint "'$($x.input)' nicht gefunden, übersprungen."
                         $retry += "$($x.input)"
                     }
                 }
@@ -357,60 +345,10 @@ function Resolve-PrReviewer([bool]$Ask, [string]$Exe) {
         }
         $text = ''
         if ($Ask -and $retry.Count -gt 0) {
-            $text = Read-Answer "Wen meintest du mit $($retry -join ', ')? Name oder Login, leer = überspringen" ''
+            $text = Read-Answer "Wen meintest du mit $($retry -join ', ')? Name oder GitHub-Login (leer = überspringen)" ''
         }
     }
     return @{ Logins = ($logins -join ', '); Org = $orgOut; Names = $names }
-}
-
-# ── Claudes settings.json ─────────────────────────────────────────────────
-
-function Get-ClaudeSettingsPath {
-    $dir = $env:CLAUDE_CONFIG_DIR
-    if ([string]::IsNullOrWhiteSpace($dir)) { $dir = Join-Path $env:USERPROFILE '.claude' }
-    return (Join-Path $dir 'settings.json')
-}
-
-# Kommando einer statusLine, die nicht dem Deck gehört; sonst $null.
-function Get-ForeignStatusLine {
-    $path = Get-ClaudeSettingsPath
-    if (-not (Test-Path -LiteralPath $path)) { return $null }
-    try {
-        $raw = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)
-        $s = $raw | ConvertFrom-Json
-    } catch { return $null }
-    if (-not $s.statusLine) { return $null }
-    $cmd = "$($s.statusLine.command)"
-    if ($cmd -match '(^|[/\\"\s])deck-statusline(\.exe)?($|["\s])') { return $null }
-    if ([string]::IsNullOrWhiteSpace($cmd)) { return '(ohne Kommando)' }
-    return $cmd
-}
-
-function Resolve-StatusLine([bool]$Ask) {
-    if ($StatusLine) { return $StatusLine }
-    $foreign = Get-ForeignStatusLine
-    if (-not $foreign -or -not $Ask) { return 'keep' }
-    Write-Host ''
-    Write-Host '   In Claudes settings.json steht schon eine statusLine eines anderen Werkzeugs:'
-    Write-Host "     $foreign"
-    Write-Host '   Das Deck liest Modell, Effort und Kontext-% aus seiner eigenen statusLine; mit der'
-    Write-Host '   fremden bleiben diese Angaben auf den Kacheln leer. Ersetzen sichert die alte,'
-    Write-Host '   uninstall.ps1 legt sie zurück.'
-    if (Read-YesNo 'statusLine durch die des Decks ersetzen?' $false) { return 'replace' }
-    return 'keep'
-}
-
-# ── Autostart (HKCU\...\Run, Wert „AgentDeck“) ────────────────────────────
-
-function Set-Autostart([bool]$On) {
-    if ($On) {
-        New-Item -Path $RunKey -Force | Out-Null
-        Set-ItemProperty -Path $RunKey -Name $RunValue -Value ('"' + (Join-Path $Bin 'agent-deck.exe') + '"')
-        Ok 'Autostart beim Anmelden (HKCU\...\Run\AgentDeck)'
-    } else {
-        Remove-ItemProperty -Path $RunKey -Name $RunValue -ErrorAction SilentlyContinue
-        Ok 'kein Autostart'
-    }
 }
 
 # ── Quelle der Programme ──────────────────────────────────────────────────
@@ -431,7 +369,7 @@ function Test-BuildTools {
 }
 
 function Build-FromSource([string]$Repo) {
-    Step 'Release bauen'
+    Say 'Baue aus dem Quellcode …'
     Test-BuildTools
     # Release muss in target\release landen, nicht in einem Agenten-Zielordner.
     Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
@@ -460,7 +398,7 @@ function Find-PackageRoot([string]$Dir) {
 }
 
 function Expand-Package([string]$Zip) {
-    if (-not (Test-Path -LiteralPath $Zip)) { Fail "Paket $Zip gibt es nicht." }
+    if (-not (Test-Path -LiteralPath $Zip)) { Fail "Das Paket $Zip gibt es nicht." }
     $dest = Join-Path ([IO.Path]::GetTempPath()) ('agent-deck-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     # .NET statt Expand-Archive: in einer 5.1, die das Archive-Modul aus PowerShell 7 lädt
     # (PSModulePath geerbt), scheitert Expand-Archive an einer fehlenden Überladung.
@@ -472,7 +410,7 @@ function Expand-Package([string]$Zip) {
 }
 
 function Get-ReleaseZip {
-    Step "Neuestes Release von github.com/$GitHubRepo holen"
+    Say 'Lade das neueste Paket von GitHub …'
     try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
     $api = "https://api.github.com/repos/$GitHubRepo/releases/latest"
     try {
@@ -480,18 +418,19 @@ function Get-ReleaseZip {
     } catch {
         $code = $null
         try { $code = [int]$_.Exception.Response.StatusCode } catch { }
-        if ($code -eq 404) { Fail "Es gibt noch kein veröffentlichtes Release (https://github.com/$GitHubRepo/releases). Bitte ein Paket von Hand besorgen und mit -Package <zip> installieren." }
-        Fail "GitHub nicht erreichbar ($($_.Exception.Message)). Proxy oder Netz prüfen, oder das Paket von Hand laden und -Package <zip> nehmen."
+        if ($code -eq 404) { Fail "Es gibt noch kein veröffentlichtes Paket (https://github.com/$GitHubRepo/releases). Bitte ein Paket besorgen und mit -Package <zip> installieren." }
+        Fail "GitHub ist nicht erreichbar ($($_.Exception.Message)). Netz oder Proxy prüfen, oder das Paket von Hand laden und -Package <zip> nehmen."
     }
     $asset = $rel.assets | Where-Object { $_.name -match '^agent-deck-.+-win-x64\.zip$' } | Select-Object -First 1
-    if (-not $asset) { Fail "Release $($rel.tag_name) hat kein Paket agent-deck-*-win-x64.zip." }
+    if (-not $asset) { Fail "Das Release $($rel.tag_name) enthält kein Paket agent-deck-*-win-x64.zip." }
     $zip = Join-Path ([IO.Path]::GetTempPath()) $asset.name
     Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = 'agent-deck-installer' }
-    Ok "$($asset.name) ($($rel.tag_name))"
+    Write-Verbose "$($asset.name) ($($rel.tag_name))"
     return $zip
 }
 
-# Gibt @{ Dir = Ordner mit den Programmen; Version; Scripts = Ordner mit uninstall.ps1 }.
+# Gibt @{ Dir = Ordner mit den Programmen; Version; Scripts = Ordner mit uninstall.ps1;
+# Papier = Ordner mit Schrift und Farben }.
 function Resolve-Source {
     $here = $PSScriptRoot
     $repo = $null
@@ -500,7 +439,7 @@ function Resolve-Source {
         if ((Test-Path -LiteralPath (Join-Path $parent 'Cargo.toml')) -and (Test-Path -LiteralPath (Join-Path $parent 'app\package.json'))) { $repo = $parent }
     }
     if ($FromSource -or $SkipBuild) {
-        if (-not $repo) { Fail '-FromSource/-SkipBuild gehen nur aus tools\ eines Checkouts.' }
+        if (-not $repo) { Fail '-FromSource und -SkipBuild gehen nur aus tools\ eines Checkouts.' }
     }
     $mode = $null
     if ($Package) { $mode = 'package' }
@@ -513,11 +452,11 @@ function Resolve-Source {
     switch ($mode) {
         'source' {
             if (-not $SkipBuild) { Build-FromSource $repo }
-            return @{ Dir = (Join-Path $repo 'target\release'); Version = (Get-SourceVersion $repo); Scripts = (Join-Path $repo 'tools') }
+            return @{ Dir = (Join-Path $repo 'target\release'); Version = (Get-SourceVersion $repo); Scripts = (Join-Path $repo 'tools'); Papier = (Join-Path $repo 'resources\papier') }
         }
         'folder' { $dir = $here }
         'package' {
-            if (-not (Test-Path -LiteralPath $Package -PathType Leaf)) { Fail "Paket $Package gibt es nicht." }
+            if (-not (Test-Path -LiteralPath $Package -PathType Leaf)) { Fail "Das Paket $Package gibt es nicht." }
             $dir = Expand-Package (Resolve-Path -LiteralPath $Package).Path
         }
         'download' { $dir = Expand-Package (Get-ReleaseZip) }
@@ -525,7 +464,7 @@ function Resolve-Source {
     $version = 'unbekannt'
     $vf = Join-Path $dir 'version.txt'
     if (Test-Path -LiteralPath $vf) { $version = (Get-Content -LiteralPath $vf -TotalCount 1).Trim() }
-    return @{ Dir = $dir; Version = $version; Scripts = $dir }
+    return @{ Dir = $dir; Version = $version; Scripts = $dir; Papier = (Join-Path $dir 'resources\papier') }
 }
 
 # ── Voraussetzungen ───────────────────────────────────────────────────────
@@ -547,8 +486,16 @@ function Find-Claude {
     return $null
 }
 
+# Angemeldet bei GitHub? Über cmd mit umgeleiteter Ausgabe: so sieht PowerShell 5.1 kein
+# stderr von gh und schreibt keinen roten NativeCommandError (auch nicht ins Transcript).
+function Test-GhLogin {
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & cmd.exe /d /c 'gh auth status >nul 2>&1' } finally { $ErrorActionPreference = $old }
+    return ($LASTEXITCODE -eq 0)
+}
+
 function Test-Prerequisites {
-    Step 'Voraussetzungen prüfen'
     $bad = 0
     $wt = Find-Command 'wt.exe'
     if (-not $wt) {
@@ -556,60 +503,36 @@ function Test-Prerequisites {
         try { $pkg = Get-AppxPackage -Name 'Microsoft.WindowsTerminal*' -ErrorAction SilentlyContinue | Select-Object -First 1 } catch { $pkg = $null }
         if ($pkg) { $wt = $pkg.InstallLocation }
     }
-    if ($wt) { Ok "Windows Terminal ($wt)" }
-    else {
-        Write-Host '   FEHLT: Windows Terminal. Die Agenten laufen darin.' -ForegroundColor Red
-        Write-Host "          Installieren: $Winget Microsoft.WindowsTerminal (oder Microsoft Store)"
-        $bad++
-    }
-    $wv = Test-WebView2
-    if ($wv) { Ok "WebView2-Laufzeit $wv" }
-    else {
-        Write-Host '   FEHLT: Microsoft Edge WebView2-Laufzeit. Die Oberfläche des Decks braucht sie.' -ForegroundColor Red
-        Write-Host "          Installieren: $Winget Microsoft.EdgeWebView2Runtime"
-        $bad++
-    }
-    $claude = Find-Claude
-    if ($claude) { Ok "Claude Code ($claude)" }
-    else {
-        Write-Host '   FEHLT: Claude Code (claude). Das Deck startet und beobachtet Claude-Code-Agenten.' -ForegroundColor Red
-        Write-Host '          Installieren: irm https://claude.ai/install.ps1 | iex   (danach neues Fenster)'
-        $bad++
-    }
-    if ($bad -gt 0) { Fail "$bad Voraussetzung(en) fehlen, siehe oben. Danach install.ps1 noch einmal starten." }
+    if ($wt) { Ok 'Windows Terminal' }
+    else { Write-Host "  ✗ Windows Terminal fehlt. Installieren: $Winget Microsoft.WindowsTerminal" -ForegroundColor Red; $bad++ }
+    if (Test-WebView2) { Ok 'WebView2' }
+    else { Write-Host "  ✗ WebView2 fehlt. Installieren: $Winget Microsoft.EdgeWebView2Runtime" -ForegroundColor Red; $bad++ }
+    if (Find-Claude) { Ok 'Claude Code' }
+    else { Write-Host '  ✗ Claude Code fehlt. Installieren: irm https://claude.ai/install.ps1 | iex (danach ein neues Fenster öffnen)' -ForegroundColor Red; $bad++ }
+    if ($bad -gt 0) { Fail 'Bitte das Fehlende installieren und den Installer noch einmal starten.' }
 
     # Kann, muss nicht.
-    $pwsh = Find-Command 'pwsh.exe'
-    if ($pwsh) { Ok "PowerShell 7 ($pwsh)" } else { Info "PowerShell 7 fehlt: die Agenten laufen in Windows PowerShell 5.1. Optional: $Winget Microsoft.PowerShell" }
-    $gh = Find-Command 'gh'
-    if ($gh) {
-        Invoke-Native $gh @('auth', 'status') 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) { Ok 'GitHub CLI (gh), angemeldet' }
-        else { Warn 'GitHub CLI (gh) ist nicht angemeldet: PRs auf den Kacheln fehlen. Anmelden: gh auth login' }
-    } else { Info "GitHub CLI (gh) fehlt: ohne sie keine PRs auf den Kacheln. Optional: $Winget GitHub.cli" }
-    if (Find-Command 'acli') { Ok 'Atlassian CLI (acli)' } else { Info 'Atlassian CLI (acli) fehlt: optional, für Jira-Tickets.' }
-    if (Find-Command 'ssh.exe') { Ok 'OpenSSH-Client' } else { Info 'OpenSSH-Client fehlt: optional (Windows-Feature „OpenSSH-Client“).' }
+    if (-not (Find-Command 'gh')) { Hint "GitHub CLI fehlt, dann zeigt das Deck keine PRs. Installieren: $Winget GitHub.cli" }
+    elseif (Test-GhLogin) { Ok 'GitHub CLI' }
+    else { Hint 'GitHub CLI ist nicht angemeldet, dann zeigt das Deck keine PRs. Anmelden: gh auth login' }
 }
 
 # ── Ablauf ────────────────────────────────────────────────────────────────
 
 function Stop-Deck {
-    Step 'Laufendes Deck beenden'
     # Der Wächter zuerst, sonst startet er die App gleich wieder.
     $any = $false
     foreach ($name in 'deck-watchdog', 'agent-deck') {
         foreach ($p in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-            Ok "$name beendet (PID $($p.Id))"
+            Write-Verbose "$name beendet (PID $($p.Id))"
             $any = $true
         }
     }
     if ($any) { Start-Sleep -Milliseconds 700 }   # die Exe ist erst nach dem Prozessende überschreibbar
-    else { Ok 'lief nicht' }
 }
 
 function Copy-Programs($Source) {
-    Step "Programme nach $Bin kopieren"
     foreach ($exe in $Exes) {
         if (-not (Test-Path -LiteralPath (Join-Path $Source.Dir $exe))) { Fail "$exe fehlt in $($Source.Dir)" }
     }
@@ -619,7 +542,7 @@ function Copy-Programs($Source) {
         for ($i = 1; ; $i++) {
             try { Copy-Item -LiteralPath (Join-Path $Source.Dir $exe) -Destination (Join-Path $Bin $exe) -Force; break }
             catch {
-                if ($i -ge 10) { Fail "$exe nicht kopiert: $($_.Exception.Message)" }
+                if ($i -ge 10) { Fail "$exe ließ sich nicht kopieren: $($_.Exception.Message)" }
                 Start-Sleep -Milliseconds 500
             }
         }
@@ -630,7 +553,7 @@ function Copy-Programs($Source) {
     # Aus dem Internet geladene Dateien tragen eine Herkunftsmarke; ohne sie fragt
     # SmartScreen nicht bei jedem Start.
     Get-ChildItem -LiteralPath $Bin -File | Unblock-File -ErrorAction SilentlyContinue
-    Ok "$($Exes -join ', ') (Version $($Source.Version))"
+    Ok "Programme (Version $($Source.Version))"
 }
 
 function Write-DeckSettings([string]$Repos, [string]$Jira, $Reviewers) {
@@ -645,11 +568,10 @@ function Write-DeckSettings([string]$Repos, [string]$Jira, $Reviewers) {
     $s.auto_compact = $true
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
     Write-Utf8 $SettingsFile ($s | ConvertTo-Json -Depth 4)
-    Ok "Einstellungen: $SettingsFile"
+    Write-Verbose "Einstellungen: $SettingsFile"
 }
 
 function Start-Deck {
-    Step 'Deck starten'
     Start-Process -FilePath (Join-Path $Bin 'agent-deck.exe') -WorkingDirectory $Bin
     $deadline = (Get-Date).AddSeconds(15)
     $app = $null
@@ -658,12 +580,32 @@ function Start-Deck {
         $app = Get-Process -Name 'agent-deck' -ErrorAction SilentlyContinue
         if ($app) { break }
     }
-    if (-not $app) { Fail "agent-deck.exe läuft nicht. Protokoll: $AppDir\agent-deck.log" }
-    Ok "agent-deck läuft (PID $(@($app.Id) -join ', '))"
+    if (-not $app) { Fail "Das Deck ist nicht gestartet. Protokoll: $AppDir\agent-deck.log" }
+    Ok 'Deck gestartet'
+}
+
+function Write-Summary([bool]$FirstRun, [string]$Version, [bool]$InStartMenu) {
+    Write-Host ''
+    if ($FirstRun -and $InStartMenu) { Write-Host 'Fertig. Das Deck läuft und steht im Startmenü.' -ForegroundColor Green }
+    elseif ($FirstRun) { Write-Host 'Fertig. Das Deck läuft.' -ForegroundColor Green }
+    else { Write-Host "Fertig. Agent Deck $Version ist aktualisiert und läuft." -ForegroundColor Green }
+    if ($script:Tags -contains 'statusline') {
+        $t = 'Die Infozeile unter dem Claude-Chat zeigt jetzt Modell, Effort und Kontext.'
+        if ($script:Tags -contains 'statusline-chained') { $t += ' Deine bisherige Zeile steht dahinter.' }
+        Write-Host $t
+    }
+    $new = @()
+    foreach ($tag in $script:Tags) {
+        if ($tag -match '^default permissions\.defaultMode=') { $new += 'Agenten fragen nicht nach (Modus Bypass)' }
+        elseif ($tag -match '^default effortLevel=(.+)$') { $new += "Effort $($Matches[1])" }
+    }
+    if ($new.Count -gt 0) { Write-Host "Neu in den Claude-Einstellungen: $($new -join ', '). Änderbar im Deck unter Einstellungen." }
+    Write-Host 'Deinstallieren: Windows-Einstellungen › Apps › Agent Deck'
 }
 
 function Invoke-Main {
-    Write-Host 'Agent Deck installieren' -ForegroundColor Cyan
+    Write-Host 'Agent Deck wird installiert.' -ForegroundColor Cyan
+    Write-Host ''
     Test-Prerequisites
     $source = Resolve-Source
     $firstRun = -not (Test-Path -LiteralPath $SettingsFile)
@@ -672,62 +614,57 @@ function Invoke-Main {
     $repos = $null; $jira = ''; $reviewers = $null
     $autostartOn = $null
     if ($firstRun) {
-        Step 'Ersteinrichtung'
+        if ($ask) { Write-Host '' }
         $repos = Resolve-ReposRoot $ask
         $jira = Resolve-JiraPrefix $ask
         # deck-setup aus der Quelle: nach bin kopiert wird erst nach den Fragen.
         $reviewers = Resolve-PrReviewer $ask (Join-Path $source.Dir 'deck-setup.exe')
         if ($script:AutostartGiven) { $autostartOn = [bool]$Autostart }
-        elseif ($ask) { Write-Host ''; $autostartOn = Read-YesNo 'Deck beim Anmelden an Windows automatisch starten?' $true }
+        elseif ($ask) { $autostartOn = Read-YesNo 'Deck beim Windows-Start mitstarten?' $true }
         else { $autostartOn = $false }
+        if ($ask) { Write-Host '' }
     } elseif ($script:AutostartGiven) {
         $autostartOn = [bool]$Autostart
     }
-    $mode = Resolve-StatusLine ($firstRun -and $ask)
 
     Stop-Deck
     Copy-Programs $source
 
     # Die frühere VS-Code-Extension (bis 09.11.2026) nur anfassen, wenn sie da ist.
     if (Test-Path (Join-Path $env:USERPROFILE '.vscode\extensions\agent-deck-bridge*')) {
-        Step 'Frühere VS-Code-Extension des Decks entfernen'
         Invoke-Setup @('remove-vscode-extension')
     }
 
-    Step "Hooks in $(Get-ClaudeSettingsPath) einrichten und prüfen"
-    Invoke-Setup @('install', '--bin', $Bin, '--statusline', $mode)
+    Invoke-Setup @('install', '--bin', $Bin, '--statusline', $StatusLine)
     Invoke-Setup @('check', '--bin', $Bin)
     # Erst nach den Hooks: scheitert ein erster Lauf vorher, fragt der nächste wieder.
     if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
+    Ok 'Claude-Einstellungen'
 
-    Step 'Windows-Terminal-Profil „Agent Deck“'
+    # Erst Schrift und Shader, dann das Terminal-Profil, das beide nennt.
+    Invoke-Setup @('look', '--from', $source.Papier)
     Invoke-Setup @('wt-profile')
+    if (Test-Path -LiteralPath $source.Papier) { Ok 'Schrift und Farben' }
 
     $link = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Agent Deck.lnk'
-    if ($NoShortcut) { Info 'Startmenü-Verknüpfung übersprungen (-NoShortcut)' }
-    elseif ($firstRun -or (Test-Path -LiteralPath $link)) {
-        Step 'Startmenü-Verknüpfung'
+    $inStartMenu = $false
+    if (-not $NoShortcut -and ($firstRun -or (Test-Path -LiteralPath $link))) {
         Invoke-Setup @('shortcut', '--bin', $Bin)
+        $inStartMenu = $true
     }
-
-    if ($null -ne $autostartOn) { Step 'Autostart'; Set-Autostart $autostartOn }
+    if ($null -ne $autostartOn) {
+        if ($autostartOn) { Invoke-Setup @('autostart', '--bin', $Bin) } else { Invoke-Setup @('autostart', '--remove') }
+    }
+    Invoke-Setup @('apps-entry', '--bin', $Bin, '--version', $source.Version)
+    if ($inStartMenu) { Ok 'Startmenü' }
 
     Start-Deck
-    Write-Host "`nAgent Deck $($source.Version) installiert." -ForegroundColor Green
-    if ($script:NewDefaults.Count -gt 0) {
-        Write-Host '   In Claudes settings.json neu eingetragen (deine eigenen Vorgaben bleiben immer):' -ForegroundColor Yellow
-        foreach ($d in $script:NewDefaults) { Write-Host "     $d" -ForegroundColor Yellow }
-    }
-    if ($firstRun) {
-        Write-Host '   PR-Automatik, Titan, Store-Update und Auto-Modus sind aus;'
-        Write-Host '   anschalten im Deck unter Einstellungen.'
-    }
-    Write-Host "   Entfernen: powershell -ExecutionPolicy Bypass -File `"$Bin\uninstall.ps1`""
+    Write-Summary $firstRun $source.Version $inStartMenu
 }
 
 # Ob ein Parameter angegeben wurde, sehen die Funktionen in ihrem eigenen
 # $PSBoundParameters nicht: einmal hier oben festhalten.
-$script:NewDefaults = @()
+$script:Tags = @()
 $script:JiraGiven = $PSBoundParameters.ContainsKey('JiraPrefix')
 $script:ReviewerGiven = $PSBoundParameters.ContainsKey('PrReviewer')
 $script:AutostartGiven = $PSBoundParameters.ContainsKey('Autostart')
@@ -738,7 +675,7 @@ try { $oldEncoding = [Console]::OutputEncoding; [Console]::OutputEncoding = New-
 try {
     Invoke-Main
 } catch {
-    if (-not $script:Failed) { Write-Host "   FEHLER: $($_.Exception.Message)" -ForegroundColor Red; Write-Host "   $($_.InvocationInfo.PositionMessage)" }
+    if (-not $script:Failed) { Write-Host "  FEHLER: $($_.Exception.Message)" -ForegroundColor Red; Write-Host "  $($_.InvocationInfo.PositionMessage)" }
     $script:Failed = $true
 } finally {
     if ($oldEncoding) { try { [Console]::OutputEncoding = $oldEncoding } catch { } }

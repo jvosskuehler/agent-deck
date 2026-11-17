@@ -17,8 +17,27 @@ Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Host
 neben dem Code. Darunter `dash-hidden-reviews.json`: JSON-Liste der PR-Adressen, deren
 Review-Anfrage im Info-Fenster ausgeblendet ist; nur die App schreibt sie, kaputt = leer.
 Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die
-fremde statusLine, die `deck-setup install --statusline replace` ersetzt hat;
-`deck-setup uninstall` legt sie zurück und löscht die Datei.
+fremde statusLine, die `deck-setup install` ersetzt hat. Solange sie liegt, führt
+`deck-statusline` ihr `command` bei jedem Lauf mit demselben stdin aus (Git Bash wie
+Claude Code, sonst `cmd`; höchstens 1 s; Exit ≠ 0, leere Ausgabe oder Zeitüberschreitung
+= nichts) und hängt die Ausgabe ohne abschließenden Zeilenumbruch mit `  ·  ` an die
+letzte eigene Zeile (`deck_hooks::chain`). Ein Kommando, das dem Deck selbst gehört, wird
+nie aufgerufen. `deck-setup uninstall` legt sie zurück und löscht die Datei.
+
+`installed.json` (`deck_services::installed`): was die Einrichtung hinzugefügt hat,
+damit `deck-setup uninstall` genau das wieder herausnimmt. Nur `deck-setup` schreibt
+sie (atomar, hübsch formatiert); fehlt sie oder ist sie kaputt, gilt sie als leer; ist
+nichts mehr verzeichnet, verschwindet sie.
+
+| Feld | Inhalt | Deinstallation |
+|---|---|---|
+| `claude_defaults` | `[{key, value}]`, z. B. `permissions.defaultMode` = `bypassPermissions`, `effortLevel` = `high`: nur Vorgaben, die vorher fehlten | nur, wenn der Wert noch gleich ist; ein dadurch leerer `permissions`-Block geht mit |
+| `statusline_backup` | Pfad von `statusline.before.json`, wenn eine fremde Infozeile gesichert wurde | zurückgelegt (siehe oben) |
+| `fonts` | `[{file, name, path}]`: Schriften, die das Deck pro Benutzer installiert hat | nur, wenn `HKCU\…\Fonts\<name>` noch auf `path` zeigt; eine geladene Datei löscht `RunOnce` beim nächsten Anmelden |
+| `files` | `[{path, hash}]`: angelegte Dateien (Theme, Einstellungen der Deck-Agenten, Shader), `hash` = `fnv1a64:<hex>` des Inhalts | nur, wenn der Inhalt noch zum `hash` passt |
+| `shortcut`, `wt_fragment` | Pfade | immer (gehören am Namen dem Deck) |
+| `autostart` | geschriebener Wert unter `HKCU\…\Run\AgentDeck` | immer |
+| `apps_entry` | `true`, wenn der Eintrag unter „Apps“ angelegt ist | immer |
 
 ## `deck_settings.json`: Einstellungen und ihre Version
 

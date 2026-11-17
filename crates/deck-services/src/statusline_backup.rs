@@ -1,5 +1,7 @@
-//! Die statusLine, die vor dem Deck da war: sichern, bevor `deck-setup install
-//! --statusline replace` sie ersetzt, und bei `deck-setup uninstall` zurücklegen.
+//! Die Infozeile (`statusLine`), die vor dem Deck da war: sichern, bevor `deck-setup
+//! install` sie ersetzt, und bei `deck-setup uninstall` zurücklegen. Solange sie hier
+//! liegt, ruft `deck-statusline` ihr Kommando weiter auf und hängt die Ausgabe an die
+//! eigene Zeile (`deck_hooks::chain`): niemand verliert seine Zeile.
 //!
 //! Warum eine eigene Datei und nicht die `.bak-…` neben settings.json: die Sicherung
 //! der ganzen Datei ist ein Stand von damals; wer sie zurückspielt, verliert alles, was
@@ -15,7 +17,7 @@ use serde_json::{Map, Value, json};
 
 use crate::report::{Grade, Report};
 
-pub const FILE: &str = "statusline.before.json";
+pub const FILE: &str = deck_core::paths::STATUSLINE_BACKUP_FILE;
 const KEY: &str = "statusLine";
 
 /// `%LOCALAPPDATA%\claude-agent-deck\statusline.before.json`.
@@ -50,15 +52,15 @@ pub fn restore_into(settings: &mut Map<String, Value>, file: &Path, r: &mut Repo
         return false;
     }
     let Some(old) = deck_core::paths::load_json(file).and_then(|v| v.get(KEY).cloned()) else {
-        r.push(Grade::Warn, format!("{} ist nicht lesbar, frühere statusLine nicht zurückgelegt", file.display()));
+        r.push(Grade::Warn, format!("Deine frühere Infozeile ließ sich nicht zurückholen ({} ist nicht lesbar).", file.display()));
         return false;
     };
     if settings.contains_key(KEY) {
-        r.push(Grade::Warn, format!("Es steht schon eine andere statusLine drin; die frühere bleibt in {}", file.display()));
+        r.push(Grade::Warn, format!("Es ist inzwischen eine andere Infozeile eingetragen; deine frühere liegt weiter in {}.", file.display()));
         return false;
     }
     settings.insert(KEY.into(), old);
-    r.push(Grade::Info, "Frühere statusLine wiederhergestellt");
+    r.push(Grade::Info, "Frühere Infozeile wiederhergestellt");
     true
 }
 

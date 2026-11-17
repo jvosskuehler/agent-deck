@@ -29,43 +29,46 @@ Oder alles in einem Schritt (in einer PowerShell, lädt das neueste Release):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jvosskuehler/agent-deck/main/tools/install.ps1).TrimStart([char]0xFEFF))) -Download
 ```
 
-Beim ersten Mal fragt der Installer:
+Beim ersten Mal fragt der Installer vier Dinge:
 
-- **Repos-Ordner**: der Ordner, in dem alle deine git-Repos liegen (je Repo ein
-  Unterordner). Dort starten die Agenten. Vorschlag: `~\Repos`, sonst `~\source\repos`,
-  sonst der Ordner mit den meisten Repos.
-- **Jira-Kürzel** (z. B. `ORPH`), leer lassen, wenn du kein Jira nutzt.
-- **statusLine**: nur, wenn in Claudes `settings.json` schon eine andere steht. Behalten
-  oder durch die des Decks ersetzen (dann zeigen die Kacheln Modell, Effort und Kontext-%).
-- **Autostart** beim Anmelden.
+```text
+In welchem Ordner liegen deine Git-Repos? [C:\Users\du\Repos]
+Jira-Projektkürzel für Ticketnummern (z. B. ORPH, leer = keins)
+Wer soll deine PRs reviewen? Namen, mehrere mit Komma (leer = keiner)
+Deck beim Windows-Start mitstarten? (J/n)
+```
 
 Ein späterer Lauf ist ein Update und fragt nichts mehr. Ohne Rückfragen geht es mit
-Parametern: `-NonInteractive -ReposRoot <ordner> -JiraPrefix <kürzel> -StatusLine keep|replace
--Autostart -NoShortcut`.
+Parametern: `-NonInteractive -ReposRoot <ordner> -JiraPrefix <kürzel> -PrReviewer <namen>
+-Autostart -NoShortcut`. `-Verbose` zeigt jeden Schritt.
 
-**Was der Installer am Rechner ändert:**
+**Was der Installer am Rechner ändert** (alles im eigenen Benutzerprofil, verzeichnet in
+`%LOCALAPPDATA%\claude-agent-deck\installed.json`):
 
 | Was | Wo |
 |---|---|
 | Programme | `%LOCALAPPDATA%\claude-agent-deck\bin` |
 | Einstellungen, Protokoll, Zustände | `%LOCALAPPDATA%\claude-agent-deck` |
-| Sechs Hooks und (nur wenn gewünscht oder noch keine da) die statusLine | Claudes `settings.json` (`%USERPROFILE%\.claude` bzw. `CLAUDE_CONFIG_DIR`); eine ersetzte statusLine wird gesichert |
+| Sechs Hooks und die Infozeile unter dem Claude-Chat; fehlen Modus oder Effort, Bypass und high | Claudes `settings.json` (`%USERPROFILE%\.claude` bzw. `CLAUDE_CONFIG_DIR`). Eine Infozeile, die schon da war, wird gesichert und läuft hinter der des Decks weiter |
+| Papier-Look: Schrift IBM Plex Mono, Claude-Theme `papier`, Einstellungen nur für die Deck-Agenten, Shader | `%LOCALAPPDATA%\Microsoft\Windows\Fonts` (pro Benutzer), `themes\papier.json` und `agent-deck-wt.settings.json` in Claudes Ordner, `wt-faint-hell.hlsl` im App-Ordner. Vorhandenes wird nie überschrieben |
 | Startmenü-Eintrag „Agent Deck“ | `%APPDATA%\Microsoft\Windows\Start Menu\Programs` |
 | Windows-Terminal-Profil „Agent Deck“ und die Farbschemata `papier-ebenen` | Fragment in `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck`; die `settings.json` des Terminals bleibt unberührt |
 | Autostart (wenn gewünscht) | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, Wert `AgentDeck` |
+| Eintrag unter „Apps“ | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentDeck` |
 
-PR-Automatik, Titan, Store-Update, SpeechMike, Auto-Modus und Auto-Compact sind nach der
-Installation aus. Anschalten im Deck unter Einstellungen.
+PR-Automatik, Titan, Store-Update, SpeechMike und Auto-Modus sind nach der Installation
+aus, Auto-Compact ist an. Ändern im Deck unter Einstellungen.
 
-**Entfernen:**
+**Entfernen:** Windows-Einstellungen › Apps › Agent Deck › Deinstallieren, oder
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\claude-agent-deck\bin\uninstall.ps1"
 ```
 
-Nimmt Hooks und statusLine heraus (eine ersetzte statusLine kommt zurück), entfernt
-Startmenü-Eintrag, Terminal-Profil und Autostart und fragt, ob Einstellungen und Protokoll
-mit weg sollen (`-KeepData` / `-RemoveData`).
+Nimmt alles wieder heraus, was der Installer hinzugefügt hat, und nur, was seitdem
+niemand geändert hat (eine Vorgabe, die du angepasst hast, bleibt). Die frühere
+Infozeile kommt zurück. Fragt am Ende, ob Einstellungen und Protokoll des Decks mit weg
+sollen (`-KeepData` / `-RemoveData`; `-Quiet` fragt nichts und behält sie).
 
 ## Bauen und starten (aus dem Quellcode)
 

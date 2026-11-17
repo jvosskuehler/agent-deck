@@ -46,11 +46,20 @@ pub struct Report {
     pub changed: bool,
     /// Sicherung der Datei vor dem Schreiben, falls angelegt.
     pub backup: Option<String>,
+    /// Maschinenlesbare Merker für den Installer (`deck-setup` druckt sie als
+    /// `## <merker>`), etwa `default effortLevel=high`. Der Installer baut daraus seine
+    /// Zusammenfassung, ohne Meldungstexte zu zerlegen.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 impl Report {
     pub fn push(&mut self, grade: Grade, text: impl Into<String>) {
         self.lines.push(Line { grade, text: text.into() });
+    }
+
+    pub fn tag(&mut self, tag: impl Into<String>) {
+        self.tags.push(tag.into());
     }
 
     /// Zeilen aus `deck-core` (`(grad, text)`) übernehmen.
@@ -77,6 +86,7 @@ impl Report {
     pub fn append(&mut self, other: Report) {
         self.lines.extend(other.lines);
         self.changed |= other.changed;
+        self.tags.extend(other.tags);
         if self.backup.is_none() {
             self.backup = other.backup;
         }
