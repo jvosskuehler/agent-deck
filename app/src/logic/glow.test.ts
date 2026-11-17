@@ -17,7 +17,7 @@ describe("Glow-Farben", () => {
   it("die Vorschau zeichnet drei Schichten in der Farbe der Vorlage", () => {
     const s = previewShadow(LIGHT_DEFAULT);
     expect(s.split("rgba").length - 1).toBe(3);
-    expect(s).toContain("rgba(217, 119, 90");
+    expect(s).toContain("rgba(255, 75, 0");
   });
 
   it("bietet fünf Glow-Arten und sechs Animationen samt Still an", () => {

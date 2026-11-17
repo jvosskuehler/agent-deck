@@ -192,8 +192,8 @@ export function initialSettings(): SettingsView {
 /** Vorgaben wie `deck_core::glow`. */
 export function initialGlow(): GlowSettings {
   return {
-    light: { kind: "weichlicht", animation: "still", color: "#D9775A", outer: "", intensity: 1.2, width: 1, speed: 1 },
-    dark: { kind: "weichlicht", animation: "still", color: "#F5B847", outer: "#F08A3C", intensity: 1, width: 1, speed: 1 },
+    light: { kind: "weichlicht", animation: "still", color: "#FF4B00", outer: "#FF3300", intensity: 1.05, width: 0.7, speed: 1 },
+    dark: { kind: "weichlicht", animation: "still", color: "#796200", outer: "#B76400", intensity: 0.75, width: 0.95, speed: 1 },
     savedLight: [],
     savedDark: [
       {

@@ -66,13 +66,13 @@ export const ANIMS: GlowAnim[] = ["still", "atmen", "umlauf", "stroemung", "farb
 export const DARK_DEFAULT: GlowStyle = {
   kind: "weichlicht",
   animation: "still",
-  color: "#F5B847",
-  outer: "#F08A3C",
-  intensity: 1,
-  width: 1,
+  color: "#796200",
+  outer: "#B76400",
+  intensity: 0.75,
+  width: 0.95,
   speed: 1,
 };
-export const LIGHT_DEFAULT: GlowStyle = { ...DARK_DEFAULT, color: "#D9775A", outer: "", intensity: 1.2 };
+export const LIGHT_DEFAULT: GlowStyle = { ...DARK_DEFAULT, color: "#FF4B00", outer: "#FF3300", intensity: 1.05, width: 0.7 };
 
 /** Hell: die Farben der Light-Mode-Probe (Canvas „Fokus-Rahmen Light Mode“). */
 export const LIGHT_PRESETS: Preset[] = [
@@ -86,7 +86,7 @@ export const LIGHT_PRESETS: Preset[] = [
   { name: "Tinte", color: "#575279", outer: "" },
 ];
 
-/** Dunkel: Honiggold (die Vorgabe) und ein paar warme und kühle Gegenstücke. */
+/** Dunkel: Honiggold und ein paar warme und kühle Gegenstücke. */
 export const DARK_PRESETS: Preset[] = [
   { name: "Honiggold", color: "#F5B847", outer: "#F08A3C" },
   { name: "Abendrot", color: "#F5B847", outer: "#F0567A" },

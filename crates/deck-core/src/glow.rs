@@ -129,22 +129,22 @@ impl Default for GlowSettings {
 }
 
 impl GlowStyle {
-    /// Weichlicht in Honiggold, nach außen ins Orange.
+    /// Weichlicht in dunklem Gold, nach außen ins Bernstein (Jorrits Wahl vom 14.11.2026).
     pub fn dark_default() -> GlowStyle {
         GlowStyle {
             kind: GlowKind::Weichlicht,
             animation: GlowAnim::Still,
-            color: "#F5B847".into(),
-            outer: "#F08A3C".into(),
-            intensity: 1.0,
-            width: 1.0,
+            color: "#796200".into(),
+            outer: "#B76400".into(),
+            intensity: 0.75,
+            width: 0.95,
             speed: 1.0,
         }
     }
 
-    /// Weichlicht in Terrakotta.
+    /// Weichlicht in Signalorange, schmal (Jorrits Wahl vom 12.11.2026).
     pub fn light_default() -> GlowStyle {
-        GlowStyle { color: "#D9775A".into(), outer: String::new(), intensity: 1.2, ..GlowStyle::dark_default() }
+        GlowStyle { color: "#FF4B00".into(), outer: "#FF3300".into(), intensity: 1.05, width: 0.7, ..GlowStyle::dark_default() }
     }
 
     /// Werte in ihre Grenzen holen; eine unlesbare Farbe wird die der Vorgabe.
@@ -230,14 +230,14 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn without_a_saved_glow_both_sides_are_weichlicht_gold_and_terrakotta() {
+    fn without_a_saved_glow_both_sides_are_weichlicht_gold_and_orange() {
         let g = GlowSettings::from_settings(&Map::new());
         assert_eq!(g.dark, GlowStyle::dark_default());
-        assert_eq!(g.light.color, "#D9775A");
+        assert_eq!((g.light.color.as_str(), g.light.outer.as_str()), ("#FF4B00", "#FF3300"));
         assert_eq!((g.dark.kind, g.dark.animation), (GlowKind::Weichlicht, GlowAnim::Still));
         let p = g.dark.shader_params();
-        assert!((p[0][0] - 0.96).abs() < 0.005 && (p[0][1] - 0.72).abs() < 0.005, "Honiggold");
-        assert_eq!(p[1], [1.0, 0.0, 0.0, 0.0], "Reichweite 1, Weichlicht, still");
+        assert!((p[0][0] - 0.475).abs() < 0.005 && (p[0][1] - 0.384).abs() < 0.005, "dunkles Gold");
+        assert_eq!(p[1], [0.95, 0.0, 0.0, 0.0], "Reichweite 0,95, Weichlicht, still");
         assert!((p[2][3] - 1.0).abs() < 1e-6, "Tempo 1");
     }
 
@@ -273,7 +273,7 @@ mod tests {
     fn a_broken_color_falls_back_and_an_empty_outer_is_the_main_color() {
         let s = json!({"glow": {"light": {"color": "lila", "outer": ""}}});
         let g = GlowSettings::from_settings(s.as_object().unwrap());
-        assert_eq!(g.light.color, "#D9775A");
+        assert_eq!(g.light.color, GlowStyle::light_default().color);
         let p = g.light.shader_params();
         assert_eq!(&p[2][..3], &p[0][..3]);
     }
