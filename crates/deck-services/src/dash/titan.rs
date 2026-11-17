@@ -38,12 +38,31 @@ pub struct SshProbe {
 impl SshProbe {
     /// Programm und Host wie `titan.py`.
     pub fn system() -> SshProbe {
-        let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
         SshProbe {
-            ssh: env("TITAN_SSH").map_or_else(|| PathBuf::from(r"C:\Windows\System32\OpenSSH\ssh.exe"), PathBuf::from),
-            host: env("TITAN_HOST").unwrap_or_else(|| "gpu".into()),
+            ssh: env_nonempty("TITAN_SSH").map_or_else(|| PathBuf::from(r"C:\Windows\System32\OpenSSH\ssh.exe"), PathBuf::from),
+            host: env_nonempty("TITAN_HOST").unwrap_or_else(|| "gpu".into()),
         }
     }
+
+    /// Ob der Titan hier eingerichtet ist: `TITAN_HOST` von Hand gesetzt (dann vertrauen
+    /// wir ihm) oder der Host steht in `~/.ssh/config`. `None` = eingerichtet, sonst der
+    /// Grund fürs Log.
+    pub fn missing_setup(&self) -> Option<String> {
+        if env_nonempty("TITAN_HOST").is_some() {
+            return None;
+        }
+        let path = deck_core::paths::home_dir().join(".ssh").join("config");
+        let config = std::fs::read_to_string(&path).unwrap_or_default();
+        if deck_core::dash::titan::ssh_config_knows_host(&config, &self.host) {
+            None
+        } else {
+            Some(format!("kein Host {} in ~/.ssh/config", self.host))
+        }
+    }
+}
+
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
 impl TitanProbe for SshProbe {
@@ -66,6 +85,7 @@ struct Inner {
 pub struct TitanService {
     inner: Arc<Inner>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    disabled: Mutex<bool>,
 }
 
 fn now_unix() -> f64 {
@@ -85,16 +105,35 @@ impl TitanService {
                 log,
             }),
             thread: Mutex::new(None),
+            disabled: Mutex::new(false),
         }
     }
 
-    /// Die echte Fassung über ssh.
+    /// Die echte Fassung über ssh. Ohne eingerichteten Titan bleibt der Dienst aus: kein
+    /// ssh je Minute, die Kachel erscheint nie (sie zeigt nur verwaiste Läufe). Geprüft wird
+    /// beim Start des Decks; wer `titan` später einrichtet, startet das Deck neu.
     pub fn system(log: LogFile) -> TitanService {
-        TitanService::new(Arc::new(SshProbe::system()), log)
+        let probe = SshProbe::system();
+        let missing = probe.missing_setup();
+        let s = TitanService::new(Arc::new(probe), log);
+        if let Some(why) = missing {
+            s.inner.log.note(&format!("Titan-Abfrage aus: {why}"));
+            *lock(&s.disabled) = true;
+        }
+        s
     }
 
-    /// Thread starten; `wake` nach jedem Abruf. Ein zweiter Aufruf tut nichts.
+    /// Ob die Abfrage aus ist, weil hier kein Titan eingerichtet ist.
+    pub fn disabled(&self) -> bool {
+        *lock(&self.disabled)
+    }
+
+    /// Thread starten; `wake` nach jedem Abruf. Ein zweiter Aufruf tut nichts, ohne
+    /// eingerichteten Titan auch der erste nicht.
     pub fn start(&self, wake: Wake) {
+        if self.disabled() {
+            return;
+        }
         let mut t = lock(&self.thread);
         if t.is_some() {
             return;
