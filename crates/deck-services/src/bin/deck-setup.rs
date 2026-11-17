@@ -49,7 +49,7 @@ use deck_services::installed::{self, Installed};
 use deck_services::look::{self, LookPaths};
 use deck_services::report::{Grade, Report};
 use deck_services::user_system::RealSystem;
-use deck_services::{apps_entry, autostart, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment};
+use deck_services::{apps_entry, autostart, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment, wt_theme};
 
 const USAGE: &str = "deck-setup install --bin <ordner> [--statusline replace|keep] | check --bin <ordner> | uninstall \
                      | look --from <ordner> [--remove] | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] \
@@ -147,13 +147,19 @@ fn main() -> ExitCode {
             }
             r
         }
-        (Some("wt-profile"), _) if remove => wt_fragment::remove(&wt_fragment::fragment_path(), &mut m),
+        (Some("wt-profile"), _) if remove => {
+            let mut r = wt_fragment::remove(&wt_fragment::fragment_path(), &mut m);
+            r.append(wt_theme::remove(&wt_fragment::wt_settings_path(), &mut m));
+            r
+        }
         (Some("wt-profile"), _) => {
             let shader = LookPaths::real().shader();
             let shader = shader.is_file().then(|| shader.to_string_lossy().into_owned());
             let shell = wt_fragment::shell_commandline(deck_win::which::which("pwsh.exe").is_some());
             let profile = wt_fragment::fragment(claude_icon().as_deref(), shell, shader.as_deref());
-            wt_fragment::install(&wt_fragment::fragment_path(), &wt_fragment::wt_settings_path(), &profile, &mut m)
+            let mut r = wt_fragment::install(&wt_fragment::fragment_path(), &wt_fragment::wt_settings_path(), &profile, &mut m);
+            r.append(wt_theme::install(&wt_fragment::wt_settings_path(), &mut m));
+            r
         }
         (Some("autostart"), _) if remove => autostart::remove(&sys, &mut m),
         (Some("autostart"), bin) => autostart::set(&bin.unwrap_or_else(default_bin), &sys, &mut m),

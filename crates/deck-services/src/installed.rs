@@ -66,6 +66,8 @@ pub struct Installed {
     /// Wert unter `HKCU\…\Run\AgentDeck`.
     pub autostart: Option<String>,
     pub apps_entry: bool,
+    /// `"theme": "system"` in die settings.json von Windows Terminal eingetragen.
+    pub wt_theme_added: bool,
 }
 
 /// Fingerabdruck eines Inhalts (FNV-1a, 64 Bit). Kein Schutz gegen Absicht, nur die Frage

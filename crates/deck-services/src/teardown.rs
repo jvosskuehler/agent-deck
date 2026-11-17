@@ -22,6 +22,7 @@ pub struct Targets {
     pub saved_statusline: PathBuf,
     pub shortcut: PathBuf,
     pub fragment: PathBuf,
+    pub wt_settings: PathBuf,
     pub look: LookPaths,
 }
 
@@ -32,6 +33,7 @@ impl Targets {
             saved_statusline: statusline_backup::path(),
             shortcut: shortcut::link_path(),
             fragment: wt_fragment::fragment_path(),
+            wt_settings: wt_fragment::wt_settings_path(),
             look: LookPaths::real(),
         }
     }
@@ -48,6 +50,7 @@ pub fn uninstall_all(t: &Targets, sys: &dyn UserSystem, m: &mut Installed) -> Re
     }
     r.append(link);
     r.append(wt_fragment::remove(&t.fragment, m));
+    r.append(crate::wt_theme::remove(&t.wt_settings, m));
     r.append(autostart::remove(sys, m));
     r.append(apps_entry::remove(sys, m));
     r
@@ -81,6 +84,7 @@ mod tests {
             saved_statusline: root.join("deck").join("statusline.before.json"),
             shortcut: root.join("Programs").join(shortcut::LINK_NAME),
             fragment: root.join("Fragments").join(wt_fragment::SOURCE).join(wt_fragment::FILE),
+            wt_settings: root.join("wt-settings.json"),
             look: LookPaths { claude_dir: root.join("claude"), app_dir: root.join("deck"), fonts_dir: root.join("Fonts") },
         };
         let foreign = json!({"type": "command", "command": "npx ccstatusline"});

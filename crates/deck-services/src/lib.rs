@@ -54,5 +54,6 @@ pub mod watchdog;
 pub mod worktree;
 pub mod worktree_sweep;
 pub mod wt_fragment;
+pub mod wt_theme;
 
 mod fsutil;
