@@ -183,3 +183,14 @@ fn screen_rows_of_nothing_and_of_a_degenerate_window() {
     let wins = named(&[("a", (0, 0, 0, 0)), ("b", (10, 0, 0, 0))]);
     assert_eq!(ar::screen_rows(&wins).concat(), ["a", "b"]);
 }
+
+#[test]
+fn grid_order_keeps_a_tidy_layout_and_sorts_a_pile_by_number() {
+    let w = |n: &str, r: ar::Rect| (n.to_string(), r);
+    // Sauber nebeneinander (Snap mit 2 px Überlappung): so, wie sie liegen.
+    let tidy = [w("B20", (0, 0, 962, 1000)), w("B5", (960, 0, 960, 1000))];
+    assert_eq!(ar::grid_order(&tidy), ["B20", "B5"]);
+    // Übereinander geschoben (Monitor weg): nach Nummer, B5 vor B14.
+    let pile = [w("B20", (0, 0, 1200, 800)), w("B14", (300, 100, 1200, 800)), w("B5", (100, 50, 1200, 800))];
+    assert_eq!(ar::grid_order(&pile), ["B5", "B14", "B20"]);
+}

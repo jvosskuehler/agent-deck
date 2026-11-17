@@ -241,6 +241,19 @@ fn pointer_tick(app: &AppHandle) {
     let hold = menu || ctl.held_by_drag() || ctl.dragging;
     let p = ctl.place(s.desktop.as_ref());
     let handle = handle_rect(ctl.edge, work, ctl.along, scale);
+    // Der Griff wird nur beim Einklappen gelegt, die Zone hier aber jeden Takt vom
+    // aktuellen Hauptmonitor gerechnet. Kommt oder geht ein Monitor (KVM), schiebt
+    // Windows den Griff irgendwohin, und Hovern über ihm träfe die Zone nicht mehr.
+    if !ctl.open() && native::is_visible(ctl.handle) && native::rect_of(ctl.handle).is_some_and(|now| now != handle) {
+        native::show_at(ctl.handle, handle);
+        crate::applog::note(format!(
+            "Griff neu an die Kante gelegt (Monitore geändert): {}×{} bei {},{}",
+            handle.width(),
+            handle.height(),
+            handle.left,
+            handle.top
+        ));
+    }
     let sight = Sight {
         now: ctl.now_ms(),
         pointer: native::cursor(),

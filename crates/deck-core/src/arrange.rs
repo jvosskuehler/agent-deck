@@ -75,6 +75,31 @@ pub fn screen_rows(wins: &[(String, Rect)]) -> Vec<Vec<String>> {
     rows
 }
 
+/// Reihenfolge, in der „alle holen“ die Fenster ins Raster legt. Liegen sie sauber
+/// nebeneinander, so wie sie liegen ([`screen_rows`]): wer sie von Hand sortiert hat,
+/// findet jedes am gewohnten Platz wieder. Überdecken sich zwei davon zu mehr als einem
+/// Viertel des kleineren, ist die Lage keine Ordnung mehr, sondern ein Haufen (Monitor
+/// weg, etwa beim Umschalten am KVM: Windows schiebt alle auf den verbliebenen
+/// Bildschirm). Dann nach Slot-Nummer (B5, B14, B20), denn die Lage gibt nichts her.
+pub fn grid_order(wins: &[(String, Rect)]) -> Vec<String> {
+    let piled = wins.iter().enumerate().any(|(i, (_, a))| wins[i + 1..].iter().any(|(_, b)| overlaps_much(*a, *b)));
+    if !piled {
+        return screen_rows(wins).into_iter().flatten().collect();
+    }
+    let mut names: Vec<&String> = wins.iter().map(|(n, _)| n).collect();
+    names.sort_by_key(|n| (crate::wt::split_slot(n), (*n).clone()));
+    names.into_iter().cloned().collect()
+}
+
+/// Überdecken sich `a` und `b` zu mehr als einem Viertel des kleineren? Ein paar Pixel
+/// Überlappung (Snap, Fensterschatten) zählen nicht.
+fn overlaps_much(a: Rect, b: Rect) -> bool {
+    let w = (a.0 + a.2).min(b.0 + b.2) - a.0.max(b.0);
+    let h = (a.1 + a.3).min(b.1 + b.3) - a.1.max(b.1);
+    let smaller = (a.2 * a.3).min(b.2 * b.3).max(1);
+    w > 0 && h > 0 && w * h * 4 > smaller
+}
+
 /// Die Fläche, die [`tile_grid`] bei `n` Kacheln am Ende der letzten Reihe frei lässt
 /// (5 Fenster in 2 × 3: die Kachel rechts unten), als ein Rechteck über alle freien
 /// Kacheln. `None`, wenn das Raster aufgeht. Dort steht das Info-Fenster des Decks.

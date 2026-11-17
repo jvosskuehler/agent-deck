@@ -215,13 +215,15 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
     // oben): wer sie von Hand sortiert hat, findet jedes am gewohnten Platz wieder.
     // Das gilt auch für minimierte, über den Platz, den Windows sich für sie merkt; das
     // Deck selbst merkt sich nichts und findet die Ordnung auch nach einem Neustart.
+    // Liegen sie als Haufen übereinander (Monitor weg), nach Slot-Nummer
+    // ([`arrange::grid_order`]).
     let lying: Vec<(String, arrange::Rect)> = slots
         .iter()
         .filter_map(|s| found.get(s).map(|(h, _)| (s, *h)))
         .filter_map(|(s, h)| desktop.resting_rect(h).map(|r| (s.clone(), r)))
         .map(|(s, r)| (s, (i64::from(r.left), i64::from(r.top), i64::from(r.width()), i64::from(r.height()))))
         .collect();
-    let mut names: Vec<String> = arrange::screen_rows(&lying).into_iter().flatten().collect();
+    let mut names: Vec<String> = arrange::grid_order(&lying);
     for s in slots {
         if !names.contains(s) {
             names.push(s.clone());
@@ -386,6 +388,20 @@ mod tests {
         let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(names, ["A3", "A1", "A2", "A4"]);
         assert_eq!(d.placed().iter().map(|(h, _)| *h).collect::<Vec<_>>(), [Hwnd(13), Hwnd(11), Hwnd(12), Hwnd(14)]);
+    }
+
+    #[test]
+    fn gather_sorts_a_pile_by_slot_number() {
+        // Nach dem Umschalten am KVM liegen alle übereinander auf dem Laptop.
+        let d = FakeDesktop::default();
+        d.add_wt(Hwnd(20), "B20", Rect::new(0, 0, 1200, 800), false);
+        d.add_wt(Hwnd(5), "B5", Rect::new(100, 50, 1300, 850), false);
+        d.add_wt(Hwnd(23), "B23", Rect::new(40, 20, 1240, 820), false);
+        d.add_wt(Hwnd(14), "B14", Rect::new(300, 100, 1500, 900), true);
+        let slots: Vec<String> = ["B20", "B23", "B14", "B5"].map(String::from).into();
+        let got = gather(&d, &slots, monitor_under(&d, Some((10, 10))), &nothing);
+        let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(names, ["B5", "B14", "B20", "B23"]);
     }
 
     #[test]
