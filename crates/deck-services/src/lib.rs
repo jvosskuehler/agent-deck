@@ -18,7 +18,8 @@
 //! | [`summary`] | `claude/summarize.py` (`generate`, `_run_claude`), `ui/uithread.py` | nichts |
 //! | [`worktree`], [`worktree_sweep`] | `ops/worktree.py`, `ui/worktree_sweep.py` | nichts |
 //! | [`vscode_cleanup`] | (neu) die frühere VS-Code-Extension entfernen | nichts |
-//! | [`install`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`install`], [`statusline_backup`] | `claude/hook_setup.py` (`main`) | nichts |
+//! | [`shortcut`], [`wt_fragment`] | (neu) Startmenü-Verknüpfung, Windows-Terminal-Profil für deck-setup | nichts |
 //! | [`git_fs`] | (neu) Branch aus `.git/HEAD` lesen | nichts |
 //! | [`orphans`] | (neu) „Läuft noch ohne Fenster“ | den Scan-Thread |
 //! | [`store_update`] | (neu) Terminal und PowerShell aktualisieren, wenn kein Agent läuft | den Prüf-Thread |
@@ -34,6 +35,8 @@ pub mod install;
 pub mod logfile;
 pub mod orphans;
 pub mod report;
+pub mod shortcut;
+pub mod statusline_backup;
 pub mod store_update;
 pub mod summary;
 pub mod usage;
@@ -41,5 +44,6 @@ pub mod vscode_cleanup;
 pub mod watchdog;
 pub mod worktree;
 pub mod worktree_sweep;
+pub mod wt_fragment;
 
 mod fsutil;
