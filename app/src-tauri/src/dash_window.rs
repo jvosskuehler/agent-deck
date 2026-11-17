@@ -32,6 +32,8 @@ static SHOWN: Mutex<Option<Gap>> = Mutex::new(None);
 
 /// Per Info-Taste aufgeklappt: dann legt [`sync`] das Fenster nicht an die Lücke.
 static POPUP: AtomicBool = AtomicBool::new(false);
+/// Wohin die Info-Taste das Fenster gelegt hat.
+static POPUP_AT: Mutex<Option<Area>> = Mutex::new(None);
 
 /// Info-Taste: aufklappen oder, wenn schon auf, wieder zu.
 pub fn toggle(app: &AppHandle) {
@@ -54,7 +56,11 @@ fn open_popup(app: &AppHandle) {
         *shown = None;
     }
     let r = popup_rect(area);
+    if let Ok(mut at) = POPUP_AT.lock() {
+        *at = Some(r);
+    }
     native::show_at(raw, r);
+    settle(raw, r, |raw, r| native::show_at(raw, r));
     let _ = app.emit("deck://dash-popup", true);
     note(format!("Info-Fenster: per Taste aufgeklappt, {}×{}", r.width(), r.height()));
 }
@@ -84,7 +90,16 @@ fn popup_rect(area: Rect) -> Area {
 /// wenn sich Lage oder Nachbar in der Z-Ordnung geändert haben.
 pub fn sync(app: &AppHandle, desktop: &dyn Desktop, gap: Option<Gap>) {
     let raw = ui_windows::raw_hwnd(app, DASH);
-    if raw == 0 || POPUP.load(Ordering::SeqCst) {
+    if raw == 0 {
+        return;
+    }
+    if POPUP.load(Ordering::SeqCst) {
+        if let Some(r) = POPUP_AT.lock().ok().and_then(|a| *a)
+            && native::rect_of(raw).is_some_and(|now| now != r)
+        {
+            native::show_at(raw, r);
+            note("Info-Fenster: Größe nach Wechsel der Skalierung nachgezogen");
+        }
         return;
     }
     let Ok(mut shown) = SHOWN.lock() else { return };
@@ -95,11 +110,17 @@ pub fn sync(app: &AppHandle, desktop: &dyn Desktop, gap: Option<Gap>) {
         }
         return;
     };
-    if *shown == Some(g) && native::is_visible(raw) && right_behind(desktop, Hwnd(raw), &g) {
+    let r = g.rect;
+    let want = Area::new(r.left, r.top, r.right, r.bottom);
+    let placed = native::rect_of(raw) == Some(want);
+    if *shown == Some(g) && placed && native::is_visible(raw) && right_behind(desktop, Hwnd(raw), &g) {
         return;
     }
-    let r = g.rect;
-    native::show_behind(raw, Area::new(r.left, r.top, r.right, r.bottom), g.above.0);
+    if *shown == Some(g) && !placed {
+        note("Info-Fenster: Größe nach Wechsel der Skalierung nachgezogen");
+    }
+    native::show_behind(raw, want, g.above.0);
+    settle(raw, want, |raw, r| native::show_behind(raw, r, g.above.0));
     if shown.is_none_or(|s| s.rect != g.rect) {
         note(format!("Info-Fenster: in der freien Kachel {}×{} bei {},{}", r.width(), r.height(), r.left, r.top));
     }
@@ -115,6 +136,18 @@ fn right_behind(desktop: &dyn Desktop, ours: Hwnd, g: &Gap) -> bool {
         return false;
     };
     a < o && z[a + 1..o].iter().all(|h| desktop.window_rect(*h).is_none_or(|r| !overlaps(r, g.rect)))
+}
+
+/// Zieht das Fenster beim Legen auf einen Monitor mit anderer Skalierung, rechnet Windows
+/// (bzw. Tauri auf `WM_DPICHANGED`) seine Größe um den Faktor der Skalierungen um, damit es
+/// gleich groß aussieht: von 150 % auf 100 % wird es zwei Drittel so groß, zurück anderthalb
+/// mal so groß und ragt weit über die Kachel hinaus (17.11.2026: „verzerrt, geht weit nach
+/// unten“). Darum gleich noch einmal legen, wenn es nicht passt; was danach noch kommt,
+/// fängt der nächste Takt von [`sync`] ab, der die echte Lage vergleicht.
+fn settle(raw: isize, want: Area, place: impl Fn(isize, Area)) {
+    if native::rect_of(raw).is_some_and(|now| now != want) {
+        place(raw, want);
+    }
 }
 
 fn overlaps(a: Rect, b: Rect) -> bool {

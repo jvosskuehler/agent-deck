@@ -9,10 +9,10 @@
 //! sich alles an das Schutzgitter: in Tests passiert nichts.
 
 use deck_core::dock::Area;
-use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, HWND_TOPMOST, HWND_NOTOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
+    GetCursorPos, GetSystemMetrics, GetWindowRect, HWND_TOPMOST, HWND_NOTOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
     SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow,
 };
 
@@ -72,6 +72,13 @@ pub fn hide(raw: isize) {
     }
     // SAFETY: eigenes Fenster.
     let _ = unsafe { ShowWindow(hwnd(raw), SW_HIDE) };
+}
+
+/// Wo das Fenster wirklich liegt, in physischen Pixeln.
+pub fn rect_of(raw: isize) -> Option<Area> {
+    let mut r = RECT::default();
+    // SAFETY: reine Abfrage, schreibt nur in `r`.
+    (raw != 0 && unsafe { GetWindowRect(hwnd(raw), &mut r) }.is_ok()).then(|| Area::new(r.left, r.top, r.right, r.bottom))
 }
 
 pub fn is_visible(raw: isize) -> bool {
