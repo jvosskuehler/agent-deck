@@ -567,7 +567,6 @@ function Invoke-Main {
 
     Stop-Deck
     Copy-Programs $source
-    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
 
     # Die frühere VS-Code-Extension (bis 09.11.2026) nur anfassen, wenn sie da ist.
     if (Test-Path (Join-Path $env:USERPROFILE '.vscode\extensions\agent-deck-bridge*')) {
@@ -578,6 +577,8 @@ function Invoke-Main {
     Step "Hooks in $(Get-ClaudeSettingsPath) einrichten und prüfen"
     Invoke-Setup @('install', '--bin', $Bin, '--statusline', $mode)
     Invoke-Setup @('check', '--bin', $Bin)
+    # Erst nach den Hooks: scheitert ein erster Lauf vorher, fragt der nächste wieder.
+    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
 
     Step 'Windows-Terminal-Profil „Agent Deck“'
     Invoke-Setup @('wt-profile')

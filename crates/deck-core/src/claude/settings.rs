@@ -193,7 +193,7 @@ impl DefaultModeCache {
         let parsed = std::fs::read(path)
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok());
+            .and_then(|t| serde_json::from_str::<Value>(crate::paths::strip_bom(&t)).ok());
         let Some(data) = parsed else {
             return hit.and_then(|(_, m)| m.clone());
         };

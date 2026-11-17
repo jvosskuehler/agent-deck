@@ -164,3 +164,14 @@ fn defaults_never_overwrite_a_choice_already_made() {
     let (after, _) = fill_defaults(ultra.as_object().unwrap());
     assert!(after.get("effortLevel").is_none(), "Ultracode ist schon eine Effort-Wahl");
 }
+
+#[test]
+fn a_settings_file_with_utf8_bom_is_read_like_one_without() {
+    // So schreibt Windows PowerShell 5.1 mit `Set-Content -Encoding UTF8`.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    std::fs::write(&path, "\u{FEFF}{\"effortLevel\": \"low\", \"statusLine\": {\"command\": \"x\"}}").unwrap();
+    let m = deck_core::claude::settings::load(&path);
+    assert_eq!(m.get("effortLevel").and_then(Value::as_str), Some("low"));
+    assert_eq!(deck_core::claude::settings::read_values(&path).effort, Some(Value::from("low")));
+}

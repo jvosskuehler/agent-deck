@@ -98,7 +98,14 @@ pub fn worktree_marker_path(dir: &Path, slot: &str) -> PathBuf {
 pub fn load_json(path: &Path) -> Option<Value> {
     let bytes = fs::read(path).ok()?;
     let text = std::str::from_utf8(&bytes).ok()?;
-    serde_json::from_str(text).ok()
+    serde_json::from_str(strip_bom(text)).ok()
+}
+
+/// Text ohne UTF-8-BOM. Windows PowerShell 5.1 (`Set-Content -Encoding UTF8`) und manche
+/// Editoren schreiben eins vor JSON; Claude Code liest solche Dateien, serde_json nicht
+/// (gemessen 17.11.2026 auf der Test-VM: deck-setup verweigerte die settings.json).
+pub fn strip_bom(text: &str) -> &str {
+    text.strip_prefix('\u{FEFF}').unwrap_or(text)
 }
 
 /// Atomar schreiben: erst `<path>.tmp`, dann ersetzen, nie halbe Dateien. Legt den
