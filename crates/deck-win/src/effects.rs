@@ -68,7 +68,8 @@ pub trait Desktop: Send + Sync {
     /// Mehrere Fenster zugleich zeigen: Minimierte wiederherstellen, jedes mit Ziel
     /// dorthin legen, alle über die anderen heben, das erste zuoberst, keines aktivieren
     /// ([`crate::together::show_together`]). Ohne eigene Fassung einzeln, eines nach dem anderen.
-    fn show_together(&self, moves: &[(Hwnd, Option<Rect>)]) -> Result<()> {
+    /// `before_lift` läuft unter dem Schleier, bevor er weggeht (gibt es keinen, gar nicht).
+    fn show_together(&self, moves: &[(Hwnd, Option<Rect>)], _before_lift: crate::together::BeforeLift) -> Result<()> {
         for (h, _) in moves {
             if self.is_minimized(*h) {
                 self.restore(*h)?;
@@ -86,7 +87,7 @@ pub trait Desktop: Send + Sync {
     }
     /// Mehrere Fenster zugleich verstecken: erst zurück nach `back`, dann alle minimieren
     /// ([`crate::together::hide_together`]). Ohne eigene Fassung einzeln.
-    fn hide_together(&self, hwnds: &[Hwnd], back: Option<Hwnd>) -> Result<()> {
+    fn hide_together(&self, hwnds: &[Hwnd], back: Option<Hwnd>, _before_lift: crate::together::BeforeLift) -> Result<()> {
         if let Some(b) = back {
             let _ = self.focus(b);
         }
@@ -205,11 +206,11 @@ impl Desktop for Win32Desktop {
     fn set_corners(&self, hwnd: Hwnd, corners: Corners) -> Result<bool> {
         focus::set_corners(hwnd, corners)
     }
-    fn show_together(&self, moves: &[(Hwnd, Option<Rect>)]) -> Result<()> {
-        crate::together::show_together(moves)
+    fn show_together(&self, moves: &[(Hwnd, Option<Rect>)], before_lift: crate::together::BeforeLift) -> Result<()> {
+        crate::together::show_together(moves, before_lift)
     }
-    fn hide_together(&self, hwnds: &[Hwnd], back: Option<Hwnd>) -> Result<()> {
-        crate::together::hide_together(hwnds, back)
+    fn hide_together(&self, hwnds: &[Hwnd], back: Option<Hwnd>, before_lift: crate::together::BeforeLift) -> Result<()> {
+        crate::together::hide_together(hwnds, back, before_lift)
     }
     fn set_shadow(&self, hwnd: Hwnd, on: bool) -> Result<bool> {
         arrange::set_shadow(hwnd, on)

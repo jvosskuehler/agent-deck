@@ -56,6 +56,12 @@ pub struct Look {
     pub seam: i64,
     /// Farbe des Rings um ein Fenster, dessen Zustand das Deck nicht kennt, `0xRRGGBB`.
     pub seam_rgb: u32,
+    /// So weit reicht die Farbe von jeder Kante nach innen unter das Fenster; weiter innen
+    /// bleibt das Bild durchsichtig. Genug für die paar Pixel, um die Windows ein Fenster
+    /// ohne Schatten kleiner zeichnet, aber keine Fläche: wo ein Fenster gerade nicht
+    /// liegt (es klappt auf, zieht um, zeichnet sich neu), sieht man sonst statt seiner
+    /// eine Wand in der Farbe seines Zustands (17.11.2026: „auf einmal alles grün“).
+    pub inset: i64,
 }
 
 impl Look {
@@ -68,6 +74,7 @@ impl Look {
             strength: 0.42,
             seam: ring_px(f),
             seam_rgb,
+            inset: (8.0 * f).round() as i64,
         }
     }
 }
@@ -116,6 +123,19 @@ pub fn groups(rects: &[Area], tol: i64) -> Vec<Vec<usize>> {
     out
 }
 
+/// Liegen die Fenster `new` genau wie `old`, nur alle um denselben Versatz verschoben
+/// (gleiche Größen, gleiche Abstände)? Dann der Versatz: das fertige Bild darf mitziehen,
+/// statt neu gemalt zu werden. Das Umziehen auf einen Monitor gleicher Auflösung kostet so
+/// nur ein Verschieben, kein Malen und Hochladen ganzer Bildschirmflächen.
+pub fn shifted(old: &[Area], new: &[Area]) -> Option<(i64, i64)> {
+    let (a, b) = (old.first()?, new.first()?);
+    if old.len() != new.len() {
+        return None;
+    }
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    old.iter().zip(new).all(|(o, n)| (o.0 + dx, o.1 + dy, o.2 + dx, o.3 + dy) == *n).then_some((dx, dy))
+}
+
 /// Die Fläche, die das Schattenbild der Gruppe braucht: ihre Hülle plus Schatten.
 pub fn bounds(rects: &[Area], look: &Look) -> Option<Area> {
     let first = rects.first()?;
@@ -134,9 +154,10 @@ fn distance(x: i64, y: i64, r: Area) -> f64 {
 /// Das Schattenbild der Gruppe über der Fläche `area` ([`bounds`]): BGRA, Zeile für
 /// Zeile von oben, Farbe mit der Deckung vormultipliziert (so will es Windows).
 ///
-/// Unter jedem Fenster und einen Ring breit darum liegt deckend seine Farbe aus
-/// `colors` (fehlt sie, die Nahtfarbe): in der Naht stoßen so die Farben der beiden
-/// Nachbarn aneinander. Außen herum fällt der Schatten weich ab, nach unten versetzt.
+/// Unter dem Rand jedes Fensters ([`Look::inset`] nach innen) und einen Ring breit darum
+/// liegt deckend seine Farbe aus `colors` (fehlt sie, die Nahtfarbe): in der Naht stoßen
+/// so die Farben der beiden Nachbarn aneinander. Die Mitte unter dem Fenster bleibt
+/// durchsichtig. Außen herum fällt der Schatten weich ab, nach unten versetzt.
 pub fn render(rects: &[Area], colors: &[u32], area: Area, look: &Look) -> Vec<u8> {
     let (w, h) = ((area.2 - area.0).max(0) as usize, (area.3 - area.1).max(0) as usize);
     let mut px = vec![0u8; w * h * 4];
@@ -174,6 +195,18 @@ pub fn render(rects: &[Area], colors: &[u32], area: Area, look: &Look) -> Vec<u8
             if t > 0.0 {
                 p[3] = (look.strength * t * t * 255.0).round() as u8;
             }
+        }
+    }
+    // Die Mitte unter jedem Fenster wieder frei.
+    let clip = |v: i64, max: usize| v.clamp(0, max as i64) as usize;
+    for r in rects {
+        let (x0, x1) = (clip(r.0 + look.inset - area.0, w), clip(r.2 - look.inset - area.0, w));
+        let (y0, y1) = (clip(r.1 + look.inset - area.1, h), clip(r.3 - look.inset - area.1, h));
+        if x0 >= x1 {
+            continue;
+        }
+        for row in y0..y1 {
+            px[(row * w + x0) * 4..(row * w + x1) * 4].fill(0);
         }
     }
     px
@@ -217,7 +250,7 @@ mod tests {
     }
 
     fn look() -> Look {
-        Look { radius: 10, drop: 2, strength: 0.5, seam: 1, seam_rgb: 0x112233 }
+        Look { radius: 10, drop: 2, strength: 0.5, seam: 1, seam_rgb: 0x112233, inset: 5 }
     }
 
     fn at(px: &[u8], area: Area, x: i64, y: i64) -> [u8; 4] {
@@ -258,6 +291,16 @@ mod tests {
     }
 
     #[test]
+    fn a_block_moved_as_a_whole_is_shifted_one_that_changed_shape_is_not() {
+        let old = [(0, 0, 800, 600), (802, 0, 1600, 600)];
+        assert_eq!(shifted(&old, &[(2560, 3, 3360, 603), (3362, 3, 4160, 603)]), Some((2560, 3)));
+        assert_eq!(shifted(&old, &old), Some((0, 0)));
+        assert_eq!(shifted(&old, &[(2560, 3, 3360, 603), (3362, 3, 4170, 603)]), None, "ein Fenster breiter");
+        assert_eq!(shifted(&old, &[(2560, 3, 3360, 603)]), None, "eines weniger");
+        assert_eq!(shifted(&[], &[]), None);
+    }
+
+    #[test]
     fn each_half_of_the_seam_takes_the_status_color_of_its_window() {
         // Zwei Kacheln mit 2 px Naht, Ring 1 px: jede Hälfte trägt die Farbe ihres Fensters.
         let rects = [(0, 0, 99, 100), (101, 0, 200, 100)];
@@ -279,6 +322,17 @@ mod tests {
         assert_eq!(px.len(), 222 * 124 * 4);
         assert_eq!(at(&px, area, 99, 50), [0x33, 0x22, 0x11, 255], "im Spalt: Nahtfarbe als BGRA");
         assert_eq!(at(&px, area, -1, 50), [0x33, 0x22, 0x11, 255], "Saum um die Gruppe");
+    }
+
+    #[test]
+    fn under_the_middle_of_a_window_the_image_stays_clear() {
+        let rects = [(0, 0, 99, 100), (101, 0, 200, 100)];
+        let area = bounds(&rects, &look()).unwrap();
+        let px = render(&rects, &[ring_rgb(Status::Done, true)], area, &look());
+        assert_eq!(at(&px, area, 50, 50), [0, 0, 0, 0], "keine grüne Wand, wenn das Fenster gerade fehlt");
+        assert_eq!(at(&px, area, 150, 50), [0, 0, 0, 0]);
+        assert_eq!(at(&px, area, 94, 50)[3], 255, "am Rand bleibt die Farbe");
+        assert_eq!(at(&px, area, 93, 50), [0, 0, 0, 0], "ab `inset` nach innen frei");
     }
 
     #[test]

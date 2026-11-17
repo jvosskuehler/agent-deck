@@ -40,6 +40,11 @@ const WATCH: Duration = Duration::from_millis(60);
 /// und wird in jedem Bild gefragt: der Glow soll beim Wechsel sofort mitspringen, nicht
 /// bis zu [`WATCH`] später (so wirkte er verzögert, 14.11.2026).
 const IDLE: Duration = Duration::from_millis(16);
+/// So lange nach einer Änderung an Ringen oder Schatten schauen sie in jedem Bild nach,
+/// statt im Takt von [`WATCH`]: ein Terminal, das auf einen Monitor mit anderer
+/// Skalierung zieht, setzt seine Größe danach noch ein paarmal selbst, und eine Hand, die
+/// ein Fenster zieht, soll den Rand dicht am Fenster sehen.
+const FOLLOW: Duration = Duration::from_millis(1500);
 
 /// Welches Fenster bekommt den Rahmen, mit welchem Design?
 pub struct FrameWatch {
@@ -229,6 +234,9 @@ pub fn start(
             }
             let mut shadows = group_shadow.then(|| (ShadowWatch::new(desktop.clone(), hosts.clone(), crate::group_shadow::statuses()), ShadowLayer::default()));
             let mut rings = RingLayer::default();
+            if shadows.is_some() {
+                crate::group_shadow::mark_following();
+            }
             let shadow_desktop = desktop.clone();
             let shadow_hold = hold.clone();
             let mut watch = FrameWatch::new(desktop, hosts, group, seed);
@@ -244,6 +252,9 @@ pub fn start(
                 note("Fokus-Rahmen: Winter-Designs (erster Advent bis Dreikönig oder frame_season)");
             }
             let mut since_watch = Instant::now();
+            let mut since_shadow = Instant::now();
+            let mut follow_until = Instant::now();
+            let mut was_held = false;
             let mut t0 = Instant::now();
             let mut logged = false;
             let mut seen_fg = None;
@@ -264,19 +275,31 @@ pub fn start(
                 }
                 if tick {
                     since_watch = Instant::now();
-                    // Solange das Deck Fenster umlegt, wartet auch der Schatten: sonst
-                    // würde er für jeden Zwischenstand neu gerechnet.
-                    if let Some((plan, layer)) = shadows.as_mut()
-                        && !shadow_hold.load(std::sync::atomic::Ordering::SeqCst)
-                    {
-                        if plan.step() {
-                            layer.apply(&plan.plans);
-                            rings.apply(&plan.rings);
-                        }
-                        let z = shadow_desktop.z_order();
-                        rings.keep_behind(&z);
-                        layer.keep_behind(&z);
+                }
+                // Solange das Deck Fenster umlegt, warten Ringe und Schatten: sonst würden
+                // sie für jeden Zwischenstand neu gerechnet. Sobald es fertig ist, ziehen
+                // sie sofort nach, nicht erst im nächsten Takt.
+                let held = shadow_hold.load(std::sync::atomic::Ordering::SeqCst);
+                let released = std::mem::replace(&mut was_held, held) && !held;
+                let due = released || Instant::now() < follow_until || since_shadow.elapsed() >= WATCH;
+                if let Some((plan, layer)) = shadows.as_mut()
+                    && !held
+                    && due
+                {
+                    since_shadow = Instant::now();
+                    if plan.step() {
+                        // Erst alles weg, was neu gemalt werden muss, dann malen: der alte
+                        // Rand bleibt nicht stehen, während die neuen entstehen.
+                        rings.hide_stale(&plan.rings);
+                        layer.hide_stale(&plan.plans);
+                        rings.apply(&plan.rings);
+                        layer.apply(&plan.plans);
+                        follow_until = Instant::now() + FOLLOW;
                     }
+                    let z = shadow_desktop.z_order();
+                    rings.keep_behind(&z);
+                    layer.keep_behind(&z);
+                    crate::group_shadow::mark_pass();
                 }
                 match (frame.as_mut().zip(watch.target), watch.design) {
                     (Some((frame, target)), Some(design)) => {

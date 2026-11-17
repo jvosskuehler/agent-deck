@@ -48,9 +48,18 @@ const PAINT: Duration = Duration::from_millis(70);
 /// Abweichung in Pixeln, die noch als „trifft die Kachel“ gilt.
 const SLACK: i32 = 2;
 
+/// Wird unter dem Schleier gerufen, wenn die Fenster fertig liegen, kurz bevor er
+/// weggeht; bekommt die Wartefunktion des Schleiers. Dort ziehen Ringe und Schatten des
+/// Decks nach: geht der Schleier vorher weg, sieht man sie dem Block hinterherlaufen
+/// (beim Holen kommen sie zu spät, beim Verstecken bleiben sie kurz stehen).
+pub type BeforeLift<'a> = &'a dyn Fn(&dyn Fn(Duration));
+
+/// Für [`BeforeLift`], wenn nichts nachziehen muss.
+pub fn nothing(_: &dyn Fn(Duration)) {}
+
 /// Siehe Modulkopf. `None` als Ziel = das Fenster bleibt, wo es ist, und wird nur
 /// gehoben.
-pub fn show_together(moves: &[(Hwnd, Option<Rect>)]) -> Result<()> {
+pub fn show_together(moves: &[(Hwnd, Option<Rect>)], before_lift: BeforeLift) -> Result<()> {
     guard::check("show_together")?;
     let veil = Veil::cover(&touched_monitors(moves));
     let wait = |d: Duration| match &veil {
@@ -99,6 +108,7 @@ pub fn show_together(moves: &[(Hwnd, Option<Rect>)]) -> Result<()> {
     defer_all(moves, Some(above))?;
     defer_all(moves, Some(HWND_NOTOPMOST))?;
     if let Some(v) = veil {
+        before_lift(&|d| v.wait(d));
         v.on_top();
         v.wait(Duration::from_millis(16));
         v.lift(FADE);
@@ -111,7 +121,7 @@ pub fn show_together(moves: &[(Hwnd, Option<Rect>)]) -> Result<()> {
 /// was man sonst kurz vor den Terminals aufblitzen sähe), dann alle `hwnds` minimieren,
 /// ohne Animation und asynchron (ein hängendes Terminal hält das Foto nicht auf). Sind
 /// alle weg, blendet das Foto aus: der Block verschwindet auf einmal.
-pub fn hide_together(hwnds: &[Hwnd], back: Option<Hwnd>) -> Result<()> {
+pub fn hide_together(hwnds: &[Hwnd], back: Option<Hwnd>, before_lift: BeforeLift) -> Result<()> {
     guard::check("hide_together")?;
     let moves: Vec<(Hwnd, Option<Rect>)> = hwnds.iter().filter(|h| !is_minimized(**h)).map(|h| (*h, None)).collect();
     let veil = Veil::cover(&touched_monitors(&moves));
@@ -135,6 +145,7 @@ pub fn hide_together(hwnds: &[Hwnd], back: Option<Hwnd>) -> Result<()> {
     }
     // Was darunter frei wird, zeigt DWM aus seinem Puffer; ein Bild Luft reicht.
     v.wait(Duration::from_millis(30));
+    before_lift(&|d| v.wait(d));
     v.on_top();
     v.lift(FADE);
     Ok(())

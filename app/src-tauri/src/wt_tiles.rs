@@ -15,6 +15,7 @@ use deck_core::dock::Area;
 use deck_core::group_shadow::ring_px;
 use deck_core::wt::{WINDOW_CLASS, slot_from_title};
 use deck_win::effects::Desktop;
+use deck_win::together::BeforeLift;
 use deck_win::{Hwnd, Rect};
 
 /// Die Kachel `(x, y, w, h)` als Fensterfläche: rundum bleibt der feine Statusring frei
@@ -201,7 +202,7 @@ pub fn monitor_under(desktop: &dyn Desktop, pos: Option<(i32, i32)>) -> Option<(
 /// (`resting_rect`): versteckte Fenster kommen so in der Ordnung von vorher wieder. Ein Raster statt eines je Block, weil sich zwei Blöcke auf demselben
 /// Monitor sonst überdecken. Ohne `here` bleiben die Fenster liegen, wo sie sind.
 /// Liefert `(Slot, Fenster)` in Raster-Reihenfolge.
-pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>) -> Vec<(String, Hwnd)> {
+pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>, before_lift: BeforeLift) -> Vec<(String, Hwnd)> {
     let mut found: HashMap<String, (Hwnd, bool)> = HashMap::new();
     for w in desktop.class_windows(WINDOW_CLASS) {
         if let Some(slot) = slot_from_title(Some(&w.title))
@@ -241,7 +242,7 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
         }
     }
     if !moves.is_empty() {
-        let _ = desktop.show_together(&moves);
+        let _ = desktop.show_together(&moves, before_lift);
     }
     order
 }
@@ -249,8 +250,8 @@ pub fn gather(desktop: &dyn Desktop, slots: &[String], here: Option<(Rect, f64)>
 /// Taste „alle nach vorn“: [`gather`] auf den Monitor unter `cursor`. Die Tastatur
 /// bekommt KEINES: sie bleibt, wo sie war, und kein Fokus-Rahmen springt an. Wer tippen
 /// will, klickt in das Terminal, das er meint.
-pub fn bring_front(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32, i32)>) {
-    gather(desktop, slots, monitor_under(desktop, cursor));
+pub fn bring_front(desktop: &dyn Desktop, slots: &[String], cursor: Option<(i32, i32)>, before_lift: BeforeLift) {
+    gather(desktop, slots, monitor_under(desktop, cursor), before_lift);
 }
 
 /// Liegen alle offenen Fenster dieser Agenten auf dem Monitor unter `cursor` (Mitte des
@@ -315,7 +316,7 @@ pub fn all_open(desktop: &dyn Desktop, slots: &[String]) -> bool {
 /// kam, dann die Fenster dieser Agenten minimieren. In dieser Reihenfolge, damit die
 /// Tastatur schon im Ausgangsfenster ist und nicht von Terminal zu Terminal wandert.
 /// Alle in einem Zug ([`Desktop::hide_together`]), damit der Block auf einmal verschwindet.
-pub fn hide(desktop: &dyn Desktop, slots: &[String], back: Option<Hwnd>) {
+pub fn hide(desktop: &dyn Desktop, slots: &[String], back: Option<Hwnd>, before_lift: BeforeLift) {
     let open: Vec<Hwnd> = desktop
         .class_windows(WINDOW_CLASS)
         .into_iter()
@@ -328,13 +329,14 @@ pub fn hide(desktop: &dyn Desktop, slots: &[String], back: Option<Hwnd>) {
         }
         return;
     }
-    let _ = desktop.hide_together(&open, back);
+    let _ = desktop.hide_together(&open, back, before_lift);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::testing::FakeDesktop;
+    use deck_win::together::nothing;
 
     #[test]
     fn hiding_goes_back_first_and_then_minimizes_only_the_agents_that_lie_open() {
@@ -345,7 +347,7 @@ mod tests {
         let slots: Vec<String> = vec!["A1".into(), "A2".into()];
         assert!(!all_open(&d, &slots), "A2 ist minimiert");
         assert!(!all_open(&d, &["C1".into()]), "kein Fenster");
-        hide(&d, &slots, Some(Hwnd(500)));
+        hide(&d, &slots, Some(Hwnd(500)), &nothing);
         assert_eq!(d.focused(), [Hwnd(500)]);
         assert_eq!(d.minimized(), [Hwnd(11)]);
     }
@@ -359,7 +361,7 @@ mod tests {
         d.add_wt(Hwnd(12), "A2", Rect::new(0, 0, 800, 600), false);
         let here = monitor_under(&d, Some((2000, 100)));
         assert_eq!(here, Some((Rect::new(1920, 0, 4320, 1160), 1.0)));
-        let got = gather(&d, &["A1".into(), "A2".into(), "B1".into()], here);
+        let got = gather(&d, &["A1".into(), "A2".into(), "B1".into()], here, &nothing);
         assert_eq!(got, [("A1".into(), Hwnd(11)), ("A2".into(), Hwnd(12)), ("B1".into(), Hwnd(21))]);
         assert_eq!(d.restored(), [Hwnd(21)]);
         assert_eq!(
@@ -380,7 +382,7 @@ mod tests {
         d.add_wt(Hwnd(13), "A3", Rect::new(0, 0, 800, 500), false);
         d.add_wt(Hwnd(14), "A4", Rect::new(800, 500, 1600, 1000), true);
         let slots: Vec<String> = ["A4", "A1", "A2", "A3"].map(String::from).into();
-        let got = gather(&d, &slots, monitor_under(&d, Some((10, 10))));
+        let got = gather(&d, &slots, monitor_under(&d, Some((10, 10))), &nothing);
         let names: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
         assert_eq!(names, ["A3", "A1", "A2", "A4"]);
         assert_eq!(d.placed().iter().map(|(h, _)| *h).collect::<Vec<_>>(), [Hwnd(13), Hwnd(11), Hwnd(12), Hwnd(14)]);
@@ -395,7 +397,7 @@ mod tests {
         d.set_foreground(Hwnd(500), "Editor", "Notepad");
         let slots: Vec<String> = vec!["A1".into(), "A2".into(), "A3".into()];
         assert_eq!(coverer(&d, &slots), Some(Hwnd(500)), "der Editor liegt noch obenauf");
-        bring_front(&d, &slots, Some((10, 10)));
+        bring_front(&d, &slots, Some((10, 10)), &nothing);
         assert!(d.focused().is_empty(), "keines bekommt die Tastatur");
         assert_eq!(d.raised(), [Hwnd(13), Hwnd(12), Hwnd(11)]);
         assert_eq!(d.placed().len(), 3);
@@ -434,7 +436,7 @@ mod tests {
         let d = FakeDesktop::default();
         d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 800, 600), false);
         assert_eq!(monitor_under(&d, None), None);
-        assert_eq!(gather(&d, &["A1".into()], None), [("A1".into(), Hwnd(11))]);
+        assert_eq!(gather(&d, &["A1".into()], None, &nothing), [("A1".into(), Hwnd(11))]);
         assert!(d.placed().is_empty());
     }
 

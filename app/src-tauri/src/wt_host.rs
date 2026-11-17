@@ -636,7 +636,7 @@ impl WtHost {
         let (d, hold) = (self.fx.desktop.clone(), self.frame_hold.clone());
         self.worker.run(move || {
             let _hold = Holding::start(&hold);
-            wt_tiles::bring_front(d.as_ref(), &slots, cursor);
+            wt_tiles::bring_front(d.as_ref(), &slots, cursor, &|wait| crate::group_shadow::catch_up(&hold, wait));
         });
         true
     }
@@ -670,7 +670,7 @@ impl WtHost {
         let (d, hold) = (self.fx.desktop.clone(), self.frame_hold.clone());
         self.worker.run(move || {
             let _hold = Holding::start(&hold);
-            wt_tiles::hide(d.as_ref(), &slots, back);
+            wt_tiles::hide(d.as_ref(), &slots, back, &|wait| crate::group_shadow::catch_up(&hold, wait));
         });
     }
 

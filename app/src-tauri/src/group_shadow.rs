@@ -12,10 +12,12 @@
 //! Beides läuft im Thread des Fokus-Rahmens (`crate::focus_frame`).
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
+use std::time::{Duration, Instant};
 
 use deck_core::arrange::Area;
-use deck_core::group_shadow::{Look, bounds, groups, render, render_ring, ring_px, ring_rgb};
+use deck_core::group_shadow::{Look, bounds, groups, render, render_ring, ring_px, ring_rgb, shifted};
 use deck_core::view::Status;
 use deck_core::wt::WINDOW_CLASS;
 use deck_win::effects::Desktop;
@@ -28,6 +30,41 @@ use crate::wt_host::{HostMap, WtHost};
 /// Nahtfarbe zwischen den Fenstern: eine Stufe neben dem Papier des Terminals.
 const SEAM_LIGHT: u32 = 0xDFDAD9;
 const SEAM_DARK: u32 = 0x2A273F;
+
+/// Wie oft Ringe und Schatten schon hingeschaut und nachgezogen haben. `None`, solange es
+/// sie nicht gibt (abgeschaltet oder der Thread des Fokus-Rahmens läuft nicht): dann
+/// wartet niemand auf sie.
+static PASSES: AtomicU64 = AtomicU64::new(0);
+static FOLLOWING: AtomicBool = AtomicBool::new(false);
+
+/// Aus dem Thread des Fokus-Rahmens: es gibt Ringe und Schatten, die nachziehen.
+pub fn mark_following() {
+    FOLLOWING.store(true, Ordering::SeqCst);
+}
+
+/// Aus dem Thread des Fokus-Rahmens: ein Durchgang (hinschauen, nachziehen) ist fertig.
+pub fn mark_pass() {
+    PASSES.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Unter dem Schleier des Decks ([`deck_win::together::BeforeLift`]): `hold` freigeben und
+/// warten, bis Ringe und Schatten der neuen Lage gefolgt sind, höchstens [`CATCH_UP_MAX`].
+/// Zwei Durchgänge: der erste kann noch vor der Freigabe begonnen haben.
+pub fn catch_up(hold: &AtomicBool, wait: &dyn Fn(Duration)) {
+    let seen = PASSES.load(Ordering::SeqCst);
+    hold.store(false, Ordering::SeqCst);
+    if !FOLLOWING.load(Ordering::SeqCst) {
+        return;
+    }
+    let until = Instant::now() + CATCH_UP_MAX;
+    while PASSES.load(Ordering::SeqCst) < seen + 2 && Instant::now() < until {
+        wait(Duration::from_millis(4));
+    }
+}
+
+/// So lange hält das Nachziehen den Schleier höchstens auf: frisch gemalte Ringe und
+/// Schatten eines ganzen Blocks brauchen gemessen um 100 ms.
+const CATCH_UP_MAX: Duration = Duration::from_millis(400);
 
 /// Zustand je Slot, wie die Kachel ihn zeigt. Der Takt schreibt, der Thread des
 /// Fokus-Rahmens liest.
@@ -50,6 +87,13 @@ pub struct Plan {
     pub look: Look,
 }
 
+impl Plan {
+    /// Ist `next` derselbe Schatten, nur als Ganzes verschoben? Dann zieht das Bild mit.
+    fn moves_to(&self, next: &Plan) -> bool {
+        self.colors == next.colors && self.look == next.look && shifted(&self.rects, &next.rects).is_some()
+    }
+}
+
 /// Der Ring eines Agentenfensters: wo es liegt, wie breit und in welcher Farbe.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ring {
@@ -57,6 +101,19 @@ pub struct Ring {
     pub rect: Area,
     pub width: i64,
     pub rgb: u32,
+}
+
+impl Ring {
+    /// Die Fläche des Ringfensters: das Agentenfenster plus Ringbreite rundum.
+    fn area(&self) -> Rect {
+        let (r, m) = (self.rect, self.width);
+        Rect::new((r.0 - m) as i32, (r.1 - m) as i32, (r.2 + m) as i32, (r.3 + m) as i32)
+    }
+
+    /// Ist `next` derselbe Ring, nur verschoben? Dann zieht das Bild mit.
+    fn moves_to(&self, next: &Ring) -> bool {
+        self.width == next.width && self.rgb == next.rgb && shifted(&[self.rect], &[next.rect]).is_some()
+    }
 }
 
 pub struct ShadowWatch {
@@ -166,15 +223,19 @@ impl ShadowLayer {
                 continue;
             };
             let old = self.shown.get(i);
+            let place = bounds(&plan.rects, &plan.look).map(|b| (b, Rect::new(b.0 as i32, b.1 as i32, b.2 as i32, b.3 as i32)));
             let done = if old.is_some_and(|o| o.rects == plan.rects && o.colors == plan.colors && o.look == plan.look) {
                 // Dieselbe Lage, nur ein anderes Fenster ist jetzt das unterste.
                 window.restack(plan.below)
             } else {
-                match bounds(&plan.rects, &plan.look) {
-                    Some(b) => {
-                        let rect = Rect::new(b.0 as i32, b.1 as i32, b.2 as i32, b.3 as i32);
-                        window.show(rect, &render(&plan.rects, &plan.colors, b, &plan.look), plan.below)
+                let paint = |window: &mut ShadowWindow, b: Area, rect: Rect| {
+                    window.show(rect, &render(&plan.rects, &plan.colors, b, &plan.look), plan.below)
+                };
+                match place {
+                    Some((b, rect)) if old.is_some_and(|o| o.moves_to(plan)) => {
+                        window.move_to(rect, plan.below).or_else(|_| paint(window, b, rect))
                     }
+                    Some((b, rect)) => paint(window, b, rect),
                     None => Ok(()),
                 }
             };
@@ -186,6 +247,17 @@ impl ShadowLayer {
             }
         }
         self.shown = plans.to_vec();
+    }
+
+    /// Vor dem Neumalen: jeden Schatten, dessen Gruppe anders liegt und nicht einfach
+    /// mitziehen kann, sofort wegnehmen. Malen und Hochladen dauern; so lange stünde er
+    /// sonst noch dort, wo die Fenster eben waren (etwa auf dem alten Monitor).
+    pub fn hide_stale(&mut self, plans: &[Plan]) {
+        for (i, (window, old)) in self.windows.iter_mut().zip(&self.shown).enumerate() {
+            if plans.get(i).is_some_and(|p| p.rects != old.rects && !old.moves_to(p)) {
+                window.hide();
+            }
+        }
     }
 
     /// Liegt jedes Schattenfenster noch direkt hinter seinem Fenster? Ein Klick auf ein
@@ -238,12 +310,32 @@ impl RingLayer {
             if shown.as_ref() == Some(ring) {
                 continue;
             }
-            let (r, m) = (ring.rect, ring.width);
-            let rect = Rect::new((r.0 - m) as i32, (r.1 - m) as i32, (r.2 + m) as i32, (r.3 + m) as i32);
-            let image = render_ring(r.2 - r.0 + 2 * m, r.3 - r.1 + 2 * m, m, ring.rgb);
-            match window.show(rect, &image, ring.hwnd) {
+            let rect = ring.area();
+            let paint = |window: &mut ShadowWindow| {
+                window.show(rect, &render_ring(i64::from(rect.width()), i64::from(rect.height()), ring.width, ring.rgb), ring.hwnd)
+            };
+            let done = if shown.as_ref().is_some_and(|s| s.moves_to(ring)) {
+                window.move_to(rect, ring.hwnd).or_else(|_| paint(window))
+            } else {
+                paint(window)
+            };
+            match done {
                 Ok(()) => *shown = Some(ring.clone()),
                 Err(e) => self.fail(format!("Statusrand: {e}")),
+            }
+        }
+    }
+
+    /// Vor dem Neumalen: jeden Ring, dessen Fenster anders liegt und der nicht einfach
+    /// mitziehen kann (neue Größe, andere Skalierung), sofort wegnehmen, wie
+    /// [`ShadowLayer::hide_stale`].
+    pub fn hide_stale(&mut self, rings: &[Ring]) {
+        for ring in rings {
+            let Some((window, shown)) = self.windows.get_mut(&ring.hwnd) else { continue };
+            if shown.as_ref().is_some_and(|old| old.rect != ring.rect && !old.moves_to(ring)) {
+                window.hide();
+                // Ohne Bild kann er nicht mehr nur verschoben werden.
+                *shown = None;
             }
         }
     }

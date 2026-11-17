@@ -106,6 +106,23 @@ impl ShadowWindow {
         self.restack(below)
     }
 
+    /// Das gezeigte Bild unverändert nach `area` schieben (gleiche Größe wie beim letzten
+    /// [`ShadowWindow::show`]) und direkt hinter `below` legen. Kein Malen, kein Hochladen:
+    /// so folgt der Rand einem Fenster im selben Bild, in dem es umzieht.
+    pub fn move_to(&mut self, area: Rect, below: Hwnd) -> Result<()> {
+        guard::check("shadow_window")?;
+        if !self.shown {
+            return Err(Error::Helper("Schattenfenster ohne Bild verschoben".into()));
+        }
+        // Erst die Region für die neue Lage: sonst ragte der Schatten am Ziel einen
+        // Augenblick über die Taskleiste.
+        clip_to_work_areas(self.hwnd, area);
+        let flags = SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
+        // SAFETY: eigenes Fenster; ein ungültiges `below` lässt den Aufruf scheitern.
+        unsafe { SetWindowPos(self.hwnd, Some(below.h()), area.left, area.top, 0, 0, flags) }
+            .map_err(|e| Error::win("SetWindowPos", e))
+    }
+
     /// Das Fenster (wieder) direkt hinter `below` legen, ohne es zu aktivieren.
     pub fn restack(&mut self, below: Hwnd) -> Result<()> {
         guard::check("shadow_window")?;
