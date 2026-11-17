@@ -8,7 +8,8 @@ VS-Code-Extension bis 09.11.2026, Python/tkinter bis `2856494`
 
 **Die Oberfläche ist nicht Nebensache, sie ist der Grund für den Umbau.** Der .NET-Port
 (Juli 2026) hatte die Rechnung sauber portiert, aber das Aussehen fehlte, und daran ist
-er gescheitert. Jede Änderung am Aussehen wird angeschaut (Screenshot), nicht nur gebaut.
+er gescheitert. Jede Änderung am Aussehen wird angeschaut (Screenshot), nicht nur gebaut,
+und zwar in einer Windows-VM auf dem Titan (`titan vm`), nie auf Jorrits Laptop.
 
 ## Wo was steht
 
