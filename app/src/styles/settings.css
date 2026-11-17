@@ -191,6 +191,26 @@ body:has(.settings) {
   color: var(--muted);
 }
 
+/* Auswahlliste im Kleid des Textfelds, Pfeil als Hintergrundbild in der gedämpften Farbe. */
+.set-select {
+  appearance: none;
+  padding-right: 30px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--dim) 50%),
+    linear-gradient(135deg, var(--dim) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 14px,
+    calc(100% - 11px) 14px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.set-select option {
+  background: var(--card);
+  color: var(--ink);
+}
+
 .set-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;

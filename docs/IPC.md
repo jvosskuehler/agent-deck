@@ -99,7 +99,8 @@ nicht auf das erste Ereignis warten muss.
   `reorder_tiles` alle Slots des Blocks; die Oberfläche hält die gezogene Reihenfolge
   1,5 s, bis sie im View bestätigt ist.
 - `set_setting` gibt den vollen `SettingsView` zurück und sendet `deck://settings`; bei
-  `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`.
+  `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`; bei
+  `appearance` und `sunPlace` stellt Rust Thema und Sonnenstand neu ein (`appearance.rs`).
 
 ### Blockkopf, Neustart, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
 

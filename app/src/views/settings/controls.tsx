@@ -1,5 +1,5 @@
 // Bausteine des Einstellungsfensters: Segmente, Schalterzeilen (An/Aus als kleine
-// Segmente), Textfelder und die Ordnerzeile mit „Ändern…“.
+// Segmente), Textfelder, eine Auswahlliste und die Ordnerzeile mit „Ändern…“.
 
 import { useEffect, useState } from "react";
 import type { Option } from "../../logic/settingsOptions";
@@ -34,12 +34,41 @@ function Segments({ label, options, value, onChange }: SegmentedProps) {
   );
 }
 
-export function Segmented(props: SegmentedProps) {
+interface SegmentedFieldProps extends SegmentedProps {
+  /** Kleine Zeile darunter: was die Wahl bewirkt. */
+  hint?: string;
+}
+
+export function Segmented({ hint, ...props }: SegmentedFieldProps) {
   return (
     <div className="set-field">
       <span className="set-label">{props.label}</span>
       <Segments {...props} />
+      {hint && <span className="set-row-hint">{hint}</span>}
     </div>
+  );
+}
+
+interface SelectFieldProps {
+  label: string;
+  options: Option[];
+  value: string;
+  onChange(value: string): void;
+}
+
+/** Eine Auswahl aus einer langen Liste (zu viele für Segmente). */
+export function SelectField({ label, options, value, onChange }: SelectFieldProps) {
+  return (
+    <label className="set-field">
+      <span className="set-label">{label}</span>
+      <select className="set-input set-select" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

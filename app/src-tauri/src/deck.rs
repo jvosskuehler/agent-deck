@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use deck_core::appearance::Appearance;
 use deck_core::auto_compact::CompactMemo;
 use deck_core::auto_mode::PendingAuto;
 use deck_core::bind_store::BindStore;
@@ -93,8 +94,9 @@ pub struct Deck {
 }
 
 impl Deck {
-    pub fn new(paths: Paths, wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
+    pub fn new(paths: Paths, mut wt: WtHost, desktop: Arc<dyn Desktop>, services: Services) -> Deck {
         let store = BindStore::load(&paths.app_dir);
+        wt.set_color_scheme(Appearance::from_settings(&store.settings).wt_scheme());
         let lang = Lang::from_settings(&paths.claude_settings);
         let refs_files = RefsFiles::new(paths.state_dir.clone());
         Deck {

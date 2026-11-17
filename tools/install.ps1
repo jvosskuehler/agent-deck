@@ -640,6 +640,10 @@ function Invoke-Main {
     # Erst nach den Hooks: scheitert ein erster Lauf vorher, fragt der nächste wieder.
     if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
     Ok 'Claude-Einstellungen'
+    # Bisher schaltete eine geplante Aufgabe Windows hell und dunkel; steht das Deck auf
+    # Sonnenstand, tut es das jetzt selbst, und die Aufgabe geht. Sonst kein Wort.
+    Invoke-Setup @('migrate-darkmode')
+    if ($script:Tags -contains 'darkmode-task-removed') { Ok 'Alte Aufgabe „DarkModeZeitplan“ entfernt: hell und dunkel schaltet jetzt das Deck' }
 
     # Erst Schrift und Shader, dann das Terminal-Profil, das beide nennt.
     Invoke-Setup @('look', '--from', $source.Papier)

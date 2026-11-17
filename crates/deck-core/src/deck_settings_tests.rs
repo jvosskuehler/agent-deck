@@ -48,6 +48,18 @@ fn an_existing_install_without_version_keeps_todays_behaviour() {
     assert_eq!(s["repos_root"], json!(home.path().join("Repos").to_string_lossy()));
     assert_eq!(s["settings_version"], 1);
     assert_eq!(s["dock_edge"], "left");
+    assert_eq!(s["appearance"], "sun", "Hell/Dunkel wie bisher nach dem Sonnenstand");
+}
+
+#[test]
+fn a_fresh_install_follows_windows_and_an_own_choice_survives_the_migration() {
+    let home = tempfile::tempdir().unwrap();
+    let mut fresh = Map::new();
+    migrate(&mut fresh, Origin::Fresh, home.path());
+    assert_eq!(crate::appearance::Appearance::from_settings(&fresh), crate::appearance::Appearance::System);
+    let mut own = map(json!({"appearance": "dark"}));
+    migrate(&mut own, Origin::Existing, home.path());
+    assert_eq!(own["appearance"], "dark");
 }
 
 #[test]

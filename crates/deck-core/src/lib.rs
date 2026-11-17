@@ -9,6 +9,7 @@
 //! Zeichen statt Bytes.
 
 pub mod agent_flags;
+pub mod appearance;
 pub mod arrange;
 pub mod attention;
 pub mod auto_compact;
@@ -42,6 +43,7 @@ pub mod shortcuts;
 pub mod slot_state;
 pub mod speechmike;
 pub mod status_model;
+pub mod sun;
 pub mod text;
 pub mod tile_refs;
 pub mod tooltip;

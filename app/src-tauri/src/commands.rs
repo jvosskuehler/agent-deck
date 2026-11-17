@@ -136,6 +136,7 @@ pub async fn set_setting(app: AppHandle, key: String, value: Value) -> Res<Setti
             poll::nudge(&app);
         }
         Effect::Edge(edge) => dock::set_edge(&app, edge),
+        Effect::Appearance => crate::appearance::apply(&app),
         Effect::None => {}
     }
     let _ = app.emit("deck://settings", &view);

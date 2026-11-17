@@ -62,6 +62,17 @@ export function edgeOptions(lang: Lang): Option[] {
   ];
 }
 
+/** Hell/Dunkel: wie Windows, fest hell, fest dunkel oder Windows nach dem Sonnenstand. */
+export function appearanceOptions(lang: Lang): Option[] {
+  const de = lang !== "en";
+  return [
+    { value: "system", label: "System" },
+    { value: "light", label: de ? "Hell" : "Light" },
+    { value: "dark", label: de ? "Dunkel" : "Dark" },
+    { value: "sun", label: de ? "Sonnenstand" : "Sunrise/sunset" },
+  ];
+}
+
 /** Ein Schalter als zwei Segmente (Schalter selbst gibt es im Fenster nicht mehr). */
 export function onOffOptions(lang: Lang): Option[] {
   const de = lang !== "en";

@@ -1,6 +1,6 @@
-// Hell oder dunkel, wie das System gerade steht. Die Fenster folgen dem System-Thema
-// (ui_windows.rs setzt keins fest), also meldet die Webview den Wechsel als Media Query;
-// das Windows-Terminal-Profil „Agent Deck“ wechselt sein Schema genauso.
+// Hell oder dunkel, wie es für die Fenster gerade gilt: das Thema von Windows oder die
+// feste Wahl unter „Hell/Dunkel“ (Rust setzt sie per AppHandle::set_theme, appearance.rs).
+// Beides kommt in der Webview als Media Query an.
 //
 // Eine Media Query und ein Listener für alle: jede Karte fragt das Schema ab, und ein
 // eigener Listener je Karte wäre bei jedem Einhängen ein neues Abonnement beim Browser.

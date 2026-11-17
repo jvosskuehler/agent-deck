@@ -61,6 +61,8 @@ export function createMockBackend(): Backend {
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
   // `?fresh=1`: eine neue Installation (kein Repos-Ordner, alle Automatik aus).
   if (params.get("fresh") === "1") Object.assign(settings, freshSettings());
+  // `?appearance=sun`: Hell/Dunkel vorgewählt (system, light, dark, sun).
+  if (params.get("appearance")) settings.appearance = params.get("appearance")!;
   // `?pr=1`: PR-Automatik an (zeigt die Felder für Reviewer und Organisation).
   if (params.get("pr") === "1") settings.prAutomation = true;
   // `?orgs=2`: das Konto hat mehrere Organisationen, das Feld fragt nach der richtigen.

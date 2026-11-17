@@ -20,7 +20,10 @@ Aufbau ist derselbe wie im Python-Deck: oben angedockt, Repo-Blöcke, vier Karte
 ＋ am Reihenende, unten Nutzung und Einstellungen, eingeklappt nur der Griff.
 
 **Hell oder dunkel folgt dem System** (`prefers-color-scheme`; die Fenster setzen kein
-festes Thema), wie das Terminal-Profil. Hell = Rosé Pine Dawn, dunkel = Rosé Pine. Die
+eigenes Thema), wie das Terminal-Profil. Hell = Rosé Pine Dawn, dunkel = Rosé Pine. Die
+Einstellung „Hell/Dunkel“ (seit 18.11.2026) kann Deck und Agenten fest hell oder dunkel
+stellen: dann gibt Rust allen Fenstern das Thema vor (`AppHandle::set_theme`), und
+`prefers-color-scheme` folgt ihm; das CSS bleibt dasselbe. Die
 festen Farben stehen als CSS-Variablen in `app/src/styles/base.css`, die je Zustand
 gerechneten in `app/src/logic/palette.ts`.
 
@@ -232,7 +235,7 @@ Arbeitsfläche, darüber rollt es.
 **Kompakt und erweitert** (seit 17.11.2026, Wunsch von Jorrit): Das Fenster geht kompakt
 auf wie vor den Einstellungen für Kolleginnen und Kollegen, eine Spalte, 480 breit, nur
 „Neue Agenten“ (Modell, Modus, Effort) und „Deck“ (Sprache, Andocken, Info-Fenster,
-Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
+Hell/Dunkel, Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
 (`tool-btn`) zieht das Fenster auf 960 und zwei Spalten mit allen vier Bereichen auf,
 dort heißt er „Weniger“. Die Wahl merkt sich die Oberfläche (`localStorage`). Taugt der
 Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt über „Neue Agenten“.
@@ -246,7 +249,15 @@ Agenten; rechts Deck, Automatik):
   Verlassen oder mit Enter, Escape verwirft).
 - **Neue Agenten** (Modell mit „Standard“ = ohne `--model`, Modus, Effort als Segmente;
   erweitert dazu der Schalter „Neue Agenten in Auto schalten“).
-- **Deck** (Sprache, Andocken als Segmente; Schalter Info-Fenster und Auto-Compact). „Panel neu starten“
+- **Deck** (Sprache, Andocken, Hell/Dunkel als Segmente; Schalter Info-Fenster und
+  Auto-Compact). Hell/Dunkel hat vier Segmente „System | Hell | Dunkel | Sonnenstand“
+  (englisch „System | Light | Dark | Sunrise/sunset“) und steht auch kompakt. Darunter klein
+  und gedämpft, was die Wahl über das Deck hinaus tut: bei Hell und Dunkel „Nur Deck und
+  Agenten. Offene Agentenfenster wechseln beim nächsten Start.“, bei Sonnenstand „Schaltet
+  Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel (Hamburg).“; bei System
+  nichts. Den Ort gibt es nur erweitert und nur bei Sonnenstand, als Auswahlliste „Ort für
+  Sonnenstand“ (wie das Textfeld: Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px,
+  Pfeil gedämpft), so wie die GitHub-Organisation erst mit der PR-Automatik erscheint. „Panel neu starten“
   steht als kleiner, leiser Knopf rechts in der Kopfzeile, so hoch wie der Hinweis neben
   „Neue Agenten“.
 - **Automatik** („läuft nur, was du einschaltest“): PowerShell und Terminal

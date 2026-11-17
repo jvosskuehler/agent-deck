@@ -9,13 +9,14 @@
 //!   09.11. bis 17.11.2026 bewusst nicht im Fenster; seit Kolleginnen und Kollegen das
 //!   Deck installieren, gehören sie wieder hinein (docs/DESIGN.md).
 
+use deck_core::appearance::{self, Appearance};
 use deck_core::auto_compact;
 use deck_core::claude::settings::{WriteValues, effort_label, effort_spec, read_values, write_values};
 use deck_core::dash::reviewers::{self, ReviewerReport};
 use deck_core::deck_settings::{self as ds, Switch};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
-use deck_core::view::SettingsView;
+use deck_core::view::{SettingsView, SunPlaceOption};
 use serde_json::Value;
 
 use crate::deck::Deck;
@@ -28,6 +29,21 @@ pub enum Effect {
     Language,
     /// Andockkante gewechselt.
     Edge(Edge),
+    /// Hell/Dunkel oder der Ort für den Sonnenstand gewechselt: Fenster, Rahmen und
+    /// Sonnenstand neu einstellen (`crate::appearance::apply`).
+    Appearance,
+}
+
+/// Die Orte für den Sonnenstand in der Sprache des Decks, nach Namen sortiert.
+fn sun_places(lang: Lang) -> Vec<SunPlaceOption> {
+    let mut v: Vec<SunPlaceOption> = deck_core::sun::PLACES
+        .iter()
+        .map(|p| SunPlaceOption { id: p.id.into(), name: lang.l(p.de, p.en).into() })
+        .collect();
+    // Umlaute wie ihr Grundbuchstabe: Düsseldorf zwischen Dresden und Erfurt.
+    let key = |n: &str| n.to_lowercase().replace('ä', "a").replace('ö', "o").replace('ü', "u");
+    v.sort_by_key(|o| key(&o.name));
+    v
 }
 
 impl Deck {
@@ -62,6 +78,9 @@ impl Deck {
             pr_reviewer_label: reviewers::label(&ds::text(s, ds::PR_REVIEWER), s.get(ds::PR_REVIEWER_NAMES)),
             github_org: ds::text(s, ds::GITHUB_ORG),
             shortcuts: deck_core::shortcuts::rows(s, self.lang),
+            appearance: Appearance::from_settings(s).as_str().to_string(),
+            sun_place: appearance::sun_place(s).id.to_string(),
+            sun_places: sun_places(self.lang),
         }
     }
 
@@ -135,6 +154,18 @@ impl Deck {
                 self.lang = lang;
                 self.services.set_lang(lang);
                 Effect::Language
+            }
+            "appearance" => {
+                let a = Appearance::parse(&text()?).ok_or_else(|| format!("{key}: system, light, dark oder sun"))?;
+                self.put(appearance::KEY, a.as_str().into());
+                // Neue Agenten gleich im passenden Schema; offene wechseln beim nächsten Start.
+                self.wt.set_color_scheme(a.wt_scheme());
+                Effect::Appearance
+            }
+            "sunPlace" => {
+                let place = deck_core::sun::place(&text()?).ok_or_else(|| format!("{key}: unbekannter Ort"))?;
+                self.put(appearance::PLACE_KEY, place.id.into());
+                Effect::Appearance
             }
             "dockEdge" => {
                 let edge = Edge::parse(Some(&text()?));

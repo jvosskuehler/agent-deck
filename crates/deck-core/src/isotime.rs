@@ -6,7 +6,7 @@
 //! aber der Parser soll nicht daran hängen.
 
 /// Tage seit 1970-01-01 für ein Datum im gregorianischen Kalender.
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -118,7 +118,7 @@ pub fn parse_iso(s: &str) -> Option<f64> {
 
 /// Tage seit 1970-01-01 → (Jahr, Monat, Tag), die Umkehrung von [`days_from_civil`]
 /// (Howard Hinnant, `civil_from_days`).
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
+pub(crate) fn civil_from_days(z: i64) -> (i64, i64, i64) {
     let z = z + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

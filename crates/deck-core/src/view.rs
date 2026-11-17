@@ -315,6 +315,21 @@ pub struct SettingsView {
     pub github_org: String,
     /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
     pub shortcuts: Vec<crate::shortcuts::ShortcutRow>,
+    /// Hell/Dunkel (`appearance`): `system`, `light`, `dark` oder `sun` (`appearance.rs`).
+    pub appearance: String,
+    /// Ort für den Sonnenstand (`sun_place`), eine Kennung aus `sun::PLACES`.
+    pub sun_place: String,
+    /// Die Orte zur Auswahl, in der Sprache des Decks und nach Namen sortiert.
+    pub sun_places: Vec<SunPlaceOption>,
+}
+
+/// Ein Ort in der Auswahl „Ort für Sonnenstand“.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SunPlaceOption {
+    pub id: String,
+    pub name: String,
 }
 
 /// Inhalt des Dialogs „Ticket zuweisen“ (Kontextmenü einer Kachel). Ein Feld, die

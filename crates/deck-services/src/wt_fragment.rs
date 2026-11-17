@@ -30,8 +30,7 @@ use crate::report::{Grade, Report};
 /// Terminal das Profil führt.
 pub const SOURCE: &str = "AgentDeck";
 pub const FILE: &str = "agent-deck.json";
-pub const SCHEME_LIGHT: &str = "papier-ebenen";
-pub const SCHEME_DARK: &str = "papier-ebenen-nacht";
+pub use deck_core::wt::{SCHEME_DARK, SCHEME_LIGHT};
 
 /// `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck\agent-deck.json`.
 pub fn fragment_path() -> PathBuf {

@@ -23,6 +23,9 @@
 //! deck-setup uninstall                  Alles heraus, was die Einrichtung hinzugefügt hat
 //!                                       (laut installed.json und am Namen), gesicherte
 //!                                       Infozeile zurück. Programme und Daten bleiben.
+//! deck-setup migrate-darkmode           Die alte geplante Aufgabe „DarkModeZeitplan“ löschen,
+//!                                       wenn es sie gibt und Hell/Dunkel auf Sonnenstand
+//!                                       steht (dann schaltet das Deck). Sonst keine Zeile.
 //! deck-setup remove-vscode-extension    Eintrag in ~/.vscode/extensions/extensions.json und
 //!                                       Ordner agent-deck-bridge entfernen (mehrfach harmlos).
 //! deck-setup resolve-reviewers --names "<text>" [--org <org>]
@@ -49,12 +52,12 @@ use deck_services::installed::{self, Installed};
 use deck_services::look::{self, LookPaths};
 use deck_services::report::{Grade, Report};
 use deck_services::user_system::RealSystem;
-use deck_services::{apps_entry, autostart, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment, wt_theme};
+use deck_services::{apps_entry, autostart, darkmode_task, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment, wt_theme};
 
 const USAGE: &str = "deck-setup install --bin <ordner> [--statusline replace|keep] | check --bin <ordner> | uninstall \
                      | look --from <ordner> [--remove] | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] \
                      | autostart [--bin <ordner>] [--remove] | apps-entry --bin <ordner> --version <v> [--remove] \
-                     | remove-vscode-extension | resolve-reviewers --names <text> [--org <org>]";
+                     | migrate-darkmode | remove-vscode-extension | resolve-reviewers --names <text> [--org <org>]";
 
 fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
@@ -167,6 +170,13 @@ fn main() -> ExitCode {
         (Some("apps-entry"), Some(bin)) => {
             let version = arg_value(&args, "--version").unwrap_or("unbekannt");
             apps_entry::set(&bin, version, &sys, &mut m)
+        }
+        (Some("migrate-darkmode"), _) => {
+            let appearance = darkmode_task::effective_appearance(
+                &deck_core::paths::app_dir().join(deck_core::paths::SETTINGS_FILE),
+                &deck_core::paths::home_dir(),
+            );
+            darkmode_task::migrate(appearance, &darkmode_task::Schtasks)
         }
         (Some("remove-vscode-extension"), _) => vscode_cleanup::remove_extension(&vscode_cleanup::extensions_dir()),
         _ => {

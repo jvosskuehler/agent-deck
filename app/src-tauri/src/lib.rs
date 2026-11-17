@@ -5,6 +5,7 @@
 //! (Einbaustellen in `services.rs`).
 
 pub mod actions;
+pub mod appearance;
 pub mod auto_compact;
 pub mod dash;
 pub mod app_paths;
@@ -50,6 +51,8 @@ pub mod pr_feed;
 mod testing;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_appearance;
 #[cfg(test)]
 mod tests_compact;
 #[cfg(test)]
@@ -228,6 +231,8 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle();
             ui_windows::create_all(handle, english)?;
+            // Gleich nach den Fenstern: sie gehen schon im eingestellten Thema auf.
+            appearance::start(handle);
             if let Some(why) = repos_problem {
                 // Ohne brauchbaren Repos-Ordner zeigt das Deck nicht still ins Leere: das
                 // Einstellungsfenster geht auf, mit Hinweis und hervorgehobener Zeile.

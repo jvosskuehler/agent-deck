@@ -8,7 +8,7 @@
 //! | `tooltip` | dasselbe, klickt durch |
 //! | `dash` | Info-Karten in der freien Fensterkachel: rahmenlos, nicht in der Taskleiste, nie aktiv, aber **nicht** immer oben (liegt hinter dem vordersten Agenten, `dash_window.rs`) |
 //! | `comment` | Kommentar-Fenster (neuer Kommentar eines Menschen): rahmenlos, nicht in der Taskleiste, nie aktiv, nicht immer oben (liegt direkt über dem vordersten Agenten, `comment_window.rs`) |
-//! | `settings` | normales Fenster, Titelleiste folgt dem System-Thema, Schließen versteckt nur |
+//! | `settings` | normales Fenster, Titelleiste folgt dem Thema (Windows oder „Hell/Dunkel“), Schließen versteckt nur |
 //! | `ticket` | kleiner Dialog „Ticket zuweisen“, Schließen versteckt nur |
 //! | `keys` | „Tastenkürzel“, nur zum Ansehen, Schließen versteckt nur |
 //! | `glow` | „Glow einstellen“ (Strg+Alt+G), Schließen versteckt nur |
@@ -50,8 +50,8 @@ fn overlay(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri
         .focusable(false)
         .focused(false)
         .visible(false)
-        // Kein festes Thema: die Seite folgt dem System (hell = Rosé Pine Dawn, dunkel =
-        // Rosé Pine), wie das Terminal-Profil „Agent Deck“.
+        // Kein eigenes Thema je Fenster: es gilt das der App, also Windows oder die feste
+        // Wahl unter „Hell/Dunkel“ (`crate::appearance`).
         .theme(None)
         .build()
 }
@@ -108,8 +108,8 @@ fn dialog(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri:
         .minimizable(false)
         .always_on_top(true)
         .visible(false)
-        // Kein festes Thema: die Seite folgt dem System (hell = Rosé Pine Dawn, dunkel =
-        // Rosé Pine), wie das Terminal-Profil „Agent Deck“.
+        // Kein eigenes Thema je Fenster: es gilt das der App, also Windows oder die feste
+        // Wahl unter „Hell/Dunkel“ (`crate::appearance`).
         .theme(None)
         .build()?;
     let me = w.clone();

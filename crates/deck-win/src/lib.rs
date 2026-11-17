@@ -47,6 +47,7 @@ pub mod procs;
 pub mod shadow_window;
 pub mod speechmike;
 pub mod taskbar;
+pub mod theme;
 pub mod tcp_listen;
 pub mod together;
 pub mod veil;

@@ -57,7 +57,9 @@ Ablauf:
    da ist (Übergangsschritt, kann entfallen).
 5. `deck-setup install` und `check`, `look --from <papier>`, `wt-profile` (nach `look`,
    weil das Profil den Shader nennt), `shortcut` (beim ersten Mal, danach nur, wenn die
-   Verknüpfung noch da ist), `autostart` bzw. `autostart --remove`, `apps-entry`.
+   Verknüpfung noch da ist), `autostart` bzw. `autostart --remove`, `apps-entry`. Gleich
+   nach dem Schreiben der Einstellungen `migrate-darkmode`; steht dazu nur dann eine
+   Zeile da, wenn die alte Aufgabe gelöscht wurde.
 6. Deck starten und prüfen, dass es läuft.
 
 `-StatusLine keep` (nicht in der Hilfe) lässt eine fremde Infozeile allein stehen.
@@ -89,6 +91,7 @@ schreibt in Tests nur unter `HKCU\Software\AgentDeckTest`.
 | `apps-entry --bin <ordner> --version <v> [--remove]` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentDeck`: Name, Version, Herausgeber „Agent Deck“, Symbol, `UninstallString` (`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<bin>\uninstall.ps1"`), `QuietUninstallString` (dasselbe mit `-Quiet -KeepData`), `NoModify`, `NoRepair`, `EstimatedSize` |
 | `uninstall` | alles heraus (`deck_services::teardown`): Hooks und Infozeile, die gesicherte Infozeile zurück (nicht, wenn inzwischen eine andere eingetragen ist; dann bleibt die Sicherung liegen), Vorgaben nur mit unverändertem Wert, Schriften (eine geladene wird beim nächsten Anmelden über `RunOnce` gelöscht), Theme- und Einstellungsdateien nur mit unverändertem Inhalt, Verknüpfung, Fragment, Autostart, Eintrag unter „Apps“. Ohne `installed.json` nur, was am Namen dem Deck gehört. |
 | `remove-vscode-extension` | Eintrag und Ordner der früheren VS-Code-Extension weg |
+| `migrate-darkmode` | Löscht die geplante Aufgabe `DarkModeZeitplan` (`schtasks /Delete /TN DarkModeZeitplan /F`), wenn es sie gibt und Hell/Dunkel auf Sonnenstand steht (bei einer Datei ohne `settings_version` gilt schon die Migration, also `sun`). Der Ordner `%LOCALAPPDATA%\DarkModeZeitplan` bleibt. Sonst keine Zeile. `deck_services::darkmode_task`, hinter dem Trait `Scheduler`. |
 
 Das Deck läuft aus `bin`: eine Änderung ist erst nach Build und Installation sichtbar.
 
@@ -132,9 +135,38 @@ Stirbt eine Pane-Shell, ohne dass das Deck sie schloss, steht das im Log, und wa
 mit einem Anstoß, wenn sie gerade arbeitete (`deck_core::crash_resume`, App:
 `crash_resume.rs`).
 
+## Hell/Dunkel
+
+Einstellung `appearance` (`docs/DATEIEN.md`). Im Log steht jede Änderung der Einstellung
+(`Hell/Dunkel: sun (Hamburg)`) und bei Sonnenstand jedes Umschalten von Windows mit Ziel
+und nächstem Wechsel in UTC (`Hell/Dunkel nach Sonnenstand (Hamburg): Windows auf dunkel,
+nächster Wechsel 2026-11-18 06:50:12Z`), ein Fehler beim ersten Mal und bei der Erholung.
+
+- **Sonnenstand:** NOAA-Näherung aus dem früheren Skript (`deck_core::sun`), genau auf
+  2 min um die Sonnenwenden, bis 3 min dazwischen. Geschaltet werden
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+  `AppsUseLightTheme` und `SystemUsesLightTheme` (nur wenn einer abweicht), dann
+  `WM_SETTINGCHANGE` „ImmersiveColorSet“ an alle Fenster (5 s, hängende übersprungen).
+  Nachgesehen wird beim Start, nach dem Aufwachen (`PowerRegisterSuspendResumeNotification`),
+  bei einer Änderung der Einstellung und vom Takt kurz nach dem nächsten Wechsel
+  (höchstens alle 10 min). Der Takt schaltet nur, wenn die Sonne seit dem letzten Blick
+  auf- oder untergegangen ist: wer von Hand umstellt, behält das bis zum nächsten Wechsel.
+- **Fest hell oder dunkel:** Windows bleibt unberührt. Neue Agentenfenster gehen mit
+  `--colorScheme` auf. Offene behalten ihr Schema bis zum nächsten Start: Windows
+  Terminal stellt das Schema eines laufenden Fensters von außen nicht um, und das Profil
+  im Fragment (bzw. in der `settings.json` des Besitzers) für alle Fenster umzuschreiben
+  hieße, fremde Dateien bei jedem Umschalten anzufassen. Das Schema muss so heißen wie im
+  Profil (`papier-ebenen`, `papier-ebenen-nacht`); ein eigenes Profil mit anderen Namen
+  bekommt dann das Paar des Profils.
+- **Deinstallieren:** nichts zurückzustellen, Windows bleibt im letzten Stand.
+
 ## Im Betrieb noch zu prüfen
 
 Nur gegen Attrappen getestet:
+
+- Hell/Dunkel echt: Sonnenstand schaltet Windows um (und nach dem Aufwachen), die alte
+  Aufgabe ist nach `install.ps1` weg; fest dunkel bei hellem Windows: Panel, Dialoge,
+  Rahmen, Glow und ein neuer Agent dunkel, offene Agenten erst nach Neustart.
 
 - PR-Feed-Mechanik echt (17.11.2026 nur gegen Attrappen und mit echten Lese-Abfragen):
   Merge per `gh pr merge --merge`, Branch löschen, Reviewer/Assignee nachtragen, Jira

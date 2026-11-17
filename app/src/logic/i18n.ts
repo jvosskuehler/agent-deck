@@ -49,6 +49,16 @@ const TEXTS = {
   language: ["Sprache (Agenten und Deck)", "Language (agents and deck)"],
   dockEdge: ["Andocken am Bildschirmrand", "Dock to screen edge"],
   restartPanel: ["Panel neu starten", "Restart panel"],
+  appearance: ["Hell/Dunkel", "Light/Dark"],
+  appearanceFixedHint: [
+    "Nur Deck und Agenten. Offene Agentenfenster wechseln beim nächsten Start.",
+    "Deck and agents only. Open agent windows switch when they next start.",
+  ],
+  appearanceSunHint: [
+    "Schaltet Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel ({place}).",
+    "Switches Windows to light at sunrise and to dark at sunset ({place}).",
+  ],
+  sunPlace: ["Ort für Sonnenstand", "Place for sunrise and sunset"],
   autoCompact: [
     "Automatisch /compact (5 min bevor der Cache abläuft)",
     "Auto /compact (5 min before the cache expires)",

@@ -3,7 +3,8 @@
 // Fenster wächst mit dem Inhalt (useDialogFit).
 //
 // Kompakt (Vorgabe, eine Spalte, 480 breit) steht nur, was man öfter anfasst: Neue Agenten
-// (Modell, Modus, Effort) und Deck. „Erweitert“ klappt auf zwei Spalten (960) den Rest auf:
+// (Modell, Modus, Effort) und Deck (samt Hell/Dunkel; den Ort für den Sonnenstand gibt es
+// erst unter „Erweitert“). „Erweitert“ klappt auf zwei Spalten (960) den Rest auf:
 // Konto und Ordner, Auto-Modus neuer Agenten, Automatik samt Reviewern. Taugt der
 // Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt da; Rust öffnet das
 // Fenster dann beim Start selbst. Auf- oder zugeklappt merkt sich die Oberfläche.
@@ -15,6 +16,7 @@ import type { SettingKey } from "../../ipc/contract";
 import { useSettings } from "../../ipc/hooks";
 import { langFromSetting, t } from "../../logic/i18n";
 import {
+  appearanceOptions,
   edgeOptions,
   effortOptions,
   languageOptions,
@@ -24,7 +26,7 @@ import {
   onOffOptions,
 } from "../../logic/settingsOptions";
 import { useDialogFit } from "../useDialogFit";
-import { PathField, Segmented, SwitchRow, TextField } from "./controls";
+import { PathField, Segmented, SelectField, SwitchRow, TextField } from "./controls";
 import { ReviewerField } from "./ReviewerField";
 import "../../styles/settings.css";
 
@@ -119,6 +121,15 @@ export function SettingsView() {
   };
 
   const onOff = onOffOptions(lang);
+  const placeName = settings.sunPlaces.find((p) => p.id === settings.sunPlace)?.name ?? settings.sunPlace;
+  // Was die Wahl über das Deck hinaus tut: fest gilt nur für Deck und Agenten, Sonnenstand
+  // schaltet Windows selbst. „System“ braucht keinen Satz.
+  const appearanceHint =
+    settings.appearance === "sun"
+      ? t(lang, "appearanceSunHint", { place: placeName })
+      : settings.appearance === "light" || settings.appearance === "dark"
+        ? t(lang, "appearanceFixedHint")
+        : undefined;
   const reposNotice = settings.reposState === "ok" ? null : REPOS_NOTICE[settings.reposState];
 
   const reposField = (
@@ -195,6 +206,21 @@ export function SettingsView() {
         value={matchOption(edgeOptions(lang), settings.dockEdge)}
         onChange={(v) => save("dockEdge", v)}
       />
+      <Segmented
+        label={t(lang, "appearance")}
+        options={appearanceOptions(lang)}
+        value={matchOption(appearanceOptions(lang), settings.appearance)}
+        hint={appearanceHint}
+        onChange={(v) => save("appearance", v)}
+      />
+      {expanded && settings.appearance === "sun" && (
+        <SelectField
+          label={t(lang, "sunPlace")}
+          options={settings.sunPlaces.map((p) => ({ value: p.id, label: p.name }))}
+          value={settings.sunPlace}
+          onChange={(v) => save("sunPlace", v)}
+        />
+      )}
       <SwitchRow
         label={t(lang, "dashboard")}
         options={onOff}

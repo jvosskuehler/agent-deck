@@ -25,12 +25,14 @@
 //! | [`git_fs`] | (neu) Branch aus `.git/HEAD` lesen | nichts |
 //! | [`orphans`] | (neu) „Läuft noch ohne Fenster“ | den Scan-Thread |
 //! | [`store_update`] | (neu) Terminal und PowerShell aktualisieren, wenn kein Agent läuft | den Prüf-Thread |
+//! | [`sun_theme`], [`sun_switch`], [`darkmode_task`] | (neu) Windows hell/dunkel nach dem Sonnenstand, alte geplante Aufgabe weg | den Ort, Aufwachen |
 //! | [`heartbeat`], [`watchdog`] | `ops/instance.py` (Herzschlag), `ops/watchdog.py` | schreibt den Herzschlag |
 
 #![cfg(windows)]
 
 pub mod apps_entry;
 pub mod autostart;
+pub mod darkmode_task;
 pub mod git_fs;
 pub mod dash;
 pub mod guard;
@@ -46,6 +48,8 @@ pub mod shortcut;
 pub mod statusline_backup;
 pub mod store_update;
 pub mod summary;
+pub mod sun_switch;
+pub mod sun_theme;
 pub mod teardown;
 pub mod usage;
 pub mod user_system;

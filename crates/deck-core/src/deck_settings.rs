@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use ts_rs::TS;
 
+use crate::appearance::{self, Appearance};
+
 /// Schlüssel der Version.
 pub const VERSION_KEY: &str = "settings_version";
 /// Aktuelle Version der Datei.
@@ -41,6 +43,9 @@ pub const GITHUB_ORG: &str = "github_org";
 pub const LEGACY_MODEL: &str = "opus[1m]";
 /// Jira-Projekt, mit dem bestehende Installationen bisher gelaufen sind.
 pub const LEGACY_JIRA_PREFIX: &str = "ORPH";
+/// Hell/Dunkel bestehender Installationen: nach dem Sonnenstand, wie die frühere
+/// geplante Aufgabe „DarkModeZeitplan“ des Autors.
+pub const LEGACY_APPEARANCE: Appearance = Appearance::Sun;
 /// Ordnername, den bestehende Installationen fest unter dem Heimatordner annahmen.
 pub const LEGACY_REPOS_DIR: &str = "Repos";
 
@@ -179,9 +184,9 @@ pub fn origin(raw: Option<&[u8]>) -> Origin {
 
 /// Auf die aktuelle Version bringen. Mit Version: nichts (auch die Antworten des
 /// Installers bleiben, wie sie sind). Ohne Version aus einer bestehenden Installation:
-/// jeden fehlenden Schalter mit dem bisherigen Wert eintragen, dazu Modell, Jira-Projekt
-/// und Repos-Ordner wie bisher. Dann die Version setzen. `home` = Heimatordner (für den
-/// früher fest angenommenen `~/Repos`). Gibt zurück, ob sich etwas geändert hat.
+/// jeden fehlenden Schalter mit dem bisherigen Wert eintragen, dazu Modell, Jira-Projekt,
+/// Hell/Dunkel (Sonnenstand) und Repos-Ordner wie bisher. Dann die Version setzen.
+/// `home` = Heimatordner (für den früher fest angenommenen `~/Repos`). Gibt zurück, ob sich etwas geändert hat.
 pub fn migrate(settings: &mut Map<String, Value>, origin: Origin, home: &Path) -> bool {
     if settings.contains_key(VERSION_KEY) {
         return false;
@@ -197,6 +202,12 @@ pub fn migrate(settings: &mut Map<String, Value>, origin: Origin, home: &Path) -
         }
         if jira_prefix(settings).is_empty() {
             settings.insert(JIRA_PREFIX.into(), LEGACY_JIRA_PREFIX.into());
+        }
+        // Der Autor schaltete Windows bisher per geplanter Aufgabe nach dem Sonnenstand
+        // um; das übernimmt jetzt das Deck (`deck-setup migrate-darkmode` räumt die
+        // Aufgabe weg).
+        if settings.get(appearance::KEY).and_then(Value::as_str).and_then(Appearance::parse).is_none() {
+            settings.insert(appearance::KEY.into(), LEGACY_APPEARANCE.as_str().into());
         }
         if some_text(settings, REPOS_ROOT).is_none() {
             let legacy = some_text(settings, LEGACY_HOME)

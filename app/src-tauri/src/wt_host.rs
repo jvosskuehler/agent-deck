@@ -147,6 +147,9 @@ pub struct WtHost {
     scanned: bool,
     /// Fällige Nachlege-Durchgänge je Block ([`SETTLE_AFTER_S`]).
     settle: Vec<(String, f64)>,
+    /// Farbschema neuer Agentenfenster bei festem Hell/Dunkel (`--colorScheme`); `None` =
+    /// das Profil wählt nach dem Thema von Windows Terminal.
+    scheme: Option<&'static str>,
 }
 
 /// Eingabe-Schritte aus dem Fachkern in die Form von `deck-console` (Pausen als Dauer).
@@ -190,7 +193,15 @@ impl WtHost {
             ended: Vec::new(),
             scanned: false,
             settle: Vec::new(),
+            scheme: None,
         }
+    }
+
+    /// Farbschema für neue Agentenfenster (`deck_core::appearance::Appearance::wt_scheme`).
+    /// Offene Fenster behalten ihres bis zum nächsten Start: Windows Terminal kann das
+    /// Schema eines laufenden Fensters von außen nicht umstellen.
+    pub fn set_color_scheme(&mut self, scheme: Option<&'static str>) {
+        self.scheme = scheme;
     }
 
     pub fn host_map(&self) -> HostMap {
@@ -534,6 +545,7 @@ impl WtHost {
             &s.script.to_string_lossy(),
             &spec,
             s.profile.as_deref(),
+            self.scheme,
             spot.as_ref().map(|(sp, _)| sp),
         );
         let launcher = self.fx.launcher.clone();

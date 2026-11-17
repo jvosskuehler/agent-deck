@@ -51,7 +51,7 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
   `settings_version: 1` geschrieben; jeder fehlende Schlüssel hat seine Vorgabe (unten).
 - Datei mit Inhalt, aber ohne `settings_version` (auch unlesbar): **bestehende
   Installation** von vor dem 17.11.2026. Jeder fehlende Schalter wird ausdrücklich mit dem
-  bisherigen Wert eingetragen, dazu `model`, `jira_prefix` und `repos_root` wie bisher;
+  bisherigen Wert eingetragen, dazu `model`, `jira_prefix`, `appearance` und `repos_root` wie bisher;
   vorhandene Werte bleiben. Dann `settings_version: 1`, sofort zurückgeschrieben.
 - Mit `settings_version`: nichts wird ergänzt. So bleiben auch die Antworten des
   Installers, wie sie sind.
@@ -71,6 +71,8 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
 | `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
 | `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos. Installer und Fenster nehmen Namen oder Mailadressen an und speichern die aufgelösten Logins (`deck_core::dash::reviewers`) |
 | `pr_reviewer_names` | Objekt | – | – | Login → Anzeigename der Reviewer (`{"leo-mxyz": "Leo Müller"}`), nur zum Zeigen als „Name (login)“; geschrieben, wenn Namen aufgelöst wurden |
+| `appearance` | Text | fehlt = `system` | `sun` | Hell/Dunkel (`deck_core::appearance`): `system` Deck und Agenten folgen Windows; `light`/`dark` nur Deck und Agenten fest (Webviews per `AppHandle::set_theme`, Rahmen und Glow per `deck_win::theme::force`, neue Agenten mit `--colorScheme papier-ebenen` bzw. `papier-ebenen-nacht`; offene Agentenfenster wechseln erst beim nächsten Start); `sun` das Deck schaltet Windows selbst bei Sonnenauf- und -untergang (`deck_services::sun_switch`). Unbekannt = `system` |
+| `sun_place` | Text | fehlt = `hamburg` | – | Ort für den Sonnenstand, Kennung aus `deck_core::sun::PLACES` (25 Städte: größere deutsche, Wien, Zürich); unbekannt = Hamburg |
 | `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik; leer und das Konto in genau einer Organisation: die Reviewer-Suche trägt sie ein |
 
 Dazu wie bisher ohne Version: `dock_edge`, `dock_along`, `panel_pos`, `panel_zoom`, die
