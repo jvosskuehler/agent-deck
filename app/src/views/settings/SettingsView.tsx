@@ -19,6 +19,7 @@ import {
   onOffOptions,
 } from "../../logic/settingsOptions";
 import { Segmented } from "./controls";
+import { useDialogFit } from "../useDialogFit";
 import "../../styles/settings.css";
 
 /** So lange steht „Gespeichert“ nach einer Änderung (ms). */
@@ -29,6 +30,8 @@ export function SettingsView() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const savedTimer = useRef<number | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  useDialogFit(root, settings != null);
 
   useEffect(() => () => {
     if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
@@ -61,7 +64,7 @@ export function SettingsView() {
   };
 
   const body = (
-    <div className="settings">
+    <div ref={root} className="settings">
       <header className="set-header">
         <h1 className="set-title">{t(lang, "settings")}</h1>
         <span className="set-spacer" />

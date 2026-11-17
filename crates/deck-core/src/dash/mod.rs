@@ -7,10 +7,20 @@
 //! (`board`). Die Dienste (`deck-services/src/dash/`) liefern nur Daten; das
 //! Anzeigemodell baut `board.rs`.
 
+pub mod automation;
+pub mod bg_tasks;
 pub mod board;
+pub mod ci_cause;
 pub mod cleanup;
 pub mod cost_ledger;
 pub mod costs;
+pub mod feed;
+pub mod feed_events;
+pub mod feed_state;
+pub mod feed_view;
+pub mod jira_sync;
+pub mod merge_order;
+pub mod pr_extra;
 pub mod prs;
 pub mod titan;
 

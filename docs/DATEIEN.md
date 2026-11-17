@@ -14,7 +14,32 @@ daran. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 
 Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts,
 `orphans.json`, `ui-alive.json` …) liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht
-neben dem Code.
+neben dem Code. Darunter `dash-hidden-reviews.json`: JSON-Liste der PR-Adressen, deren
+Review-Anfrage im Info-Fenster ausgeblendet ist; nur die App schreibt sie, kaputt = leer.
+
+## PR-Feed: `state\pr-feed.json`, `feed\runs\`, `feed\drafts\`
+
+Das Gedächtnis des PR-Feeds (`deck_core::dash::feed_state::FeedState`), nur die App
+schreibt es, atomar, kaputt = frisch. Felder (camelCase): `since` (erster Start; ältere
+Kommentare und Funde lösen nichts aus), `automation` (Not-Aus, Standard an), `hold`
+(Halteliste: PR-Schlüssel `owner/repo#12`, nie mergen), `snoozed` und `notified` („Später“
+bzw. vom Kommentar-Fenster gezeigt, je PR der Zeitpunkt des neuesten Kommentars),
+`conflictSince`, `handled` (was die Hintergrund-Agenten und die Mechanik je PR schon
+erledigt haben), `verdicts` (Job-Id → Log erklärt rote CI mit Code Security),
+`activity` (Zeitleiste, 48 Std.), `runs` (Hintergrund-Agenten mit Bericht), `drafts`
+(Antwort-Entwürfe), `jiraChecked` (gemergte PRs, deren Ticket schon nachgezogen ist), `seenAny` (erster
+gelungener Abruf gesehen: Konflikte, die schon dabei bestehen, gelten als alt), `verdictRule`
+(Regelstand der Log-Urteile; ändert sich die Regel, werden `verdicts` neu geholt).
+Ein Lauf, der beim Beenden des Decks noch lief, gilt beim nächsten Start als gescheitert.
+
+`feed\runs\<id>.jsonl` (+ `.err`): Ausgabe von `claude -p --output-format stream-json`;
+der Bericht ist die letzte Zeile vom Typ `result`. `feed\drafts\<key>.md`: Antwort-Entwurf
+als reiner Text; „Ändern“ öffnet die Datei, „Absenden“ liest sie frisch.
+
+Einstellungen dazu in `deck_settings.json` (von Hand, nicht in der Oberfläche):
+`pr_reviewer` (Login, der als Reviewer nachgetragen wird; leer = keiner) und `github_org`
+(Organisation für die Jira-Suche; leer = Jira wird nicht nachgezogen, Hinweis im Feed).
+Protokoll: `state\dash-feed.log` (nur PR-Kürzel, Tickets, Ids, Dauern, Fehlercodes).
 
 ## Chat-Titel: `summaries\<session>.json`, `areas.json`
 

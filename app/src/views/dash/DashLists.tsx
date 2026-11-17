@@ -1,9 +1,11 @@
-// Die Listen hinter den Kacheln der Leiste: eigene PRs, Reviews mit Approve, verwaiste
+// Die Listen hinter den Kacheln der Leiste: eigene PRs, Reviews mit Approve (und
+// Ausblenden: was ewig liegt, wandert in einen zugeklappten Bereich darunter), verwaiste
 // Titan-Läufe, aufräumbare Worktrees. Alles, was etwas tut, fragt erst nach
 // (ConfirmButton); Rust prüft danach selbst noch einmal.
 
 import { useEffect, useState } from "react";
 import type { DashView } from "../../bindings/DashView";
+import type { ReviewRow } from "../../bindings/ReviewRow";
 import type { Lang } from "../../logic/i18n";
 
 const t = (lang: Lang, de: string, en: string) => (lang === "en" ? en : de);
@@ -69,26 +71,48 @@ export function PrList({ dash, lang, onOpen }: ListProps) {
 }
 
 export function ReviewList({ dash, lang, onOpen, onAction }: ListProps) {
+  // `?? []`: alte Mock-Dumps (`?dash=real`) kennen das Feld noch nicht.
+  const hidden = dash.hiddenReviews ?? [];
+  const [showHidden, setShowHidden] = useState(false);
+  const row = (r: ReviewRow, isHidden: boolean) => (
+    <div key={r.url} className="dli dli-rev" data-hidden={isHidden ? "" : undefined}>
+      <span className="dli-repo">
+        {r.repo} #{r.number}
+      </span>
+      <span className="dli-title" title={r.title}>
+        {r.title}
+      </span>
+      <span className="dli-meta">{r.meta}</span>
+      <span className="dli-acts">
+        {isHidden ? (
+          <button type="button" className="dbtn dbtn-quiet" onClick={() => onAction(`showReview:${r.url}`)}>
+            {t(lang, "Einblenden", "Show")}
+          </button>
+        ) : (
+          <button type="button" className="dbtn dbtn-quiet" title={t(lang, "Nach unten zu den ausgeblendeten", "Move down to the hidden ones")} onClick={() => onAction(`hideReview:${r.url}`)}>
+            {t(lang, "Ausblenden", "Hide")}
+          </button>
+        )}
+        <button type="button" className="dbtn" onClick={() => onOpen(r.url)}>
+          {t(lang, "Ansehen", "View")}
+        </button>
+        <ConfirmButton label="Approve" confirm={t(lang, "Wirklich?", "Sure?")} tone="ok" onConfirm={() => onAction(`approve:${r.url}`)} />
+      </span>
+    </div>
+  );
   return (
     <div className="dlist">
-      {dash.reviews.map((r) => (
-        <div key={r.url} className="dli dli-rev">
-          <span className="dli-repo">
-            {r.repo} #{r.number}
-          </span>
-          <span className="dli-title" title={r.title}>
-            {r.title}
-          </span>
-          <span className="dli-meta">{r.meta}</span>
-          <span className="dli-acts">
-            <button type="button" className="dbtn" onClick={() => onOpen(r.url)}>
-              {t(lang, "Ansehen", "View")}
-            </button>
-            <ConfirmButton label="Approve" confirm={t(lang, "Wirklich?", "Sure?")} tone="ok" onConfirm={() => onAction(`approve:${r.url}`)} />
-          </span>
-        </div>
-      ))}
+      {dash.reviews.map((r) => row(r, false))}
       {dash.reviews.length === 0 && <p className="dempty">{t(lang, "Nichts offen.", "Nothing open.")}</p>}
+      {hidden.length > 0 && (
+        <>
+          <button type="button" className="dli-fold" aria-expanded={showHidden} onClick={() => setShowHidden((v) => !v)}>
+            <span aria-hidden="true">{showHidden ? "▾" : "▸"}</span>
+            {t(lang, `Ausgeblendet (${hidden.length})`, `Hidden (${hidden.length})`)}
+          </button>
+          {showHidden && hidden.map((r) => row(r, true))}
+        </>
+      )}
     </div>
   );
 }

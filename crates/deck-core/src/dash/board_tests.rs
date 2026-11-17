@@ -52,6 +52,25 @@ fn reviews_are_newest_first_with_age_and_size() {
 }
 
 #[test]
+fn hidden_reviews_move_down_and_are_forgotten_once_the_request_is_gone() {
+    let r = |n: u64| ReviewRequest { number: n, url: format!("https://github.com/o/r/pull/{n}"), created_at: NOW - n as f64, ..ReviewRequest::default() };
+    let mut snap = PrSnapshot { review_requests: vec![r(1), r(2)], fetched_at: NOW, ..PrSnapshot::default() };
+    let mut hidden = vec!["https://github.com/o/r/pull/2".to_string(), "https://github.com/o/r/pull/9".to_string()];
+    let (shown, gone) = split_reviews(reviews(&snap, NOW, Lang::German), &hidden);
+    assert_eq!((shown.len(), gone.len()), (1, 1));
+    assert_eq!((shown[0].number, gone[0].number), (1, 2));
+
+    assert!(prune_hidden(&mut hidden, &snap), "#9 wartet nicht mehr auf mich");
+    assert_eq!(hidden, ["https://github.com/o/r/pull/2"]);
+
+    snap.review_requests.clear();
+    snap.error = Some("gh: timeout".into());
+    assert!(!prune_hidden(&mut hidden, &snap), "ein gescheiterter Abruf vergisst nichts");
+    assert!(!prune_hidden(&mut hidden, &PrSnapshot::default()), "vor dem ersten Abruf auch nicht");
+    assert_eq!(hidden.len(), 1);
+}
+
+#[test]
 fn titan_shows_only_orphaned_runs_and_nothing_without_them() {
     let run = |name: &str, orphan: bool| TitanRun { name: name.into(), age_s: Some(150_000), orphan };
     let mut snap = TitanSnapshot { reachable: true, cores: 32, runs: vec![run("4258-w206-3c2272", true), run("4259-x-abcdef", false)], ..TitanSnapshot::default() };

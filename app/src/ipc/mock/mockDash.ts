@@ -5,6 +5,7 @@
 import type { CostRange } from "../../bindings/CostRange";
 import type { DashView } from "../../bindings/DashView";
 import type { Lang } from "../../logic/i18n";
+import { mockFeed } from "./mockFeed";
 
 const TICKETS = ["agent-deck", "ORPH-4258", "ORPH-4259", "ORPH-3289", "ORPH-3879", "ORPH-4256", "ORPH-4254", "ORPH-4260"];
 const SMALL = ["ORPH-4081", "ORPH-4220", "ORPH-4173", "ORPH-4096", "ORPH-4189"];
@@ -109,6 +110,7 @@ export function mockDash(lang: Lang, now: number): DashView {
       { repo: "ui", number: 141, title: "Angabe Auftragsverarbeitung für Dritte bei der Buchung", url: gh("management-ui", 141), meta: "seit 21 Tagen · +1128 −47" },
       { repo: "api", number: 119, title: "Donation option in the checkout", url: gh("management-api", 119), meta: "seit 40 Tagen · +15302 −51 · CI rot" },
     ],
+    hiddenReviews: [{ repo: "dotnet", number: 88, title: "Spike: alternative transcription backend", url: gh("orpheus-services-dotnet", 88), meta: "seit 63 Tagen · +2210 −340" }],
     titan: {
       runs: [
         { name: "4258-w201-c59673", label: "4258-w201", age: en ? "for 42 h" : "seit 42 Std." },
@@ -123,5 +125,7 @@ export function mockDash(lang: Lang, now: number): DashView {
       result: "",
     },
     notice: null,
+    feed: mockFeed(lang, now),
+    popup: null,
   };
 }

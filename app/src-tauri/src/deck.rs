@@ -323,7 +323,8 @@ impl Deck {
         let slots: Vec<&str> = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| t.slot.as_str()).collect();
         let mut in_use: Vec<String> = slots.iter().flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees)).collect();
         in_use.extend(slots.iter().filter_map(|slot| chat_worktree(slot, &self.states, &self.detected_refs)));
-        let input = DashInput { now, lang: self.lang, enabled: deck_core::dash::enabled(&self.store.settings), in_use, jira_prefix: prefix };
+        let feed = crate::pr_feed::FeedSettings::from_settings(&self.store.settings);
+        let input = DashInput { now, lang: self.lang, enabled: deck_core::dash::enabled(&self.store.settings), in_use, jira_prefix: prefix, feed };
         self.dash.view(&input)
     }
 

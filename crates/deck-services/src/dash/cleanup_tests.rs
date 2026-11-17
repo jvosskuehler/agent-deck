@@ -90,7 +90,7 @@ impl Lab {
     }
 
     fn merged(&self, branch: &str, oid: &str) -> MergedPr {
-        MergedPr { repo: REPO.into(), head_ref: branch.into(), head_oid: oid.into() }
+        MergedPr { repo: REPO.into(), head_ref: branch.into(), head_oid: oid.into(), ..MergedPr::default() }
     }
 
     fn states(&self) -> Vec<(String, WtState)> {
@@ -120,7 +120,7 @@ fn scan_finds_merged_worktrees_and_classifies_them_by_the_safety_rule() {
         lab.merged("feat/3", "ccc"),
         lab.merged("feat/4", "ddd"),
         lab.merged("feat/6", "fff"),
-        MergedPr { repo: "Org/other".into(), head_ref: "feat/5".into(), head_oid: "eee".into() },
+        MergedPr { repo: "Org/other".into(), head_ref: "feat/5".into(), head_oid: "eee".into(), ..MergedPr::default() },
     ];
     lab.svc.set_merged(merged);
     lab.svc.set_in_use(vec![lab.wt_path("4-used").join("src").to_string_lossy().replace('\\', "/").to_uppercase()]);
@@ -174,6 +174,20 @@ fn remove_all_removes_only_removable_worktrees_and_their_branches() {
     let snap = lab.svc.snapshot();
     assert_eq!((snap.busy, snap.last_result), (false, Some(out)));
     assert_eq!(snap.removable().count(), 0, "nach dem Lauf neu gescannt");
+}
+
+#[test]
+fn removal_after_an_own_merge_touches_only_the_named_branch() {
+    let lab = Lab::new();
+    lab.add("1-ok", "feat/1", true, "aaa");
+    lab.add("2-ok", "feat/2", true, "bbb");
+    lab.svc.set_merged(vec![lab.merged("feat/1", "aaa"), lab.merged("feat/2", "bbb")]);
+    lab.svc.scan_now();
+    let removed = lab.svc.remove_branches(&[(REPO.to_string(), "feat/2".to_string())]);
+    assert_eq!(removed, ["2-ok"]);
+    assert!(lab.wt_path("1-ok").is_dir(), "der andere bleibt");
+    assert_eq!(lab.git.calls_with("branch -D"), ["main: branch -D feat/2"]);
+    assert!(lab.svc.remove_branches(&[(REPO.to_string(), "feat/9".to_string())]).is_empty());
 }
 
 #[test]

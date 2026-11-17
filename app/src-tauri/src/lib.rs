@@ -41,7 +41,9 @@ pub mod wt_host;
 pub mod wt_setup;
 pub mod wt_tiles;
 pub mod wt_gap;
+pub mod comment_window;
 pub mod dash_window;
+pub mod pr_feed;
 
 #[cfg(test)]
 mod testing;

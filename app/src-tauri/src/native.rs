@@ -12,8 +12,8 @@ use deck_core::dock::Area;
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, GetWindowRect, HWND_TOPMOST, HWND_NOTOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
-    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow,
+    GW_HWNDPREV, GWL_EXSTYLE, GetCursorPos, GetSystemMetrics, GetWindow, GetWindowLongPtrW, GetWindowRect, HWND_TOP, HWND_TOPMOST, HWND_NOTOPMOST, IsIconic, IsWindowVisible, SM_SWAPBUTTON, SW_HIDE,
+    SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOOWNERZORDER, SWP_SHOWWINDOW, SetWindowPos, ShowWindow, WS_EX_TOPMOST,
 };
 
 fn hwnd(raw: isize) -> HWND {
@@ -63,6 +63,33 @@ pub fn show_behind(raw: isize, rect: Area, behind: isize) {
     let after = if behind == 0 { HWND_NOTOPMOST } else { hwnd(behind) };
     let flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
     // SAFETY: eigenes Fenster; `behind` dient nur als Bezug in der Z-Ordnung.
+    let _ = unsafe { SetWindowPos(hwnd(raw), Some(after), rect.left, rect.top, rect.width().max(1), rect.height().max(1), flags) };
+}
+
+/// Fenster auf `rect` legen und zeigen, ohne es zu aktivieren, in der Z-Ordnung direkt
+/// ÜBER `agent` (ein fremdes Fenster), aber nicht „immer oben“: unter das nächste normale
+/// Fenster, das über dem Agenten liegt (Fenster „immer oben“ und das eigene werden
+/// übersprungen). Liegt der Agent vorn, kommt es ganz nach vorn in die normale Ebene.
+/// Für das Kommentar-Fenster: sichtbar über den Agenten, nie über einem Browser davor.
+pub fn show_above(raw: isize, rect: Area, agent: isize) {
+    if !allowed() || raw == 0 {
+        return;
+    }
+    let mut after = HWND_TOP;
+    if agent != 0 {
+        // SAFETY: reine Abfragen der Z-Ordnung; ein ungültiges Fenster beendet die Suche.
+        let mut prev = unsafe { GetWindow(hwnd(agent), GW_HWNDPREV) }.ok();
+        while let Some(h) = prev.filter(|h| !h.is_invalid()) {
+            let topmost = unsafe { GetWindowLongPtrW(h, GWL_EXSTYLE) } as u32 & WS_EX_TOPMOST.0 != 0;
+            if h != hwnd(raw) && !topmost {
+                after = h;
+                break;
+            }
+            prev = unsafe { GetWindow(h, GW_HWNDPREV) }.ok();
+        }
+    }
+    let flags = SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW;
+    // SAFETY: eigenes Fenster; `after` dient nur als Bezug in der Z-Ordnung.
     let _ = unsafe { SetWindowPos(hwnd(raw), Some(after), rect.left, rect.top, rect.width().max(1), rect.height().max(1), flags) };
 }
 

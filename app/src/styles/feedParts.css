@@ -1,0 +1,154 @@
+/* Bausteine des PR-Feeds, die das Kommentar-Fenster mitbenutzt (views/dash/FeedParts.tsx):
+ * Punktfarben, PR-Kürzel, Knöpfe, Avatar, Antwort-Entwurf. Punktfarben aus den Pigmenten der
+ * Statusfarben (DESIGN.md), je Thema eigene Stufen. */
+
+:root {
+  --f-merged: #4fa36a;
+  --f-agent: #6250d6;
+  --f-review: #4f86c6;
+  --f-problem: #c4536f;
+  --f-minor: var(--muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --f-merged: #86d2a3;
+    --f-agent: #9085e9;
+    --f-review: #8db9ee;
+    --f-problem: #f08a9e;
+  }
+}
+
+/* Kürzel des PRs: Plex Mono in der Ticketfarbe, klickbar. */
+.flabel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ref);
+  font: inherit;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.flabel:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.fcard-agent {
+  color: var(--f-agent);
+  font-size: 12px;
+}
+
+/* ── Knöpfe ───────────────────────────────────────────────────────────── */
+
+.fbtn {
+  flex: none;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hl-med);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fbtn:hover:not(:disabled) {
+  background: var(--hl-high);
+}
+
+.fbtn[data-kind="primary"] {
+  background: var(--ink);
+  color: var(--card);
+  font-weight: 600;
+}
+
+.fbtn[data-kind="primary"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 85%, var(--card));
+}
+
+.fbtn[data-kind="quiet"] {
+  background: transparent;
+  color: var(--subtle);
+}
+
+.fbtn[data-kind="quiet"]:hover:not(:disabled) {
+  background: var(--soft-hover);
+  color: var(--ink);
+}
+
+.fbtn[data-armed] {
+  background: var(--err-ink);
+  color: var(--on-err);
+}
+
+.fbtn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.fbtn[data-busy] {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.favatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--hl-med);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.fdraft {
+  margin-left: 40px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--f-agent);
+  border-radius: 4px 10px 10px 4px;
+  background: var(--card);
+}
+
+.fdraft[data-compact] {
+  margin-left: 0;
+  padding: 8px 10px;
+}
+
+.fdraft-head {
+  margin-bottom: 4px;
+  color: var(--subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.fdraft-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.fdraft[data-compact] .fdraft-text {
+  -webkit-line-clamp: 2;
+}
+
+.fdraft-error {
+  margin-top: 4px;
+  color: var(--err-ink);
+  font-size: 12px;
+}
+
+.fdraft-acts {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}

@@ -58,6 +58,7 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
         (v, d.paths.app_dir.clone(), gap, d.desktop.clone(), d.dash_view.clone())
     };
     crate::dash_window::sync(app, desktop.as_ref(), gap);
+    crate::comment_window::sync(app, desktop.as_ref(), dash.as_ref().is_some_and(|d| d.popup.is_some()));
     let changed = {
         let mut last = lock(&s.last_view);
         if last.as_ref() == Some(&view) {

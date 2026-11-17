@@ -9,6 +9,7 @@ import { useTicket } from "../../ipc/hooks";
 import { langFromView, t } from "../../logic/i18n";
 import "../../styles/settings.css";
 import "../../styles/ticket.css";
+import { useDialogFit } from "../useDialogFit";
 
 export function TicketView() {
   const ticket = useTicket();
@@ -23,6 +24,8 @@ function TicketForm({ ticket }: { ticket: Ticket }) {
   const lang = langFromView(ticket.lang);
   const [draft, setDraft] = useState(ticket.current);
   const input = useRef<HTMLInputElement>(null);
+  const root = useRef<HTMLFormElement>(null);
+  useDialogFit(root, true);
   useEffect(() => {
     input.current?.focus();
     input.current?.select();
@@ -33,6 +36,7 @@ function TicketForm({ ticket }: { ticket: Ticket }) {
 
   return (
     <form
+      ref={root}
       className="settings ticket"
       onSubmit={(e) => {
         e.preventDefault();

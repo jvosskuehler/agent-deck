@@ -15,6 +15,7 @@ use ts_rs::TS;
 
 use super::cleanup::{CleanupSnapshot, WtState};
 use super::cost_ledger::CostView;
+use super::feed_view::{CommentPopup, FeedView};
 use super::prs::{short_repo, short_title, CiState, PrBall, PrSnapshot, STALE_AFTER_S};
 use super::titan::{load_percent, TitanSnapshot};
 use super::DashTone;
@@ -127,11 +128,18 @@ pub struct DashView {
     /// `None` vor dem ersten Lauf über die Transcripts.
     pub costs: Option<CostView>,
     pub prs: PrsView,
+    /// Offene Review-Anfragen ohne die ausgeblendeten; nur sie zählt die Kachel.
     pub reviews: Vec<ReviewRow>,
+    /// Von mir ausgeblendete Review-Anfragen, unten in der Liste wieder einblendbar.
+    pub hidden_reviews: Vec<ReviewRow>,
     pub titan: Option<TitanView>,
     pub cleanup: Option<CleanupView>,
     /// Ergebnis der letzten Aktion („Approve gescheitert: …“), kurz sichtbar.
     pub notice: Option<String>,
+    /// PR-Feed hinter der Kachel „PRs offen“ (`feed.rs`); `None` vor dem ersten Abruf.
+    pub feed: Option<FeedView>,
+    /// Kommentar-Fenster: der neueste noch nicht gemeldete Kommentar eines Menschen.
+    pub popup: Option<CommentPopup>,
 }
 
 static TICKET: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b([A-Z][A-Z0-9]+-\d+)\b").expect("TICKET"));
@@ -223,6 +231,24 @@ pub fn reviews(snap: &PrSnapshot, now: f64, lang: Lang) -> Vec<ReviewRow> {
             ReviewRow { repo: short_repo(&r.repo), number: r.number, title: short_title(&r.title), url: r.url.clone(), meta: meta.join(" · ") }
         })
         .collect()
+}
+
+/// Review-Zeilen in sichtbar und ausgeblendet trennen; `hidden` sind PR-Adressen.
+pub fn split_reviews(rows: Vec<ReviewRow>, hidden: &[String]) -> (Vec<ReviewRow>, Vec<ReviewRow>) {
+    rows.into_iter().partition(|r| !hidden.contains(&r.url))
+}
+
+/// Ausgeblendete Adressen vergessen, deren PR nicht mehr auf mich wartet (gemergt,
+/// geschlossen, Anfrage zurückgezogen). Kommt dieselbe Anfrage später neu, ist sie wieder
+/// sichtbar. Nur nach einem gelungenen Abruf: ein gescheiterter oder noch keiner hätte
+/// eine leere Liste und würde alles vergessen. `true` = etwas vergessen.
+pub fn prune_hidden(hidden: &mut Vec<String>, snap: &PrSnapshot) -> bool {
+    if snap.fetched_at <= 0.0 || snap.error.is_some() {
+        return false;
+    }
+    let before = hidden.len();
+    hidden.retain(|url| snap.review_requests.iter().any(|r| &r.url == url));
+    hidden.len() != before
 }
 
 /// Titan, nur mit verwaisten Läufen (nur die sind zu tun).

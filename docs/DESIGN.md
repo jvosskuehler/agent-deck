@@ -119,13 +119,67 @@ oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es gan
   (`CostView.colored`); weitere Tickets und „ohne Ticket“ sind grau.
 - **Unten, Leiste:** Kacheln PRs (offen, bereit, bei dir, warten), Reviews für dich, Titan
   (nur mit verwaisten Läufen, rot getönt), Worktrees (nur mit Entfernbarem). Klick auf eine
-  Kachel zeigt ihre Liste statt des Graphen; nochmal oder „← Tokenkosten“ zurück.
+  Kachel zeigt ihre Liste statt des Graphen; nochmal, Esc oder „Tokenkosten“ in den
+  Brotkrumen zurück.
 - **Listen:** PRs mit Status nach „wer ist am Zug“ (mergebereit, CI rot, Änderungen offen,
   Reviewer anfragen, wartet auf Re-Review, wartet auf Review, Draft), Klick öffnet GitHub.
-  Reviews mit „Ansehen“ und „Approve“. Titan-Läufe mit Alter und „Beenden“, „Alle
+  Reviews mit „Ausblenden“, „Ansehen“ und „Approve“. Ausgeblendete wandern in einen
+  zugeklappten Bereich „Ausgeblendet (n)“ unter der Liste, matt, mit „Einblenden“; die
+  Kachel zählt sie nicht mit. Wartet der PR nicht mehr auf mich (gemergt, geschlossen,
+  Anfrage zurückgezogen), vergisst das Deck das Ausblenden. Titan-Läufe mit Alter und „Beenden“, „Alle
   beenden“. Worktrees in drei Spalten mit „Alle n entfernen“. Jede Aktion fragt mit
-  einem zweiten Klick nach; Rust prüft danach selbst noch einmal.
+  einem zweiten Klick nach; Rust prüft danach selbst noch einmal. Hinter „PRs offen“ steht
+  seit 17.11.2026 der PR-Feed (unten); die bisherige PR-Liste ist dort der Reiter „Liste“.
 - **Schrift:** Plex Sans, Tickets und Ordner in Plex Mono. Keine Gedankenstriche.
+
+### PR-Feed (Entwurf „F1 Zeitleiste“, Canvas https://claude.ai/artifact/6KMzZA3qNnWmiTeMSEjAnZ)
+
+Liste hinter der Kachel „PRs offen“ (`FeedPane.tsx`, `feed.css`). Kopf: Brotkrumen
+„Tokenkosten › Deine PRs“, rechts der Schalter „Automatik“ (Spur 28 × 16, an = Pigment
+gemergt, Not-Aus: aus = nur anzeigen) und das Segment „Feed | Liste“ wie der Zeitraum.
+
+- **Abschnittsköpfe** 11 px, halbfett, versal, Sperrung 0,06 em, gedämpft: „Braucht dich“,
+  „Hintergrund-Agenten“ (nur wenn welche laufen oder warten), „Was passiert ist“,
+  „Automatik“ (nur mit eigenen offenen PRs).
+- **Braucht dich:** je PR eine Karte auf dem Overlay, Radius 14, Innenabstand 12 14. Drafts erscheinen nie
+  (geparkt; die Automatik und die Hintergrund-Agenten lassen sie ebenfalls in Ruhe).
+  Avatar-Kreis 28 px mit Kürzel (hl-med), Login fett, dahinter gedämpft „kommentiert ·
+  vor 4 Min.“; Zeile 2 PR-Kürzel (Plex Mono, Ticketfarbe, klickbar) und Titel; Zeile 3
+  der Auszug in Meta-Farbe, eine Zeile mit Auslassung, „und n weitere“ gedämpft. Rechts
+  die Knöpfe: „Claude soll umsetzen“ über die ganze Breite (gefüllt in Textfarbe, Schrift
+  Kartengrund, zweiter Klick bestätigt), darunter „Öffnen“ (hl-med) und „Später“ (leise).
+  Ein laufender Agent steht violett als „◐ …“ unter dem Auszug. Ein fertiger Entwurf steht
+  eingerückt (40 px) unter der Karte im Kartengrund mit 3 px violetter Kante links, Kopf
+  „Entwurf von Claude“, höchstens 4 Zeilen, Knöpfe „Absenden und auflösen“ (bzw.
+  „Absenden“ ohne Thread, mit Rückfrage) und „Ändern“ (öffnet die Datei im Editor; das
+  Fenster nimmt nie Tastatureingaben an).
+- **Hintergrund-Agenten:** Zeile 30 px hoch, violetter Punkt 8 px (atmet; wartend grau,
+  ruhig), PR-Kürzel, Aufgabe, rechts gedämpft „seit 3 Min.“ bzw. „wartet, Session aktiv“
+  und „Abbrechen“ (Rückfrage).
+- **Zeitleiste:** Raster 52 px Zeit (Plex Mono 12 px, `--muted`), 22 px Punkt (10 px),
+  Rest Text 13 px; Haarlinie (Overlay) zwischen den Zeilen. Kürzel in Plex Mono und
+  Ticketfarbe, Detail gedämpft hinter „·“, „Bericht“ in Ticketfarbe klappt die letzte
+  Antwort des Agenten darunter auf (Overlay, Radius 8, max. 160 px hoch).
+- **Punktfarben:** gemergt = Pigment ungelesen (hell `#4fa36a`, dunkel `#86d2a3`), Claude
+  hat gearbeitet = `--c7` (hell `#6250d6`, dunkel `#9085e9`), Review = Pigment denkt (hell
+  `#4f86c6`, dunkel `#8db9ee`), Problem = Pigment getrennt (hell `#c4536f`, dunkel
+  `#f08a9e`), Kleinkram = `--muted`. Die Legende steht unten über die ganze Kartenbreite
+  unter einer Haarlinie.
+- **Automatik je PR:** PR-Kürzel, Titel, rechts gedämpft was die Automatik vorhat
+  („mergt, sobald alles grün ist“, „wartet auf api#214“, gehalten in Achtung-Farbe) und
+  „nicht mergen“ (leise) bzw. „wieder freigeben“.
+- **Leer:** „Nichts offen.“, „Keine Ereignisse in den letzten 24 Std.“; `feed.note`
+  gedämpft am Ende.
+
+### Kommentar-Fenster (Entwurf „N1“)
+
+Eigenes kleines Fenster (`#/comment`, `CommentView.tsx`, `comment.css`), etwa 420 × 190,
+rahmenlos, nie aktiv: Kartengrund, Rand 1 px hl-high, Ecken 8 px, Innenabstand 12 14 14 16.
+Kopf: Avatar 24 px, Login fett, „auf <PR-Kürzel>“ gedämpft, × rechts (28 px, schließt nur,
+der Kommentar bleibt im Feed). Darunter der Kommentar in Meta-Farbe, höchstens drei
+Zeilen. Unten „Claude soll umsetzen“ (gefüllt), „Öffnen“ (öffnet und schließt), „Später“.
+Liegt ein Entwurf vor, steht er statt der Knöpfe da (Kommentar dann eine Zeile) mit
+„Absenden und auflösen“ und „Ändern“.
 
 ## Panel, Leiste, Griff
 
@@ -174,6 +228,11 @@ Stufe heller). Zwei Bereiche, beide nur aus Segmenten: **Neue Agenten** (Modell,
 Effort) und **Deck** (Sprache, Andocken). „Panel neu starten“ steht als kleiner, leiser
 Knopf rechts in der Kopfzeile von **Deck**, so hoch wie der Hinweis neben „Neue Agenten“.
 Kein Speichern-Knopf: jede Änderung gilt sofort, ein kurzes „Gespeichert“ bestätigt.
+
+**Kein Dialog zeigt von sich aus einen Rollbalken** (Einstellungen, Tastenkürzel, Ticket,
+Glow und jeder neue): das Fenster ist so hoch wie sein Inhalt (`useDialogFit` +
+`fit_dialog`). Gerollt wird nur, wenn der Inhalt höher als der Bildschirm ist. Wer einem
+Dialog Zeilen hinzufügt oder einen neuen baut, prüft das am Screenshot.
 
 Bewusst **nicht** (seit 09.11.2026, Jorrit arbeitet nur noch in Windows Terminal): kein
 Warnsatz und kein Rot bei Bypass, kein Ring um den Chat, kein Jira-Präfix, kein

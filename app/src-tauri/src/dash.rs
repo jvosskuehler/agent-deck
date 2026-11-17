@@ -1,11 +1,13 @@
 //! Das Info-Fenster in der App (`deck_core::dash`): Datenquellen starten, je Takt die
 //! Ansicht bauen ([`DashView`]); dazu die Befehle `get_dash`, `open_dash_url` und
-//! `dash_action` (Approve, Titan-Lauf beenden, Worktrees entfernen, Fenster zu).
+//! `dash_action` (Approve, Review aus- und einblenden, Titan-Lauf beenden, Worktrees
+//! entfernen, Fenster zu).
 //!
 //! Die Dienste laufen nur, solange das Info-Fenster eingeschaltet ist (Einstellung
 //! „Info-Fenster in der freien Fensterkachel“): gh, ssh und git sollen nicht im
 //! Hintergrund arbeiten, wenn niemand hinsieht. Tests bauen [`Dash::inert`] ohne Dienst.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use deck_core::dash::board::{self, DashView};
@@ -13,6 +15,7 @@ use deck_core::dash::{self as dash_core};
 use deck_core::i18n::Lang;
 use deck_services::dash::cleanup::CleanupService;
 use deck_services::dash::costs::CostService;
+use deck_services::dash::feed_service::FeedService;
 use deck_services::dash::github::GithubService;
 use deck_services::dash::titan::TitanService;
 use deck_services::logfile::{LogFile, Rotate};
@@ -28,30 +31,43 @@ use crate::state::{lock, shared};
 const IN_USE_EVERY_S: f64 = 5.0;
 /// So lange (s) steht das Ergebnis einer Aktion im Fenster.
 const NOTICE_S: f64 = 20.0;
+/// Ausgeblendete Review-Anfragen (JSON-Liste der PR-Adressen) im App-Ordner.
+const HIDDEN_FILE: &str = "dash-hidden-reviews.json";
 
 /// Die Datenquellen. Jede hat ihren eigenen Thread, der erst mit `start` anläuft.
 struct Sources {
-    github: GithubService,
+    github: Arc<GithubService>,
     costs: CostService,
     titan: TitanService,
-    cleanup: CleanupService,
+    cleanup: Arc<CleanupService>,
+    /// PR-Feed und Automatik (`pr_feed.rs`); läuft nach jedem Abruf der PRs eine Runde.
+    feed: Arc<FeedService>,
     wake: Wake,
 }
 
 impl Sources {
     fn system(paths: &Paths, wake: Wake) -> Sources {
         let log = |name: &str| LogFile::new(paths.state_dir.join(name), 200_000, Rotate::Rename);
+        let github = Arc::new(GithubService::system(&paths.state_dir));
+        let prs = github.clone();
         Sources {
-            github: GithubService::system(&paths.state_dir),
+            feed: Arc::new(FeedService::system(&paths.state_dir, &paths.app_dir, Arc::new(move || prs.snapshot()))),
+            github,
             costs: CostService::new(paths.projects_dir.clone(), Some(log("dash-costs.log"))),
             titan: TitanService::system(log("dash-titan.log")),
-            cleanup: CleanupService::system(&paths.state_dir),
+            cleanup: Arc::new(CleanupService::system(&paths.state_dir)),
             wake,
         }
     }
 
     fn start(&self) {
-        self.github.start(self.wake.clone());
+        // Nach jedem Abruf der PRs gleich eine Runde des Feeds (mergen, Agenten, Jira).
+        let (wake, feed) = (self.wake.clone(), self.feed.clone());
+        self.github.start(Arc::new(move || {
+            wake();
+            feed.kick();
+        }));
+        self.feed.start(self.wake.clone());
         let w = self.wake.clone();
         self.costs.start(move || w());
         self.titan.start(self.wake.clone());
@@ -60,6 +76,7 @@ impl Sources {
 
     fn stop(&self) {
         self.github.stop();
+        self.feed.stop();
         self.costs.stop();
         self.titan.stop();
         self.cleanup.stop();
@@ -74,6 +91,8 @@ pub struct DashInput<'a> {
     /// Ordner der offenen Agenten (cwd, gemeldete worktrees): die räumt niemand weg.
     pub in_use: Vec<String>,
     pub jira_prefix: &'a str,
+    /// `pr_reviewer` und `github_org` aus den Einstellungen.
+    pub feed: crate::pr_feed::FeedSettings,
 }
 
 pub struct Dash {
@@ -85,17 +104,30 @@ pub struct Dash {
     in_use_at: f64,
     /// Ergebnis der letzten Aktion und bis wann es steht.
     notice: Mutex<Option<(String, f64)>>,
+    /// Ausgeblendete Review-Anfragen (PR-Adressen) und wo sie liegen; ohne Pfad (Tests)
+    /// nur im Speicher.
+    hidden: Vec<String>,
+    hidden_path: Option<PathBuf>,
 }
 
 impl Dash {
     /// Ohne Dienste (Tests).
     pub fn inert() -> Dash {
-        Dash { sources: None, running: false, merged_at: 0.0, in_use_at: f64::NEG_INFINITY, notice: Mutex::new(None) }
+        Dash {
+            sources: None,
+            running: false,
+            merged_at: 0.0,
+            in_use_at: f64::NEG_INFINITY,
+            notice: Mutex::new(None),
+            hidden: Vec::new(),
+            hidden_path: None,
+        }
     }
 
     /// Echt: Dienste angelegt (laufen erst mit dem ersten eingeschalteten Takt an).
     pub fn system(paths: &Paths, wake: Wake) -> Dash {
-        Dash { sources: Some(Arc::new(Sources::system(paths, wake))), ..Dash::inert() }
+        let hidden_path = paths.app_dir.join(HIDDEN_FILE);
+        Dash { sources: Some(Arc::new(Sources::system(paths, wake))), hidden: load_hidden(&hidden_path), hidden_path: Some(hidden_path), ..Dash::inert() }
     }
 
     /// Die Ansicht dieses Takts; `None`, wenn abgeschaltet.
@@ -117,21 +149,32 @@ impl Dash {
                 costs: None,
                 prs: board::prs(&empty, input.now, input.lang),
                 reviews: Vec::new(),
+                hidden_reviews: Vec::new(),
                 titan: None,
                 cleanup: None,
                 notice,
+                feed: None,
+                popup: None,
             });
         };
         let prs = src.github.snapshot();
         feed_cleanup(src, &prs, input, &mut self.merged_at, &mut self.in_use_at);
         src.costs.set_prefix(input.jira_prefix);
+        let (feed, popup) = crate::pr_feed::tick(&src.feed, &src.cleanup, &input.feed, input.jira_prefix, &input.in_use, input.now, input.lang);
+        if board::prune_hidden(&mut self.hidden, &prs) {
+            self.save_hidden("vergessen (Anfrage erledigt)");
+        }
+        let (reviews, hidden_reviews) = board::split_reviews(board::reviews(&prs, input.now, input.lang), &self.hidden);
         Some(DashView {
             costs: src.costs.view(),
             prs: board::prs(&prs, input.now, input.lang),
-            reviews: board::reviews(&prs, input.now, input.lang),
+            reviews,
+            hidden_reviews,
             titan: board::titan(&src.titan.snapshot(), input.lang),
             cleanup: board::cleanup(&src.cleanup.snapshot(), input.lang),
             notice,
+            feed: Some(feed),
+            popup,
         })
     }
 
@@ -151,6 +194,38 @@ impl Dash {
     fn say(&self, text: String, now: f64) {
         *lock(&self.notice) = Some((text, now + NOTICE_S));
     }
+
+    /// Eine Review-Anfrage aus- (`hide`) oder wieder einblenden. `false` = nichts geändert.
+    fn set_hidden(&mut self, url: &str, hide: bool) -> bool {
+        let known = self.hidden.iter().any(|u| u == url);
+        if hide == known {
+            return false;
+        }
+        if hide {
+            self.hidden.push(url.to_string());
+        } else {
+            self.hidden.retain(|u| u != url);
+        }
+        self.save_hidden(if hide { "ausgeblendet" } else { "eingeblendet" });
+        true
+    }
+
+    fn save_hidden(&self, what: &str) {
+        let Some(path) = &self.hidden_path else { return };
+        let json = serde_json::to_vec(&self.hidden).unwrap_or_default();
+        match deck_core::paths::atomic_write(path, &json) {
+            // Nur die Anzahl: die Adressen nennen fremde Repos.
+            Ok(()) => note(format!("Info-Fenster: Review {what}, {} ausgeblendet", self.hidden.len())),
+            Err(e) => note(format!("Info-Fenster: ausgeblendete Reviews nicht gespeichert ({what}): {}", e.kind())),
+        }
+    }
+}
+
+/// Ausgeblendete Review-Adressen lesen; fehlt die Datei oder ist kaputt: keine.
+fn load_hidden(path: &std::path::Path) -> Vec<String> {
+    deck_core::paths::load_json(path)
+        .and_then(|v| v.as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+        .unwrap_or_default()
 }
 
 /// Der Aufräum-Dienst braucht die gemergten PRs (nur bei neuem Stand) und die Ordner der
@@ -192,6 +267,20 @@ pub async fn dash_action(app: AppHandle, command: String) -> Result<(), String> 
         crate::dash_window::close_popup(&app);
         return Ok(());
     }
+    // Aus- und Einblenden ist nur eine Liste im Deck: kein gh, gleich hier.
+    let toggle = match command.split_once(':') {
+        Some(("hideReview", url)) => Some((url, true)),
+        Some(("showReview", url)) => Some((url, false)),
+        _ => None,
+    };
+    if let Some((url, hide)) = toggle {
+        if !dash_core::allowed_url(url) {
+            return Err("Adresse nicht erlaubt".into());
+        }
+        lock(&shared(&app).deck).dash.set_hidden(url, hide);
+        crate::poll::nudge(&app);
+        return Ok(());
+    }
     let work = app.clone();
     tauri::async_runtime::spawn_blocking(move || run_action(&work, &command)).await.map_err(|e| e.to_string())?
 }
@@ -204,6 +293,18 @@ fn run_action(app: &AppHandle, command: &str) -> Result<(), String> {
     };
     let src = src.ok_or("Info-Fenster ohne Dienste")?;
     let l = |de: &'static str, en: &'static str| lang.l(de, en);
+    if FeedService::handles(command) {
+        let outcome = crate::pr_feed::action(app, &src.feed, &src.github, command);
+        let text = match &outcome {
+            Ok(t) => t.clone(),
+            Err(e) => format!("{} {e}", l("Nicht ausgeführt:", "Not done:")),
+        };
+        if !text.is_empty() {
+            lock(&s.deck).dash.say(text, crate::now());
+        }
+        crate::poll::nudge(app);
+        return outcome.map(drop);
+    }
     let outcome: Result<String, String> = match command.split_once(':') {
         None if command == "cleanupWorktrees" => {
             let started = src.cleanup.remove_all();
@@ -232,55 +333,5 @@ fn run_action(app: &AppHandle, command: &str) -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn switched_off_there_is_no_view() {
-        let mut d = Dash::inert();
-        let input = DashInput { now: crate::now(), lang: Lang::German, enabled: false, in_use: Vec::new(), jira_prefix: "ORPH" };
-        assert!(d.view(&input).is_none());
-    }
-
-    /// Probelauf gegen die echten Quellen (gh, ssh, git, Transcripts; nur lesend, nichts
-    /// wird entfernt oder beendet): schreibt die Ansicht als JSON nach `DASH_DUMP`, damit der
-    /// Browser-Mock sie zeigen kann (`?dash=real`).
-    /// `DASH_DUMP=app/dash-real.json cargo test -p agent-deck dash::tests::real -- --ignored --nocapture`
-    #[test]
-    #[ignore]
-    fn real_dash_dump() {
-        let paths = Paths::from_env();
-        let src = Sources::system(&paths, Arc::new(|| {}));
-        let now = crate::now();
-        src.github.fetch_once();
-        src.costs.set_prefix("ORPH");
-        src.costs.scan_now(now);
-        src.titan.poll_once();
-        src.cleanup.set_merged(src.github.snapshot().merged);
-        src.cleanup.scan_now();
-        let prs = src.github.snapshot();
-        let view = DashView {
-            costs: src.costs.view(),
-            prs: board::prs(&prs, now, Lang::German),
-            reviews: board::reviews(&prs, now, Lang::German),
-            titan: board::titan(&src.titan.snapshot(), Lang::German),
-            cleanup: board::cleanup(&src.cleanup.snapshot(), Lang::German),
-            notice: None,
-        };
-        let json = serde_json::to_string_pretty(&view).unwrap();
-        match std::env::var("DASH_DUMP") {
-            Ok(path) => std::fs::write(path, json).unwrap(),
-            Err(_) => println!("{json}"),
-        }
-    }
-
-    #[test]
-    fn a_notice_shows_for_a_while_then_goes() {
-        let mut d = Dash::inert();
-        let now = 1000.0;
-        d.say("Approve gesendet".into(), now);
-        let input = |now| DashInput { now, lang: Lang::German, enabled: true, in_use: Vec::new(), jira_prefix: "ORPH" };
-        assert_eq!(d.view(&input(now + 1.0)).unwrap().notice.as_deref(), Some("Approve gesendet"));
-        assert_eq!(d.view(&input(now + NOTICE_S + 1.0)).unwrap().notice, None);
-    }
-}
+#[path = "dash_tests.rs"]
+mod tests;
