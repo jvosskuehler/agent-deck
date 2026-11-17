@@ -50,8 +50,9 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
 | `auto_compact` | bool | `true` | `true` | `/compact` vor Ablauf des Prompt-Caches |
 | `dashboard` | bool | `true` | `true` | Info-Fenster |
 | `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
-| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos |
-| `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik |
+| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos. Installer und Fenster nehmen Namen oder Mailadressen an und speichern die aufgelösten Logins (`deck_core::dash::reviewers`) |
+| `pr_reviewer_names` | Objekt | – | – | Login → Anzeigename der Reviewer (`{"leo-mxyz": "Leo Müller"}`), nur zum Zeigen als „Name (login)“; geschrieben, wenn Namen aufgelöst wurden |
+| `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik; leer und das Konto in genau einer Organisation: die Reviewer-Suche trägt sie ein |
 
 Dazu wie bisher ohne Version: `dock_edge`, `dock_along`, `panel_pos`, `panel_zoom`, die
 Tastenkürzel (`jump_hotkey` …), `glow`, `group_shadow`, `frame_season`.
@@ -78,7 +79,8 @@ als reiner Text; „Ändern“ öffnet die Datei, „Absenden“ liest sie frisc
 
 Einstellungen dazu in `deck_settings.json` (Einstellungsfenster, Bereich Automatik):
 `pr_automation` (aus = keine Wirkung nach außen, der Feed zeigt nur), `pr_reviewer`
-(GitHub-Logins, mehrere mit Komma, die als Reviewer nachgetragen werden; leer = keiner)
+(GitHub-Logins, mehrere mit Komma, die als Reviewer nachgetragen werden; leer = keiner;
+Namen dazu in `pr_reviewer_names`)
 und `github_org` (Organisation für die Jira-Suche; leer = Jira wird nicht nachgezogen,
 Hinweis im Feed). Hintergrund-Agenten arbeiten in `<repos_root>\<repo>` bzw.
 `<repos_root>\wt\<ordner>`.

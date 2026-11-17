@@ -21,6 +21,7 @@ import type { OrphanView } from "../../bindings/OrphanView";
 import { mockDash } from "./mockDash";
 import { applyFeedAction, mockFeed, mockPopup } from "./mockFeed";
 import type { DashView } from "../../bindings/DashView";
+import { mockApply, mockResolve } from "./mockReviewers";
 import { freshSettings, initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
@@ -60,6 +61,11 @@ export function createMockBackend(): Backend {
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
   // `?fresh=1`: eine neue Installation (kein Repos-Ordner, alle Automatik aus).
   if (params.get("fresh") === "1") Object.assign(settings, freshSettings());
+  // `?pr=1`: PR-Automatik an (zeigt die Felder für Reviewer und Organisation).
+  if (params.get("pr") === "1") settings.prAutomation = true;
+  // `?orgs=2`: das Konto hat mehrere Organisationen, das Feld fragt nach der richtigen.
+  const severalOrgs = params.get("orgs") === "2";
+  const reviewerNames = new Map<string, string>([["leo-mxyz", "Leo Müller"]]);
 
   let lang: Lang = langFromSetting(settings.language);
   const homeRows = (params.get("rows") ?? "3,3").split(",").map(Number).filter((n) => n > 0);
@@ -233,6 +239,16 @@ export function createMockBackend(): Backend {
       }
       emit("deck://settings", { ...settings });
       return { ...settings };
+    },
+    set_reviewers: ({ text }) => {
+      const report = mockResolve(text, settings.githubOrg, severalOrgs);
+      if (report.note === "chooseOrg") return { settings: { ...settings }, report };
+      const { logins, label } = mockApply(report, reviewerNames);
+      settings.prReviewer = logins;
+      settings.prReviewerLabel = label;
+      if (report.org && !settings.githubOrg) settings.githubOrg = report.org;
+      emit("deck://settings", { ...settings });
+      return { settings: { ...settings }, report };
     },
     restart_panel: () => console.info("[mock] Panel neu starten"),
     pick_folder: ({ start }) => {

@@ -5,8 +5,9 @@
 import { useEffect, type RefObject } from "react";
 import { commands, isNative } from "../ipc";
 
-/** `ready`: der Inhalt steht im DOM (vorher gibt es nichts zu messen). */
-export function useDialogFit(ref: RefObject<HTMLElement | null>, ready: boolean) {
+/** `ready`: der Inhalt steht im DOM (vorher gibt es nichts zu messen). `width`: feste
+ *  Fensterbreite in CSS-Pixeln (Einstellungen kompakt/erweitert); ohne bleibt sie. */
+export function useDialogFit(ref: RefObject<HTMLElement | null>, ready: boolean, width?: number) {
   useEffect(() => {
     const el = ref.current;
     if (!ready || !el || !isNative()) return;
@@ -17,7 +18,7 @@ export function useDialogFit(ref: RefObject<HTMLElement | null>, ready: boolean)
       const height = Math.ceil(el.offsetHeight);
       if (height === last) return;
       last = height;
-      commands.dialogContentSize(height);
+      commands.dialogContentSize(height, width);
     };
     // Mehrere Änderungen in einem Bild (Schrift geladen, Zeile dazu) nur einmal melden.
     const schedule = () => {
@@ -31,5 +32,5 @@ export function useDialogFit(ref: RefObject<HTMLElement | null>, ready: boolean)
       ro.disconnect();
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [ref, ready]);
+  }, [ref, ready, width]);
 }

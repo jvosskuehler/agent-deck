@@ -325,3 +325,52 @@ body:has(.settings) {
   gap: 18px;
   min-width: 0;
 }
+
+/* Kompakt eine Spalte wie vor „Erweitert“; im Browser-Mock begrenzt die Breite hier, im
+   Fenster setzt Rust sie (useDialogFit). */
+.settings:not([data-wide]) {
+  max-width: 480px;
+}
+
+.set-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.set-more {
+  margin: 0;
+}
+
+/* ── Reviewer: Wahl und Hinweise unter dem Feld ──────────────────────── */
+
+.rev-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rev-note {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.rev-note--warn {
+  color: var(--warn-ink);
+}
+
+.rev-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rev-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rev-choice {
+  margin: 0;
+  font-family: var(--font-mono);
+}

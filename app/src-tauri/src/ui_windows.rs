@@ -131,9 +131,9 @@ pub fn create_all(app: &AppHandle, english: bool) -> tauri::Result<()> {
     tip.set_ignore_cursor_events(true)?;
     info(app)?;
     comment(app)?;
-    // Zwei Spalten (Konto/Agenten links, Deck/Automatik rechts); die Höhen hier sind nur
-    // der Start, useDialogFit zieht sie auf die Inhaltshöhe.
-    dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (960.0, 640.0))?;
+    // Kompakt eine Spalte (480); „Erweitert“ zieht es auf zwei Spalten (960) auf. Die
+    // Maße hier sind nur der Start, useDialogFit setzt Breite und Inhaltshöhe.
+    dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (480.0, 572.0))?;
     dialog(app, TICKET, "Ticket", (380.0, 150.0))?;
     dialog(app, KEYS, if english { "Shortcuts" } else { "Tastenkürzel" }, (500.0, 250.0))?;
     dialog(app, GLOW, if english { "Adjust glow" } else { "Glow einstellen" }, (720.0, 760.0))?;
@@ -163,27 +163,36 @@ pub fn raw_hwnd(app: &AppHandle, label: &str) -> isize {
 }
 
 /// Einen Dialog auf die gemeldete Inhaltshöhe (CSS-Pixel) bringen, damit er ohne
-/// Rollbalken auskommt: er wächst und schrumpft mit dem Inhalt, die Breite bleibt. Nie
-/// höher als der Arbeitsbereich seines Monitors; ragt er unten hinaus, rückt er hoch.
-pub fn fit_dialog(w: &WebviewWindow, height: f64) -> tauri::Result<()> {
+/// Rollbalken auskommt: er wächst und schrumpft mit dem Inhalt. Die Breite bleibt, außer
+/// `width` ist angegeben. Nie größer als der Arbeitsbereich seines Monitors; ragt er unten
+/// oder rechts hinaus, rückt er zurück.
+pub fn fit_dialog(w: &WebviewWindow, height: f64, width: Option<f64>) -> tauri::Result<()> {
     let scale = w.scale_factor()?;
     let inner = w.inner_size()?;
+    let outer = w.outer_size()?;
     // Titelleiste und Rahmen (physisch): Differenz zwischen Außen- und Innenmaß.
-    let chrome = w.outer_size()?.height.saturating_sub(inner.height);
+    let chrome = outer.height.saturating_sub(inner.height);
+    let chrome_x = outer.width.saturating_sub(inner.width);
     let mut want = (height * scale).ceil() as u32;
+    let mut want_w = width.map_or(inner.width, |x| (x * scale).round() as u32);
     if let Some(m) = w.current_monitor()? {
         let area = m.work_area();
         want = want.min(area.size.height.saturating_sub(chrome));
+        want_w = want_w.min(area.size.width.saturating_sub(chrome_x));
         let pos = w.outer_position()?;
         let bottom = area.position.y + area.size.height as i32;
+        let right = area.position.x + area.size.width as i32;
         let over = pos.y + (want + chrome) as i32 - bottom;
-        if over > 0 {
-            w.set_position(PhysicalPosition::new(pos.x, (pos.y - over).max(area.position.y)))?;
+        let over_x = pos.x + (want_w + chrome_x) as i32 - right;
+        if over > 0 || over_x > 0 {
+            let x = if over_x > 0 { (pos.x - over_x).max(area.position.x) } else { pos.x };
+            let y = if over > 0 { (pos.y - over).max(area.position.y) } else { pos.y };
+            w.set_position(PhysicalPosition::new(x, y))?;
         }
     }
     // Rundung: ein Pixel Unterschied ist kein Grund, das Fenster neu zu setzen.
-    if want.abs_diff(inner.height) > 1 {
-        w.set_size(PhysicalSize::new(inner.width, want))?;
+    if want.abs_diff(inner.height) > 1 || want_w.abs_diff(inner.width) > 1 {
+        w.set_size(PhysicalSize::new(want_w, want))?;
     }
     Ok(())
 }

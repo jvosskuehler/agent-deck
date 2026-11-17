@@ -31,6 +31,9 @@ pub const JIRA_PREFIX: &str = "jira_prefix";
 pub const MODEL: &str = "model";
 /// GitHub-Login, den die PR-Automatik als Reviewer setzt (leer = keiner).
 pub const PR_REVIEWER: &str = "pr_reviewer";
+/// Anzeigenamen der Reviewer, Login → Name (`{"leo-mxyz": "Leo Müller"}`), geschrieben vom
+/// Installer und vom Einstellungsfenster, wenn sie Namen aufgelöst haben. Nur zum Zeigen.
+pub const PR_REVIEWER_NAMES: &str = "pr_reviewer_names";
 /// GitHub-Organisation, auf die sich die PR-Automatik beschränkt (leer = keine).
 pub const GITHUB_ORG: &str = "github_org";
 

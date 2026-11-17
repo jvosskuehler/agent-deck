@@ -513,3 +513,31 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     assert_eq!((file["titan"].clone(), file["pr_reviewer"].clone()), (json!(true), json!("octocat")));
     assert!(r.deck.lang.is_english());
 }
+
+#[test]
+fn resolved_reviewers_are_saved_as_logins_with_names_and_their_org() {
+    use deck_core::dash::reviewers::{ReviewerNote, ReviewerReport, ReviewerStatus, resolve_all};
+    use deck_core::dash::reviewer_match::Member;
+    let mut r = rig();
+    let members = [
+        Member { login: "leo-mxyz".into(), name: "Leo Müller".into(), emails: vec![] },
+        Member { login: "anna-s".into(), name: "Anna Schmidt".into(), emails: vec![] },
+        Member { login: "aberger".into(), name: "Anna Berger".into(), emails: vec![] },
+    ];
+    let results = resolve_all(Some(&members), "Leo, Anna, bob, name@firma.de");
+    assert_eq!(results[1].status, ReviewerStatus::Ambiguous);
+    let report = ReviewerReport { org: "acme".into(), orgs: vec![], note: ReviewerNote::None, detail: String::new(), results };
+    r.deck.apply_reviewers(&report);
+    let v = r.deck.settings_view();
+    // Mehrdeutig wartet auf die Wahl, die Mailadresse ohne Treffer fällt weg.
+    assert_eq!((v.pr_reviewer.as_str(), v.github_org.as_str()), ("leo-mxyz, bob", "acme"));
+    assert_eq!(v.pr_reviewer_label, "Leo Müller (leo-mxyz), bob");
+    // Das Feld schickt die gezeigte Form zurück: der Login in der Klammer zählt, der Name bleibt.
+    r.deck.set_setting("prReviewer", &json!("Leo Müller (leo-mxyz), x@y.de")).unwrap();
+    let v = r.deck.settings_view();
+    assert_eq!((v.pr_reviewer.as_str(), v.pr_reviewer_label.as_str()), ("leo-mxyz", "Leo Müller (leo-mxyz)"));
+    // Eine eingestellte Organisation überschreibt die Suche nicht.
+    r.deck.set_setting("githubOrg", &json!("mine")).unwrap();
+    r.deck.apply_reviewers(&report);
+    assert_eq!(r.deck.settings_view().github_org, "mine");
+}

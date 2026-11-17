@@ -103,10 +103,11 @@ pub async fn tooltip_content_size(app: AppHandle, width: f64, height: f64) -> Re
     Ok(())
 }
 
-/// Ein Dialog meldet seine Inhaltshöhe; sein Fenster wächst bzw. schrumpft mit.
+/// Ein Dialog meldet seine Inhaltshöhe; sein Fenster wächst bzw. schrumpft mit. `width`
+/// (CSS-Pixel) setzt zusätzlich die Breite (Einstellungen kompakt bzw. erweitert).
 #[tauri::command]
-pub async fn dialog_content_size(window: tauri::WebviewWindow, height: f64) -> Res<()> {
-    crate::ui_windows::fit_dialog(&window, height).map_err(|e| e.to_string())
+pub async fn dialog_content_size(window: tauri::WebviewWindow, height: f64, width: Option<f64>) -> Res<()> {
+    crate::ui_windows::fit_dialog(&window, height, width).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -11,6 +11,7 @@
 
 use deck_core::auto_compact;
 use deck_core::claude::settings::{WriteValues, effort_label, effort_spec, read_values, write_values};
+use deck_core::dash::reviewers::{self, ReviewerReport};
 use deck_core::deck_settings::{self as ds, Switch};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
@@ -58,6 +59,7 @@ impl Deck {
             speechmike_voice: ds::on(s, Switch::SpeechmikeVoice),
             pr_automation: ds::on(s, Switch::PrAutomation),
             pr_reviewer: ds::text(s, ds::PR_REVIEWER),
+            pr_reviewer_label: reviewers::label(&ds::text(s, ds::PR_REVIEWER), s.get(ds::PR_REVIEWER_NAMES)),
             github_org: ds::text(s, ds::GITHUB_ORG),
             shortcuts: deck_core::shortcuts::rows(s, self.lang),
         }
@@ -97,9 +99,16 @@ impl Deck {
                 Effect::None
             }
             "prReviewer" => {
-                // Mehrere Logins mit Komma; gespeichert wird die bereinigte Liste.
-                let list = deck_core::dash::automation::reviewer_list(&text()?);
-                self.put_text(ds::PR_REVIEWER, list.join(", "));
+                // Ohne Nachschlagen (das macht `set_reviewers`): was als Login taugt, bleibt,
+                // „Name (login)“ zählt als login, der Rest fällt still weg.
+                let report = ReviewerReport {
+                    org: String::new(),
+                    orgs: Vec::new(),
+                    note: reviewers::ReviewerNote::None,
+                    detail: String::new(),
+                    results: reviewers::resolve_all(None, &text()?),
+                };
+                self.apply_reviewers(&report);
                 Effect::None
             }
             "githubOrg" => {
@@ -139,6 +148,29 @@ impl Deck {
             other => return Err(format!("unbekannte Einstellung: {other}")),
         };
         Ok(effect)
+    }
+
+    /// Ergebnis einer Reviewer-Suche speichern: die Logins (`pr_reviewer`), ihre Namen
+    /// (`pr_reviewer_names`) und, falls noch keine eingestellt war, die Organisation, gegen
+    /// die gesucht wurde. Mehrdeutige Einträge warten auf die Wahl im Fenster.
+    pub fn apply_reviewers(&mut self, report: &ReviewerReport) {
+        let s = &mut self.store.settings;
+        let logins = reviewers::logins(&report.results);
+        let names = reviewers::names_after(s.get(ds::PR_REVIEWER_NAMES), &report.results);
+        if logins.is_empty() {
+            s.remove(ds::PR_REVIEWER);
+        } else {
+            s.insert(ds::PR_REVIEWER.into(), Value::String(logins.join(", ")));
+        }
+        if names.is_empty() {
+            s.remove(ds::PR_REVIEWER_NAMES);
+        } else {
+            s.insert(ds::PR_REVIEWER_NAMES.into(), Value::Object(names));
+        }
+        if !report.org.is_empty() && ds::text(s, ds::GITHUB_ORG).is_empty() {
+            s.insert(ds::GITHUB_ORG.into(), Value::String(report.org.clone()));
+        }
+        self.store.save_settings();
     }
 
     /// Einen Wert in `deck_settings.json` setzen und sofort speichern.

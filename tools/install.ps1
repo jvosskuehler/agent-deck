@@ -26,7 +26,7 @@ Entfernen: %LOCALAPPDATA%\claude-agent-deck\bin\uninstall.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "leo, anna" -StatusLine keep -Autostart
+powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "Leo, Anna Schmidt" -StatusLine keep -Autostart
 #>
 [CmdletBinding()]
 param(
@@ -227,23 +227,140 @@ function Resolve-JiraPrefix([bool]$Ask) {
     return $v
 }
 
-# GitHub-Logins, die die PR-Automatik als Reviewer einträgt (mehrere mit Komma). Die
-# Automatik selbst bleibt aus, bis sie in den Einstellungen eingeschaltet wird.
-function Resolve-PrReviewer([bool]$Ask) {
-    if ($script:ReviewerGiven) { $v = $PrReviewer }
+# ── Reviewer der PR-Automatik ─────────────────────────────────────────────
+
+# Getippt werden Namen, Mailadressen oder Logins; `deck-setup resolve-reviewers` gleicht
+# sie mit den Mitgliedern der GitHub-Organisation ab (über gh, nur lesend) und druckt
+# JSON. $null, wenn das nicht ging (Programm fehlt, Ausgabe unlesbar).
+function Invoke-ReviewerLookup([string]$Exe, [string]$Text, [string]$Org) {
+    if (-not (Test-Path -LiteralPath $Exe)) { return $null }
+    # 5.1 reicht Anführungszeichen in Argumenten nicht sauber weiter.
+    $a = @('resolve-reviewers', '--names', ($Text -replace '"', ''))
+    if ($Org) { $a += @('--org', $Org) }
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $out = & $Exe @a 2>$null } catch { $out = $null } finally { $ErrorActionPreference = $old }
+    if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
+    try { return ((@($out) -join "`n") | ConvertFrom-Json) } catch { return $null }
+}
+
+function Test-GitHubLogin([string]$Text) {
+    return ($Text -match '^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$')
+}
+
+# Nummerierte Wahl; -1 = übersprungen.
+function Read-Choice([string]$Prompt, [string[]]$Items) {
+    for ($i = 0; $i -lt $Items.Count; $i++) { Info "  $($i + 1)  $($Items[$i])" }
+    while ($true) {
+        $a = Read-Host "   $Prompt (1-$($Items.Count), leer = überspringen)"
+        if ([string]::IsNullOrWhiteSpace($a)) { return -1 }
+        $n = 0
+        if ([int]::TryParse($a.Trim(), [ref]$n) -and $n -ge 1 -and $n -le $Items.Count) { return ($n - 1) }
+    }
+}
+
+function Format-Person($Login, $Name) {
+    if ($Name) { return "$Name ($Login)" }
+    return "$Login"
+}
+
+# Wer die eigenen PRs reviewt. Ein Eintrag, der nicht passt oder kein Login ist, bricht
+# nie ab: interaktiv wird nachgefragt, sonst gewarnt und übersprungen. Mehrere Treffer:
+# interaktiv eine Wahl, sonst übersprungen. Ohne gh (oder ohne Organisation) bleibt ein
+# Eintrag, der als Login taugt, ungeprüft stehen. Die Automatik selbst bleibt aus, bis
+# sie in den Einstellungen eingeschaltet wird.
+# Gibt @{ Logins = 'a, b'; Org = '...'; Names = @{ login = Name } } zurück.
+function Resolve-PrReviewer([bool]$Ask, [string]$Exe) {
+    $logins = @()
+    $names = [ordered]@{}
+    $orgOut = ''
+    if ($script:ReviewerGiven) { $text = $PrReviewer }
     elseif ($Ask) {
         Write-Host ''
         Write-Host '   Die PR-Automatik (zunächst aus) kann deine PRs Reviewern zuweisen.'
-        $v = Read-Answer 'Wer soll deine PRs reviewen? GitHub-Logins, mehrere mit Komma, leer = Vorgabe des Repos' ''
-    } else { $v = '' }
-    $logins = @()
-    foreach ($l in ("$v" -split '[,;\s]+')) {
-        $l = $l.Trim().TrimStart('@')
-        if (-not $l) { continue }
-        if ($l -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$') { Fail "GitHub-Login '$l' ist ungültig." }
-        if (-not ($logins | Where-Object { $_ -ieq $l })) { $logins += $l }
+        $text = Read-Answer 'Wer soll deine PRs reviewen? Namen oder GitHub-Logins, mehrere mit Komma, leer = Vorgabe des Repos' ''
+    } else { $text = '' }
+    $org = ''
+    $warned = $false
+    while ("$text".Trim()) {
+        $r = Invoke-ReviewerLookup $Exe $text $org
+        if ($r -and $r.note -eq 'chooseOrg' -and $Ask) {
+            $orgs = @($r.orgs)
+            Write-Host '   Dein GitHub-Konto gehört zu mehreren Organisationen.'
+            $i = Read-Choice 'In welcher sollen die Namen gesucht werden?' $orgs
+            if ($i -ge 0) { $org = $orgs[$i]; continue }
+        }
+        $looked = [bool]($r -and $r.note -eq 'none')
+        if (-not $looked -and -not $warned) {
+            $why = 'gh fehlt oder ist nicht angemeldet'
+            if ($r -and $r.note -eq 'chooseOrg') { $why = 'mehrere GitHub-Organisationen, keine gewählt' }
+            elseif ($r -and $r.note -eq 'noOrg') { $why = 'keine GitHub-Organisation gefunden' }
+            elseif ($r -and $r.note -eq 'membersFailed') { $why = "Mitglieder von $($r.org) nicht lesbar" }
+            Warn "Namen nicht nachgeschlagen ($why): Logins werden ungeprüft übernommen."
+            $warned = $true
+        }
+        if ($r) { $results = @($r.results) }
+        else {
+            $results = @()
+            foreach ($t in ("$text" -split '[,;]+')) {
+                $t = $t.Trim().TrimStart('@')
+                if (-not $t) { continue }
+                $l = ''
+                if (Test-GitHubLogin $t) { $l = $t }
+                $results += [pscustomobject]@{ input = $t; status = 'none'; login = $l; name = ''; candidates = @() }
+            }
+        }
+        if ($r -and $r.org -and -not $orgOut) { $orgOut = "$($r.org)" }
+        $where = $orgOut
+        if (-not $where) { $where = 'deiner Organisation' }
+        $retry = @()
+        foreach ($x in $results) {
+            $pick = ''
+            $pickName = ''
+            switch ("$($x.status)") {
+                'unique' {
+                    $pick = "$($x.login)"; $pickName = "$($x.name)"
+                    Ok (Format-Person $pick $pickName)
+                }
+                'ambiguous' {
+                    $cands = @($x.candidates)
+                    $labels = @($cands | ForEach-Object { Format-Person $_.login $_.name })
+                    if ($Ask) {
+                        Write-Host "   '$($x.input)' passt auf mehrere:"
+                        $i = Read-Choice 'Wen meinst du?' $labels
+                        if ($i -ge 0) {
+                            $pick = "$($cands[$i].login)"; $pickName = "$($cands[$i].name)"
+                            Ok (Format-Person $pick $pickName)
+                        } else { Info "'$($x.input)' übersprungen" }
+                    } else {
+                        Warn "'$($x.input)' passt auf mehrere ($($labels -join ', ')), übersprungen."
+                    }
+                }
+                default {
+                    if ($x.login) {
+                        $pick = "$($x.login)"
+                        if ($looked) { Warn "'$($x.input)' nicht in $where gefunden, als Login übernommen." }
+                        else { Info "'$($x.input)' als Login übernommen (ungeprüft)" }
+                    } elseif ($looked) {
+                        Warn "'$($x.input)' nicht in $where gefunden und kein GitHub-Login, übersprungen."
+                        $retry += "$($x.input)"
+                    } else {
+                        Warn "'$($x.input)' ist kein GitHub-Login, übersprungen."
+                        $retry += "$($x.input)"
+                    }
+                }
+            }
+            if ($pick -and -not ($logins | Where-Object { $_ -ieq $pick })) {
+                $logins += $pick
+                if ($pickName) { $names[$pick] = $pickName }
+            }
+        }
+        $text = ''
+        if ($Ask -and $retry.Count -gt 0) {
+            $text = Read-Answer "Wen meintest du mit $($retry -join ', ')? Name oder Login, leer = überspringen" ''
+        }
     }
-    return ($logins -join ', ')
+    return @{ Logins = ($logins -join ', '); Org = $orgOut; Names = $names }
 }
 
 # ── Claudes settings.json ─────────────────────────────────────────────────
@@ -516,16 +633,18 @@ function Copy-Programs($Source) {
     Ok "$($Exes -join ', ') (Version $($Source.Version))"
 }
 
-function Write-DeckSettings([string]$Repos, [string]$Jira, [string]$Reviewers) {
+function Write-DeckSettings([string]$Repos, [string]$Jira, $Reviewers) {
     $s = [ordered]@{ settings_version = 1; repos_root = $Repos }
     if ($Jira) { $s.jira_prefix = $Jira }
-    if ($Reviewers) { $s.pr_reviewer = $Reviewers }
+    if ($Reviewers -and $Reviewers.Logins) { $s.pr_reviewer = $Reviewers.Logins }
+    if ($Reviewers -and $Reviewers.Names.Count -gt 0) { $s.pr_reviewer_names = $Reviewers.Names }
+    if ($Reviewers -and $Reviewers.Org) { $s.github_org = $Reviewers.Org }
     # Alles mit Wirkung nach außen ist aus, bis es jemand in den Einstellungen anschaltet.
     # Auto-Compact ist an: es schreibt nur in den eigenen wartenden Agenten.
     foreach ($k in 'titan', 'store_update', 'speechmike_voice', 'auto_permission_mode', 'pr_automation') { $s[$k] = $false }
     $s.auto_compact = $true
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-    Write-Utf8 $SettingsFile ($s | ConvertTo-Json)
+    Write-Utf8 $SettingsFile ($s | ConvertTo-Json -Depth 4)
     Ok "Einstellungen: $SettingsFile"
 }
 
@@ -550,13 +669,14 @@ function Invoke-Main {
     $firstRun = -not (Test-Path -LiteralPath $SettingsFile)
     $ask = Test-Interactive
 
-    $repos = $null; $jira = ''; $reviewers = ''
+    $repos = $null; $jira = ''; $reviewers = $null
     $autostartOn = $null
     if ($firstRun) {
         Step 'Ersteinrichtung'
         $repos = Resolve-ReposRoot $ask
         $jira = Resolve-JiraPrefix $ask
-        $reviewers = Resolve-PrReviewer $ask
+        # deck-setup aus der Quelle: nach bin kopiert wird erst nach den Fragen.
+        $reviewers = Resolve-PrReviewer $ask (Join-Path $source.Dir 'deck-setup.exe')
         if ($script:AutostartGiven) { $autostartOn = [bool]$Autostart }
         elseif ($ask) { Write-Host ''; $autostartOn = Read-YesNo 'Deck beim Anmelden an Windows automatisch starten?' $true }
         else { $autostartOn = $false }

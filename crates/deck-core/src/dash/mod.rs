@@ -22,6 +22,8 @@ pub mod jira_sync;
 pub mod merge_order;
 pub mod pr_extra;
 pub mod prs;
+pub mod reviewer_match;
+pub mod reviewers;
 pub mod titan;
 
 use serde::{Deserialize, Serialize};

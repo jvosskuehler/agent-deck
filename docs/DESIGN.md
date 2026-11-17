@@ -227,7 +227,17 @@ Bleibt auf dem Monitor der Karte.
 Eigenes Fenster im Aufbau von `einstellungen-glas.html`, im Papier-Look: Grund in
 Panelfarbe, Segmente auf dem Overlay (gewählt hell als Blatt im Kartengrund, dunkel eine
 Stufe heller). Die Höhe folgt dem Inhalt (`useDialogFit`), höchstens bis zur
-Arbeitsfläche, darüber rollt es. Vier Bereiche, durch Haarlinien getrennt:
+Arbeitsfläche, darüber rollt es.
+
+**Kompakt und erweitert** (seit 17.11.2026, Wunsch von Jorrit): Das Fenster geht kompakt
+auf wie vor den Einstellungen für Kolleginnen und Kollegen, eine Spalte, 480 breit, nur
+„Neue Agenten“ (Modell, Modus, Effort) und „Deck“ (Sprache, Andocken, Info-Fenster,
+Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
+(`tool-btn`) zieht das Fenster auf 960 und zwei Spalten mit allen vier Bereichen auf,
+dort heißt er „Weniger“. Die Wahl merkt sich die Oberfläche (`localStorage`). Taugt der
+Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt über „Neue Agenten“.
+Erweitert sind es vier Bereiche, durch Haarlinien getrennt (links Konto und Ordner, Neue
+Agenten; rechts Deck, Automatik):
 
 - **Konto und Ordner** („gilt für dieses Konto“): Repos-Ordner als Pfad in Plex Mono auf
   dem Overlay (Radius 9, zu lang: vorn gekürzt) mit dem leisen Knopf „Ändern…“ rechts
@@ -235,13 +245,19 @@ Arbeitsfläche, darüber rollt es. Vier Bereiche, durch Haarlinien getrennt:
   Textfeld (Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px; gespeichert beim
   Verlassen oder mit Enter, Escape verwirft).
 - **Neue Agenten** (Modell mit „Standard“ = ohne `--model`, Modus, Effort als Segmente;
-  dazu der Schalter „Neue Agenten in Auto schalten“).
-- **Deck** (Sprache, Andocken als Segmente; Schalter Info-Fenster). „Panel neu starten“
+  erweitert dazu der Schalter „Neue Agenten in Auto schalten“).
+- **Deck** (Sprache, Andocken als Segmente; Schalter Info-Fenster und Auto-Compact). „Panel neu starten“
   steht als kleiner, leiser Knopf rechts in der Kopfzeile, so hoch wie der Hinweis neben
   „Neue Agenten“.
-- **Automatik** („läuft nur, was du einschaltest“): Auto-Compact, PowerShell und Terminal
-  aktualisieren, SpeechMike, Titan, PR-Automatik. Bei eingeschalteter PR-Automatik
-  darunter zwei Textfelder nebeneinander: Reviewer und GitHub-Organisation.
+- **Automatik** („läuft nur, was du einschaltest“): PowerShell und Terminal
+  aktualisieren, SpeechMike, Titan, PR-Automatik. Darunter das Reviewer-Feld (immer) und
+  bei eingeschalteter PR-Automatik die GitHub-Organisation. Ins Reviewer-Feld kommen
+  Namen, Mailadressen oder Logins; nach Enter oder Verlassen sucht das Deck sie in der
+  Organisation und zeigt sie als „Leo Müller (leo-mxyz)“. Darunter klein (11 px): bei
+  mehreren Treffern „„Anna“: wen meinst du?“ mit je einem leisen Knopf pro Person
+  (Plex Mono), bei mehreren Organisationen dieselbe Wahl für die Organisation, ohne
+  Treffer in Achtung-Farbe „nicht in <org> gefunden, als Login übernommen“ bzw.
+  „… übersprungen“, ohne gh gedämpft „Namen nicht nachgeschlagen (…)“.
 
 Ein Schalter ist eine Zeile: links der Name (12 px, Textfarbe) und darunter klein und
 gedämpft, was er nach außen tut; rechts „An | Aus“ als schmale Segmente (118 px, 26 px

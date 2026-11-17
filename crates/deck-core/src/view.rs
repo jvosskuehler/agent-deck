@@ -305,8 +305,12 @@ pub struct SettingsView {
     pub speechmike_voice: bool,
     /// PR-Automatik (`pr_automation`).
     pub pr_automation: bool,
-    /// GitHub-Login, den die PR-Automatik als Reviewer setzt (`pr_reviewer`).
+    /// GitHub-Logins, die die PR-Automatik als Reviewer setzt (`pr_reviewer`, mit Komma).
     pub pr_reviewer: String,
+    /// Dieselbe Liste zum Anzeigen: „Leo Müller (leo-mxyz), anna“ (Namen aus
+    /// `pr_reviewer_names`). Das Feld zeigt und nimmt diese Form; Rust liest den Login in
+    /// der Klammer (`dash::reviewers::split_input`).
+    pub pr_reviewer_label: String,
     /// GitHub-Organisation der PR-Automatik (`github_org`).
     pub github_org: String,
     /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.

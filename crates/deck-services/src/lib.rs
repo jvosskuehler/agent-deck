@@ -35,6 +35,7 @@ pub mod install;
 pub mod logfile;
 pub mod orphans;
 pub mod report;
+pub mod reviewers;
 pub mod shortcut;
 pub mod statusline_backup;
 pub mod store_update;

@@ -16,11 +16,18 @@
 //!                                       und den Farbschemata papier-ebenen(-nacht).
 //! deck-setup remove-vscode-extension    Eintrag in ~/.vscode/extensions/extensions.json und
 //!                                       Ordner agent-deck-bridge entfernen (mehrfach harmlos).
+//! deck-setup resolve-reviewers --names "<text>" [--org <org>]
+//!                                       Reviewer-Namen, Mailadressen oder Logins gegen die
+//!                                       Mitglieder der GitHub-Organisation auflösen (nur
+//!                                       lesend, über gh). Druckt eine JSON-Zeile
+//!                                       (`deck_core::dash::reviewers::ReviewerReport`) für den
+//!                                       Installer; scheitert nie an gh, `note` sagt warum.
 //! ```
 //!
 //! Claudes settings.json liegt in `CLAUDE_CONFIG_DIR`, sonst in `~/.claude`.
 //! Ausgabe: eine Zeile je Befund (`ok|info|warn|fail: …`), am Ende `## fails=N warns=N`.
-//! Exit-Code 1, wenn es einen Fehler gab, 2 bei falschem Aufruf.
+//! Exit-Code 1, wenn es einen Fehler gab, 2 bei falschem Aufruf. `resolve-reviewers` druckt
+//! nur das JSON und endet mit 0.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -30,7 +37,7 @@ use deck_services::report::{Grade, Report};
 use deck_services::{shortcut, statusline_backup, vscode_cleanup, wt_fragment};
 
 const USAGE: &str = "deck-setup install --bin <ordner> [--statusline keep|replace] | check --bin <ordner> | uninstall \
-                     | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] | remove-vscode-extension";
+                     | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] | remove-vscode-extension                      | resolve-reviewers --names <text> [--org <org>]";
 
 fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
@@ -71,6 +78,23 @@ fn main() -> ExitCode {
     let cmd = args.first().map(String::as_str);
     let bin = arg_value(&args, "--bin").map(PathBuf::from);
     let remove = args.iter().any(|a| a == "--remove");
+    if cmd == Some("resolve-reviewers") {
+        let Some(names) = arg_value(&args, "--names") else {
+            eprintln!("--names fehlt
+{USAGE}");
+            return ExitCode::from(2);
+        };
+        let org = arg_value(&args, "--org").unwrap_or("");
+        let report = deck_services::reviewers::ReviewerResolver::system().resolve(org, names);
+        match serde_json::to_string(&report) {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("JSON: {e}");
+                return ExitCode::from(1);
+            }
+        }
+        return ExitCode::SUCCESS;
+    }
     let r = match (cmd, bin) {
         (Some("install"), Some(bin)) => {
             let Some(mode) = StatusLine::parse(arg_value(&args, "--statusline").unwrap_or("keep")) else {

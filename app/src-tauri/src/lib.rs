@@ -25,6 +25,7 @@ pub mod native;
 pub mod orphans;
 pub mod poll;
 pub mod refs_files;
+pub mod reviewers;
 pub mod services;
 pub mod settings;
 pub mod speechmike;
@@ -208,6 +209,7 @@ pub fn run() {
             commands::open_settings,
             commands::set_setting,
             commands::pick_folder,
+            reviewers::set_reviewers,
             commands::restart_panel,
             commands::focus_block,
             commands::get_ticket,

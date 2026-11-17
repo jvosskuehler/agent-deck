@@ -188,8 +188,9 @@ export function initialSettings(): SettingsView {
     storeUpdate: true,
     speechmikeVoice: true,
     prAutomation: true,
-    prReviewer: "",
-    githubOrg: "",
+    prReviewer: "leo-mxyz",
+    prReviewerLabel: "Leo Müller (leo-mxyz)",
+    githubOrg: "beispiel-org",
     shortcuts: [
       { keys: "Strg+<", action: "Zum Agenten, der am längsten wartet" },
       { keys: "Strg+Shift+<", action: "Alle Agenten nach vorn, nochmal: zurück" },
@@ -213,6 +214,9 @@ export function freshSettings(): Partial<SettingsView> {
     storeUpdate: false,
     speechmikeVoice: false,
     prAutomation: false,
+    prReviewer: "",
+    prReviewerLabel: "",
+    githubOrg: "",
   };
 }
 

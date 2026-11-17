@@ -69,9 +69,15 @@ speechmikeVoice: boolean,
  */
 prAutomation: boolean, 
 /**
- * GitHub-Login, den die PR-Automatik als Reviewer setzt (`pr_reviewer`).
+ * GitHub-Logins, die die PR-Automatik als Reviewer setzt (`pr_reviewer`, mit Komma).
  */
 prReviewer: string, 
+/**
+ * Dieselbe Liste zum Anzeigen: „Leo Müller (leo-mxyz), anna“ (Namen aus
+ * `pr_reviewer_names`). Das Feld zeigt und nimmt diese Form; Rust liest den Login in
+ * der Klammer (`dash::reviewers::split_input`).
+ */
+prReviewerLabel: string, 
 /**
  * GitHub-Organisation der PR-Automatik (`github_org`).
  */
