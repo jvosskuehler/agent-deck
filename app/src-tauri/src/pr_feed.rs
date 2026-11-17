@@ -2,10 +2,13 @@
 //! mit Einstellungen und Agenten-Ordnern versorgen, die worktrees der vom Deck gemergten
 //! PRs an den Aufräum-Dienst reichen und die Knöpfe des Feeds ausführen.
 //!
-//! Einstellungen in `deck_settings.json`: `pr_reviewer` (wer als Reviewer nachgetragen
-//! wird) und `github_org` (Organisation für die Jira-Suche). Beide stehen nicht im Code:
-//! das Repo ist öffentlich.
+//! Einstellungen in `deck_settings.json`: `pr_automation` (die einzige Quelle, ob der Feed
+//! nach außen wirkt; neue Installationen: aus), `pr_reviewer` (wer als Reviewer
+//! nachgetragen wird, mehrere mit Komma), `github_org` (Organisation für die Jira-Suche)
+//! und `repos_root` (wo die Hintergrund-Agenten ihre Checkouts finden). Nichts davon steht
+//! im Code: das Repo ist öffentlich, und jede Installation läuft auf ihre eigenen Konten.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use deck_core::dash::feed_view::{CommentPopup, FeedView};
@@ -22,14 +25,21 @@ use crate::applog::note;
 /// Was der Feed aus den Einstellungen braucht.
 #[derive(Debug, Clone, Default)]
 pub struct FeedSettings {
-    pub reviewer: String,
+    pub automation: bool,
+    pub reviewers: Vec<String>,
     pub org: String,
+    pub repos_root: Option<PathBuf>,
 }
 
 impl FeedSettings {
-    pub fn from_settings(s: &serde_json::Map<String, serde_json::Value>) -> FeedSettings {
+    pub fn from_settings(s: &serde_json::Map<String, serde_json::Value>, repos_root: Option<&Path>) -> FeedSettings {
         let get = |k: &str| s.get(k).and_then(serde_json::Value::as_str).unwrap_or("").trim().to_string();
-        FeedSettings { reviewer: get("pr_reviewer"), org: get("github_org") }
+        FeedSettings {
+            automation: deck_core::dash::automation_enabled(s),
+            reviewers: deck_core::dash::automation::reviewer_list(&get("pr_reviewer")),
+            org: get("github_org"),
+            repos_root: repos_root.map(Path::to_path_buf),
+        }
     }
 }
 
@@ -37,10 +47,11 @@ impl FeedSettings {
 /// eigenem Merge aufräumen lassen, Ansicht holen.
 pub fn tick(feed: &Arc<FeedService>, cleanup: &Arc<CleanupService>, cfg: &FeedSettings, prefix: &str, in_use: &[String], now: f64, lang: Lang) -> (FeedView, Option<CommentPopup>) {
     feed.set_config(FeedConfig {
-        reviewer: cfg.reviewer.clone(),
+        automation: cfg.automation,
+        reviewers: cfg.reviewers.clone(),
         org: cfg.org.clone(),
         prefix: prefix.to_string(),
-        repos_root: deck_core::paths::home_dir().join("Repos"),
+        repos_root: cfg.repos_root.clone().unwrap_or_default(),
     });
     feed.set_in_use(in_use.to_vec());
     clean_after_merge(feed, cleanup, now);

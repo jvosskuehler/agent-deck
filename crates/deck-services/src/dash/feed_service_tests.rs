@@ -158,8 +158,12 @@ fn setup(dir: &Path, since: f64) -> (Arc<World>, FeedService) {
     };
     let svc = FeedService::new(deps, dir, &dir.join("feed"), LogFile::new(dir.join(LOG_FILE), 100_000, Rotate::Truncate));
     std::fs::create_dir_all(dir.join("orpheus-client-electron").join(".git")).unwrap();
-    svc.set_config(FeedConfig { reviewer: "reviewer1".into(), org: "Org".into(), prefix: "ORPH".into(), repos_root: PathBuf::from(dir) });
+    svc.set_config(config(dir, true));
     (w, svc)
+}
+
+fn config(dir: &Path, automation: bool) -> FeedConfig {
+    FeedConfig { automation, reviewers: vec!["reviewer1".into()], org: "Org".into(), prefix: "ORPH".into(), repos_root: PathBuf::from(dir) }
 }
 
 fn publish(w: &World, open: Vec<PrInfo>, merged: Vec<MergedPr>, at: f64) {
@@ -368,4 +372,16 @@ fn a_draft_gets_no_agent_no_reviewer_no_assignee_and_no_merge() {
     svc.round_now();
     assert!(w.calls().is_empty(), "{:?}", w.calls());
     assert!(svc.action(&format!("delegate:{}", p.key())).unwrap_err().contains("Draft"));
+}
+
+#[test]
+fn with_the_setting_off_nothing_acts_even_if_the_old_state_said_on() {
+    let d = tempfile::tempdir().unwrap();
+    let (w, svc) = setup(d.path(), 1.0);
+    svc.set_config(config(d.path(), false));
+    let p = ready(1);
+    publish(&w, vec![p], vec![], NOW);
+    svc.round_now();
+    assert!(w.calls().is_empty() || w.calls().iter().all(|c| !c.starts_with("merge") && !c.starts_with("reviewer") && !c.starts_with("assignee")), "{:?}", w.calls());
+    assert!(!svc.state().automation, "die Einstellung zieht das Gedächtnis nach");
 }

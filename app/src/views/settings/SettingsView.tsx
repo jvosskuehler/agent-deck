@@ -239,19 +239,20 @@ export function SettingsView() {
               on={settings.prAutomation}
               onChange={(v) => save("prAutomation", v)}
             />
+            {/* Immer sichtbar: wer die eigenen PRs reviewt, ist eine Frage an jeden, auch
+                bevor die Automatik an ist (der Installer fragt es ebenfalls). */}
+            <TextField
+              label={t(lang, "prReviewer")}
+              value={settings.prReviewer}
+              placeholder="leo, anna"
+              onCommit={(v) => save("prReviewer", v)}
+            />
             {settings.prAutomation && (
-              <div className="set-pair">
-                <TextField
-                  label={t(lang, "prReviewer")}
-                  value={settings.prReviewer}
-                  onCommit={(v) => save("prReviewer", v)}
-                />
-                <TextField
-                  label={t(lang, "githubOrg")}
-                  value={settings.githubOrg}
-                  onCommit={(v) => save("githubOrg", v)}
-                />
-              </div>
+              <TextField
+                label={t(lang, "githubOrg")}
+                value={settings.githubOrg}
+                onCommit={(v) => save("githubOrg", v)}
+              />
             )}
           </section>
         </div>

@@ -295,10 +295,10 @@ impl RingLayer {
     pub fn apply(&mut self, rings: &[Ring]) {
         self.windows.retain(|h, _| rings.iter().any(|r| r.hwnd == *h));
         for ring in rings {
-            if !self.windows.contains_key(&ring.hwnd) {
+            if let std::collections::hash_map::Entry::Vacant(slot) = self.windows.entry(ring.hwnd) {
                 match ShadowWindow::new() {
                     Ok(w) => {
-                        self.windows.insert(ring.hwnd, (w, None));
+                        slot.insert((w, None));
                     }
                     Err(e) => {
                         self.fail(format!("Statusrand nicht verfügbar: {e}"));

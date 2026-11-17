@@ -316,6 +316,11 @@ fn run_action(app: &AppHandle, command: &str) -> Result<(), String> {
         return Err("Titan ist abgeschaltet".into());
     }
     let l = |de: &'static str, en: &'static str| lang.l(de, en);
+    if let Some(on) = command.strip_prefix("automation:").map(|v| v == "on") {
+        // Der Not-Aus im Feed ist derselbe Schalter wie in den Einstellungen
+        // (`pr_automation`): eine Quelle, sonst stellt der nächste Takt ihn zurück.
+        lock(&s.deck).set_setting("prAutomation", &serde_json::Value::Bool(on))?;
+    }
     if FeedService::handles(command) {
         let outcome = crate::pr_feed::action(app, &src.feed, &src.github, command);
         let text = match &outcome {

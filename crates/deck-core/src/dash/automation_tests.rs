@@ -29,7 +29,11 @@ fn ready(n: u64) -> PrInfo {
 }
 
 fn st() -> FeedState {
-    FeedState::fresh(1.0)
+    FeedState { automation: true, ..FeedState::fresh(1.0) }
+}
+
+fn r(logins: &[&str]) -> Vec<String> {
+    logins.iter().map(|l| l.to_string()).collect()
 }
 
 fn one(p: &PrInfo) -> &[PrInfo] {
@@ -40,7 +44,7 @@ fn one(p: &PrInfo) -> &[PrInfo] {
 fn a_clean_green_approved_pr_is_merged() {
     let p = ready(1);
     assert_eq!(merge_wait(&p, one(&p), None, &st()), None);
-    let acts = plan(one(&p), &st(), |_| None, "reviewer1", "me");
+    let acts = plan(one(&p), &st(), |_| None, &r(&["reviewer1"]), "me");
     assert_eq!(acts, [Act::Merge { pr: p.key(), url: "u1".into(), repo: p.repo.clone(), head_ref: "b".into() }]);
 }
 
@@ -95,7 +99,7 @@ fn hold_list_and_emergency_stop_prevent_every_merge() {
     assert_eq!(merge_wait(&p, one(&p), None, &s), Some(MergeWait::Held));
     let mut off = st();
     off.automation = false;
-    assert!(plan(one(&p), &off, |_| None, "reviewer1", "me").is_empty());
+    assert!(plan(one(&p), &off, |_| None, &r(&["reviewer1"]), "me").is_empty());
     assert_eq!(merge_wait(&p, one(&p), None, &off), Some(MergeWait::Off));
 }
 
@@ -137,7 +141,7 @@ fn a_claude_approval_of_the_current_head_suffices_unless_claude_says_high() {
 fn drafts_are_never_touched_by_the_mechanics() {
     let mut p = PrInfo { draft: true, ..ready(30) };
     p.extra.assignees.clear();
-    assert!(plan(one(&p), &st(), |_| None, "reviewer1", "me").is_empty());
+    assert!(plan(one(&p), &st(), |_| None, &r(&["reviewer1"]), "me").is_empty());
 }
 
 #[test]
@@ -172,15 +176,30 @@ fn reviewer_and_assignee_are_added_once_and_never_for_myself() {
     p.extra.assignees.clear();
     p.extra.reviews.clear();
     let s = st();
-    let acts = plan(one(&p), &s, |_| None, "reviewer1", "me");
+    let acts = plan(one(&p), &s, |_| None, &r(&["reviewer1"]), "me");
     assert!(acts.contains(&Act::AddReviewer { pr: p.key(), url: "u20".into(), login: "reviewer1".into() }));
     assert!(acts.contains(&Act::AddAssignee { pr: p.key(), url: "u20".into() }));
     let mut done = s.clone();
     *done.handled_mut(&p.key()) = Handled { reviewer: true, assignee: true, ..Handled::default() };
-    assert!(plan(one(&p), &done, |_| None, "reviewer1", "me").is_empty());
+    assert!(plan(one(&p), &done, |_| None, &r(&["reviewer1"]), "me").is_empty());
     let reviewer_added = |acts: Vec<Act>| acts.iter().any(|a| matches!(a, Act::AddReviewer { .. }));
-    assert!(!reviewer_added(plan(one(&p), &s, |_| None, "me", "me")));
-    assert!(!reviewer_added(plan(one(&p), &s, |_| None, "", "me")), "ohne Einstellung keiner");
+    assert!(!reviewer_added(plan(one(&p), &s, |_| None, &r(&["me"]), "me")));
+    assert!(!reviewer_added(plan(one(&p), &s, |_| None, &[], "me")), "ohne Einstellung keiner");
     p.waiting_on = vec!["Reviewer1".into()];
-    assert!(!reviewer_added(plan(one(&p), &s, |_| None, "reviewer1", "me")), "schon angefragt");
+    assert!(!reviewer_added(plan(one(&p), &s, |_| None, &r(&["reviewer1"]), "me")), "schon angefragt");
+}
+
+#[test]
+fn several_reviewers_come_in_one_call_without_me_and_without_those_already_asked() {
+    let mut p = ready(21);
+    p.extra.reviews.clear();
+    p.waiting_on = vec!["Anna".into()];
+    let acts = plan(one(&p), &st(), |_| None, &r(&["anna", "leo", "me", "ben"]), "me");
+    assert!(acts.contains(&Act::AddReviewer { pr: p.key(), url: "u21".into(), login: "leo,ben".into() }));
+}
+
+#[test]
+fn the_reviewer_setting_is_a_comma_list_cleaned_up() {
+    assert_eq!(reviewer_list(" @leo, anna;Leo  ben ,, "), r(&["leo", "anna", "ben"]));
+    assert!(reviewer_list("  ").is_empty());
 }

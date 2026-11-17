@@ -44,13 +44,17 @@ const VIEW_TTL_S: f64 = 20.0;
 /// Einstellungen aus `deck_settings.json`, die der Feed braucht.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FeedConfig {
+    /// `pr_automation`: die einzige Quelle, ob der Feed nach außen wirkt (mergen,
+    /// Reviewer/Assignee, Jira, Hintergrund-Agenten). Aus = der Feed zeigt nur.
+    pub automation: bool,
     /// `pr_reviewer`: wer als Reviewer nachgetragen wird (leer = niemand).
-    pub reviewer: String,
+    pub reviewers: Vec<String>,
     /// `github_org`: Organisation für die Jira-Suche (leer = kein Jira).
     pub org: String,
     /// `jira_prefix`.
     pub prefix: String,
-    /// Ordner der Haupt-Checkouts (`%USERPROFILE%\Repos`).
+    /// Ordner der Haupt-Checkouts (`repos_root`); leer = nicht gesetzt, dann starten
+    /// keine Hintergrund-Agenten.
     pub repos_root: PathBuf,
 }
 
@@ -174,6 +178,12 @@ impl FeedService {
 
     pub fn set_config(&self, cfg: FeedConfig) {
         let mut i = lock(&self.sh.inner);
+        // Die Einstellung ist die Quelle; das Gedächtnis zieht nach (Ansicht, Not-Aus).
+        if i.st.automation != cfg.automation {
+            i.st.automation = cfg.automation;
+            i.dirty = true;
+            self.sh.log.note(if cfg.automation { "Automatik an (Einstellung)" } else { "Automatik aus (Einstellung)" });
+        }
         if i.cfg != cfg {
             i.cfg = cfg;
         }

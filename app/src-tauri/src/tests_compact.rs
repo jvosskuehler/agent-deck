@@ -37,12 +37,12 @@ impl Rig {
 }
 
 #[test]
-fn a_new_install_sends_no_compact_because_it_costs_quota() {
+fn a_new_install_compacts_without_being_switched_on() {
     let mut r = rig();
     r.waiting_agent();
     r.deck.put("auto_compact", json!(null));
     r.deck.tick(NOW);
-    assert_eq!(r.compacts(), 0);
+    assert_eq!(r.compacts(), 1);
 }
 
 #[test]

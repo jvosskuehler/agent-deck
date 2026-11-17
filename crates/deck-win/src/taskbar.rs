@@ -118,6 +118,16 @@ pub fn join_group(hwnd: Hwnd, group: &TaskbarGroup) -> Result<()> {
     result.map_err(|e| Error::win("SHGetPropertyStoreForWindow", e))
 }
 
+/// Kennung des Deck-Prozesses selbst. Dieselbe trägt die Startmenü-Verknüpfung des
+/// Installers (`deck-setup shortcut`), sonst ordnet Windows den laufenden Prozess nicht
+/// der Verknüpfung zu (zuletzt verwendet, Anheften). Muss vor dem ersten Fenster laufen.
+pub fn set_process_app_id(app_id: &str) -> Result<()> {
+    let wide: Vec<u16> = app_id.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: nullterminierter Puffer, lebt über den Aufruf hinaus.
+    unsafe { windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(windows::core::PCWSTR(wide.as_ptr())) }
+        .map_err(|e| Error::Win32 { call: "SetCurrentProcessExplicitAppUserModelID", code: e.code().0 as u32, message: e.message() })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,12 +144,3 @@ mod tests {
     }
 }
 
-/// Kennung des Deck-Prozesses selbst. Dieselbe trägt die Startmenü-Verknüpfung des
-/// Installers (`deck-setup shortcut`), sonst ordnet Windows den laufenden Prozess nicht
-/// der Verknüpfung zu (zuletzt verwendet, Anheften). Muss vor dem ersten Fenster laufen.
-pub fn set_process_app_id(app_id: &str) -> Result<()> {
-    let wide: Vec<u16> = app_id.encode_utf16().chain(std::iter::once(0)).collect();
-    // SAFETY: nullterminierter Puffer, lebt über den Aufruf hinaus.
-    unsafe { windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(windows::core::PCWSTR(wide.as_ptr())) }
-        .map_err(|e| Error::Win32 { call: "SetCurrentProcessExplicitAppUserModelID", code: e.code().0 as u32, message: e.message() })
-}

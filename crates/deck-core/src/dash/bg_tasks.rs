@@ -143,8 +143,9 @@ pub fn worktree_folder(pr: &PrInfo) -> String {
 }
 
 const RULES: &str = "Rules: evaluate every finding yourself; implement what is valid, give a short reason for what is not. \
-Commit messages in English, Conventional Commits style `type(TICKET): subject` (TICKET is given below), subject under 100 characters, \
-never add a Co-Authored-By trailer. Push to the PR branch. Never merge, never close the PR, never force-push \
+Follow the conventions in the repository's CLAUDE.md and in your own CLAUDE.md (commit message style, trailers, language); \
+if they say nothing, write commit messages in English, Conventional Commits style `type(TICKET): subject` (TICKET is given below), \
+subject under 100 characters. Push to the PR branch. Never merge, never close the PR, never force-push \
 (only `git push --force-with-lease` to shorten a commit subject that is too long). Do not touch other branches or PRs. \
 End with a short plain-text report (what you changed, which commits, what you left and why).";
 

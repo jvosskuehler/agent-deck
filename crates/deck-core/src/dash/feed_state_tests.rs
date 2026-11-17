@@ -13,9 +13,9 @@ fn snap(prs: Vec<PrInfo>) -> PrSnapshot {
 }
 
 #[test]
-fn a_broken_or_missing_file_starts_fresh_with_automation_on() {
+fn a_broken_or_missing_file_starts_fresh_with_automation_off_until_the_setting_says_on() {
     let st = FeedState::from_json(Some("{kaputt"), 500.0);
-    assert_eq!((st.since, st.automation), (500.0, true));
+    assert_eq!((st.since, st.automation), (500.0, false));
     assert_eq!(FeedState::from_json(None, 7.0).since, 7.0);
 }
 

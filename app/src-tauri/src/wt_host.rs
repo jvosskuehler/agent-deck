@@ -521,7 +521,7 @@ impl WtHost {
         let (spot, order, ahead) = self.next_spot(win);
         self.pending.insert(name.clone(), (self.clock)());
         if let Some((sp, _)) = &spot {
-            self.spots.insert(name.clone(), sp.clone());
+            self.spots.insert(name.clone(), *sp);
         }
         let target = spot.as_ref().map(|(_, r)| *r);
         let s = &self.setup;

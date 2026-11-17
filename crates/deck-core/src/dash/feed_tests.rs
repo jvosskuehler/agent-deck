@@ -147,7 +147,7 @@ fn the_timeline_shows_merges_ci_reviews_conflicts_and_deck_actions_newest_first(
 #[test]
 fn auto_rows_say_what_the_automation_waits_for() {
     let p = PrInfo { ci: CiState::Running, ..pr(1, PrExtra::default()) };
-    let mut st = FeedState::fresh(1.0);
+    let mut st = FeedState { automation: true, ..FeedState::fresh(1.0) };
     st.hold.insert(p.key());
     let (view, _) = build_with(&snap(vec![p]), &st, &Causes::new());
     assert_eq!((view.auto[0].state.as_str(), view.auto[0].held), ("gehalten, wird nicht gemergt", true));

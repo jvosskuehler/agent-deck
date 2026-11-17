@@ -27,7 +27,7 @@ fn a_fresh_install_gets_only_the_version_and_everything_with_side_effects_stays_
     assert!(migrate(&mut s, Origin::Fresh, home.path()));
     assert_eq!(Value::Object(s.clone()), json!({"settings_version": 1}));
     for sw in Switch::ALL {
-        assert_eq!(on(&s, sw), sw == Switch::Dashboard, "{}", sw.key());
+        assert_eq!(on(&s, sw), matches!(sw, Switch::Dashboard | Switch::AutoCompact), "{}", sw.key());
     }
     assert_eq!(model(&s), None, "ohne --model");
     assert_eq!(jira_prefix(&s), "");

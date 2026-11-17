@@ -130,8 +130,9 @@ fn the_memo_sends_once_per_cache_state() {
 }
 
 #[test]
-fn the_switch_is_off_unless_turned_on_because_compacting_costs_quota() {
-    assert!(!enabled(&obj(json!({}))));
+fn the_switch_is_on_unless_turned_off() {
+    // Neue Installation: an (Jorrits Wahl vom 17.11.2026, `deck_settings::Switch::default_on`).
+    assert!(enabled(&obj(json!({}))));
     assert!(enabled(&obj(json!({"auto_compact": true}))));
     assert!(!enabled(&obj(json!({"auto_compact": false}))));
 }

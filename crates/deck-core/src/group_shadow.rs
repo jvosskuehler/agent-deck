@@ -172,7 +172,7 @@ pub fn render(rects: &[Area], colors: &[u32], area: Area, look: &Look) -> Vec<u8
             }
             let from = (r.0 - half - area.0).clamp(0, w as i64) as usize;
             let to = (r.2 + half - area.0).clamp(0, w as i64) as usize;
-            for p in line[from * 4..to * 4].chunks_exact_mut(4) {
+            for p in line[from * 4..to * 4].as_chunks_mut::<4>().0 {
                 p.copy_from_slice(&seam);
             }
         }
@@ -185,7 +185,7 @@ pub fn render(rects: &[Area], colors: &[u32], area: Area, look: &Look) -> Vec<u8
         if near.is_empty() || look.radius <= 0 {
             continue;
         }
-        for (col, p) in line.chunks_exact_mut(4).enumerate() {
+        for (col, p) in line.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             if p[3] != 0 {
                 continue;
             }
@@ -223,7 +223,7 @@ pub fn render_ring(w: i64, h: i64, ring: i64, rgb: u32) -> Vec<u8> {
     let mut px = vec![0u8; w * h * 4];
     for (row, line) in px.chunks_exact_mut(w.max(1) * 4).enumerate() {
         let edge_row = row < ring || row + ring >= h;
-        for (col, p) in line.chunks_exact_mut(4).enumerate() {
+        for (col, p) in line.as_chunks_mut::<4>().0.iter_mut().enumerate() {
             if edge_row || col < ring || col + ring >= w {
                 p.copy_from_slice(&color);
             }

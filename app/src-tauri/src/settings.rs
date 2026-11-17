@@ -97,7 +97,9 @@ impl Deck {
                 Effect::None
             }
             "prReviewer" => {
-                self.put_text(ds::PR_REVIEWER, text()?);
+                // Mehrere Logins mit Komma; gespeichert wird die bereinigte Liste.
+                let list = deck_core::dash::automation::reviewer_list(&text()?);
+                self.put_text(ds::PR_REVIEWER, list.join(", "));
                 Effect::None
             }
             "githubOrg" => {

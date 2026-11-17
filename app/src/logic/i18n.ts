@@ -77,7 +77,7 @@ const TEXTS = {
   speechmikeVoiceHint: ["globaler Tastatur-Hook, gilt nach Panel-Neustart", "global keyboard hook, applies after a panel restart"],
   prAutomation: ["PR-Automatik", "PR automation"],
   prAutomationHint: ["mergt, setzt Reviewer und Assignee, startet Hintergrund-Agenten", "merges, sets reviewer and assignee, starts background agents"],
-  prReviewer: ["Reviewer (GitHub-Login)", "Reviewer (GitHub login)"],
+  prReviewer: ["Reviewer deiner PRs (GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos)", "Reviewers of your PRs (GitHub logins, comma separated; empty = repo default)"],
   githubOrg: ["GitHub-Organisation", "GitHub organization"],
   shortcuts: ["Tastenkürzel", "Shortcuts"],
   shortcutsHint: ["Alt+V im Agenten, die übrigen überall", "Alt+V in the agent, the rest everywhere"],

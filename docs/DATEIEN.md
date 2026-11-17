@@ -47,7 +47,7 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
 | `store_update` | bool | `false` | `true` | winget-Update von PowerShell und Windows Terminal |
 | `speechmike_voice` | bool | `false` | `true` | SpeechMike-Sprechtaste samt Tastatur-Hook (ab Neustart) |
 | `auto_permission_mode` | bool | `false` | `true` | neue Agenten per Shift+Tab in Auto |
-| `auto_compact` | bool | `false` | `true` | `/compact` vor Ablauf des Prompt-Caches |
+| `auto_compact` | bool | `true` | `true` | `/compact` vor Ablauf des Prompt-Caches |
 | `dashboard` | bool | `true` | `true` | Info-Fenster |
 | `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
 | `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos |

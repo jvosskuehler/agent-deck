@@ -84,9 +84,10 @@ impl Switch {
     }
 
     /// Vorgabe einer neuen Installation: alles mit Wirkung nach außen aus, das nur
-    /// lesende Info-Fenster an.
+    /// lesende Info-Fenster an. Auto-Compact ist auch an (Jorrits Wahl vom 17.11.2026):
+    /// es schreibt nur in den eigenen wartenden Agenten und hält dessen Kontext klein.
     pub fn default_on(self) -> bool {
-        matches!(self, Switch::Dashboard)
+        matches!(self, Switch::Dashboard | Switch::AutoCompact)
     }
 
     /// Wert, mit dem eine bestehende Installation ohne Eintrag bisher lief: alles an.

@@ -146,9 +146,23 @@ pub fn merge_wait(pr: &PrInfo, open: &[PrInfo], cause: Option<CiCause>, st: &Fee
     Some(wait)
 }
 
-/// Was in dieser Runde zu tun ist. `reviewer`: Login aus der Einstellung (leer = keiner),
-/// `me`: mein Login. Bei abgeschalteter Automatik nichts.
-pub fn plan(open: &[PrInfo], st: &FeedState, cause: impl Fn(&PrInfo) -> Option<CiCause>, reviewer: &str, me: &str) -> Vec<Act> {
+/// `pr_reviewer` als Liste: Komma oder Leerraum trennt, leere fallen weg, doppelte
+/// (ohne Groß/klein) zählen einmal, ein führendes `@` fällt weg.
+pub fn reviewer_list(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for login in raw.split(|c: char| c == ',' || c == ';' || c.is_whitespace()) {
+        let login = login.trim().trim_start_matches('@');
+        if !login.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(login)) {
+            out.push(login.to_string());
+        }
+    }
+    out
+}
+
+/// Was in dieser Runde zu tun ist. `reviewers`: Logins aus der Einstellung (leer = keiner;
+/// mehrere kommen in einem Aufruf, `login` ist dann `a,b`), `me`: mein Login. Bei
+/// abgeschalteter Automatik nichts.
+pub fn plan(open: &[PrInfo], st: &FeedState, cause: impl Fn(&PrInfo) -> Option<CiCause>, reviewers: &[String], me: &str) -> Vec<Act> {
     if !st.automation {
         return Vec::new();
     }
@@ -159,8 +173,9 @@ pub fn plan(open: &[PrInfo], st: &FeedState, cause: impl Fn(&PrInfo) -> Option<C
         let done = st.handled.get(&key).cloned().unwrap_or_default();
         let x = &pr.extra;
         let has = |l: &str| pr.waiting_on.iter().any(|w| w.eq_ignore_ascii_case(l)) || x.reviewed_by().iter().any(|r| r.eq_ignore_ascii_case(l));
-        if !reviewer.is_empty() && !pr.draft && !done.reviewer && !reviewer.eq_ignore_ascii_case(me) && !has(reviewer) {
-            acts.push(Act::AddReviewer { pr: key.clone(), url: pr.url.clone(), login: reviewer.to_string() });
+        let missing: Vec<&str> = reviewers.iter().map(String::as_str).filter(|r| !r.eq_ignore_ascii_case(me) && !has(r)).collect();
+        if !missing.is_empty() && !done.reviewer {
+            acts.push(Act::AddReviewer { pr: key.clone(), url: pr.url.clone(), login: missing.join(",") });
         }
         if !me.is_empty() && !done.assignee && !x.assignees.iter().any(|a| a.eq_ignore_ascii_case(me)) {
             acts.push(Act::AddAssignee { pr: key.clone(), url: pr.url.clone() });

@@ -26,7 +26,7 @@ Entfernen: %LOCALAPPDATA%\claude-agent-deck\bin\uninstall.ps1
 powershell -ExecutionPolicy Bypass -File install.ps1
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -StatusLine keep -Autostart
+powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "leo, anna" -StatusLine keep -Autostart
 #>
 [CmdletBinding()]
 param(
@@ -37,6 +37,7 @@ param(
     [switch]$NonInteractive,
     [string]$ReposRoot,
     [string]$JiraPrefix,
+    [string]$PrReviewer,
     [ValidateSet('keep', 'replace')][string]$StatusLine,
     [switch]$Autostart,
     [switch]$NoShortcut
@@ -83,6 +84,8 @@ function Invoke-Setup([string[]]$SetupArgs) {
     $ErrorActionPreference = 'Continue'
     try { $out = & $Setup @SetupArgs 2>&1 } finally { $ErrorActionPreference = $old }
     $out | ForEach-Object { Write-Host "   $_" }
+    # Was deck-setup an Claudes Vorgaben neu eingetragen hat, steht am Ende noch einmal.
+    $script:NewDefaults += @($out | Where-Object { "$_" -match 'Neu eingetragen: (.*)$' } | ForEach-Object { $Matches[1] })
     if ($LASTEXITCODE -ne 0) { Fail "deck-setup $($SetupArgs -join ' ') ist gescheitert" }
 }
 
@@ -222,6 +225,25 @@ function Resolve-JiraPrefix([bool]$Ask) {
     $v = "$v".Trim().ToUpper()
     if ($v -and $v -notmatch '^[A-Z][A-Z0-9_]*$') { Fail "Jira-Kürzel '$v' ist ungültig (nur Buchstaben, Ziffern, _)." }
     return $v
+}
+
+# GitHub-Logins, die die PR-Automatik als Reviewer einträgt (mehrere mit Komma). Die
+# Automatik selbst bleibt aus, bis sie in den Einstellungen eingeschaltet wird.
+function Resolve-PrReviewer([bool]$Ask) {
+    if ($script:ReviewerGiven) { $v = $PrReviewer }
+    elseif ($Ask) {
+        Write-Host ''
+        Write-Host '   Die PR-Automatik (zunächst aus) kann deine PRs Reviewern zuweisen.'
+        $v = Read-Answer 'Wer soll deine PRs reviewen? GitHub-Logins, mehrere mit Komma, leer = Vorgabe des Repos' ''
+    } else { $v = '' }
+    $logins = @()
+    foreach ($l in ("$v" -split '[,;\s]+')) {
+        $l = $l.Trim().TrimStart('@')
+        if (-not $l) { continue }
+        if ($l -notmatch '^[A-Za-z0-9][A-Za-z0-9-]*(\[bot\])?$') { Fail "GitHub-Login '$l' ist ungültig." }
+        if (-not ($logins | Where-Object { $_ -ieq $l })) { $logins += $l }
+    }
+    return ($logins -join ', ')
 }
 
 # ── Claudes settings.json ─────────────────────────────────────────────────
@@ -494,11 +516,14 @@ function Copy-Programs($Source) {
     Ok "$($Exes -join ', ') (Version $($Source.Version))"
 }
 
-function Write-DeckSettings([string]$Repos, [string]$Jira) {
+function Write-DeckSettings([string]$Repos, [string]$Jira, [string]$Reviewers) {
     $s = [ordered]@{ settings_version = 1; repos_root = $Repos }
     if ($Jira) { $s.jira_prefix = $Jira }
+    if ($Reviewers) { $s.pr_reviewer = $Reviewers }
     # Alles mit Wirkung nach außen ist aus, bis es jemand in den Einstellungen anschaltet.
-    foreach ($k in 'titan', 'store_update', 'speechmike_voice', 'auto_permission_mode', 'auto_compact', 'pr_automation') { $s[$k] = $false }
+    # Auto-Compact ist an: es schreibt nur in den eigenen wartenden Agenten.
+    foreach ($k in 'titan', 'store_update', 'speechmike_voice', 'auto_permission_mode', 'pr_automation') { $s[$k] = $false }
+    $s.auto_compact = $true
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
     Write-Utf8 $SettingsFile ($s | ConvertTo-Json)
     Ok "Einstellungen: $SettingsFile"
@@ -525,12 +550,13 @@ function Invoke-Main {
     $firstRun = -not (Test-Path -LiteralPath $SettingsFile)
     $ask = Test-Interactive
 
-    $repos = $null; $jira = ''
+    $repos = $null; $jira = ''; $reviewers = ''
     $autostartOn = $null
     if ($firstRun) {
         Step 'Ersteinrichtung'
         $repos = Resolve-ReposRoot $ask
         $jira = Resolve-JiraPrefix $ask
+        $reviewers = Resolve-PrReviewer $ask
         if ($script:AutostartGiven) { $autostartOn = [bool]$Autostart }
         elseif ($ask) { Write-Host ''; $autostartOn = Read-YesNo 'Deck beim Anmelden an Windows automatisch starten?' $true }
         else { $autostartOn = $false }
@@ -541,7 +567,7 @@ function Invoke-Main {
 
     Stop-Deck
     Copy-Programs $source
-    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira }
+    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
 
     # Die frühere VS-Code-Extension (bis 09.11.2026) nur anfassen, wenn sie da ist.
     if (Test-Path (Join-Path $env:USERPROFILE '.vscode\extensions\agent-deck-bridge*')) {
@@ -567,8 +593,12 @@ function Invoke-Main {
 
     Start-Deck
     Write-Host "`nAgent Deck $($source.Version) installiert." -ForegroundColor Green
+    if ($script:NewDefaults.Count -gt 0) {
+        Write-Host '   In Claudes settings.json neu eingetragen (deine eigenen Vorgaben bleiben immer):' -ForegroundColor Yellow
+        foreach ($d in $script:NewDefaults) { Write-Host "     $d" -ForegroundColor Yellow }
+    }
     if ($firstRun) {
-        Write-Host '   PR-Automatik, Titan, Store-Update, Auto-Modus und Auto-Compact sind aus;'
+        Write-Host '   PR-Automatik, Titan, Store-Update und Auto-Modus sind aus;'
         Write-Host '   anschalten im Deck unter Einstellungen.'
     }
     Write-Host "   Entfernen: powershell -ExecutionPolicy Bypass -File `"$Bin\uninstall.ps1`""
@@ -576,7 +606,9 @@ function Invoke-Main {
 
 # Ob ein Parameter angegeben wurde, sehen die Funktionen in ihrem eigenen
 # $PSBoundParameters nicht: einmal hier oben festhalten.
+$script:NewDefaults = @()
 $script:JiraGiven = $PSBoundParameters.ContainsKey('JiraPrefix')
+$script:ReviewerGiven = $PSBoundParameters.ContainsKey('PrReviewer')
 $script:AutostartGiven = $PSBoundParameters.ContainsKey('Autostart')
 
 # deck-setup schreibt UTF-8; ohne das zeigt 5.1 die Umlaute als Zeichensalat.
