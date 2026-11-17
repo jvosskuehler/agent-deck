@@ -7,5 +7,6 @@ pub mod refs;
 pub mod settings;
 pub mod summarize;
 pub mod summary_cache;
+pub mod title;
 pub mod usage;
 pub mod worktree_use;

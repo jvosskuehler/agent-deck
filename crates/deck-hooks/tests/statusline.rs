@@ -120,6 +120,20 @@ fn a_run_writes_the_live_file_and_always_returns_a_line() {
     assert_eq!(run(&no_slot, Some(junk.to_string().as_bytes())), "", "falsche Typen fallen weg, statt zu scheitern");
 }
 
+#[test]
+fn without_an_own_name_the_deck_title_stands_in_header_and_live_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path(), Some("A1"));
+    let cache = env.state_dir.join("summaries").join("s1.json");
+    save_json(&cache, &json!({"title": "Agent Deck: Chat-Titel"})).unwrap();
+    let out = run(&env, Some(json!({"session_id": "s1"}).to_string().as_bytes()));
+    assert!(out.starts_with("\x1b[1mA1 · Agent Deck: Chat-Titel\x1b[0m"), "{out:?}");
+    assert_eq!(load_json(&live_path(&env.state_dir, "A1")).unwrap()["session_name"], "Agent Deck: Chat-Titel");
+    // Eigenes Umbenennen (`/rename`) geht vor.
+    run(&env, Some(json!({"session_id": "s1", "session_name": "Mein Name"}).to_string().as_bytes()));
+    assert_eq!(load_json(&live_path(&env.state_dir, "A1")).unwrap()["session_name"], "Mein Name");
+}
+
 // ── PR (aus Python `test_hooks_report.py`, Stand 2856494) ──────────────────────────────
 
 #[test]

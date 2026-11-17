@@ -17,6 +17,7 @@ use serde_json::{Map, Value};
 use crate::claude::refs::{Refs, find_refs};
 use crate::claude::briefing::{self, BRIEF_VERSION, Briefing};
 use crate::claude::summarize::{enc_cwd, extract_turns_from_values, transcript_lines};
+use crate::claude::title::{self, TitleRules, TitleState};
 use crate::claude::worktree_use::active_worktree;
 use crate::paths::{home_dir, load_json, save_json};
 use crate::field::number;
@@ -224,8 +225,9 @@ impl Default for SummaryGates {
 pub enum SummaryPlan {
     /// Nichts aufrufen; das ist der Stand (eventuell keiner).
     Cached(Option<String>),
-    /// `claude` mit diesem Prompt fragen und die Antwort an `finish_summary` geben.
-    Generate { prompt: String, size: u64, cached: Option<String> },
+    /// `claude` mit diesem Prompt fragen und die Antwort an `finish_summary` und
+    /// `finish_title` geben; `prompts` = getippte Nachrichten bis hier.
+    Generate { prompt: String, size: u64, cached: Option<String>, prompts: usize },
 }
 
 /// Entscheiden, ob neu erzeugt wird: ohne Cache, bei anderer Sprache, bei einem
@@ -265,7 +267,9 @@ pub fn plan_summary(
     }
     // Fortschreiben nur in derselben Sprache und im heutigen Format.
     let previous = (current && cache_lang == lang).then(|| cache.get("brief").and_then(Briefing::from_json)).flatten();
-    SummaryPlan::Generate { prompt: briefing::prompt(lang, previous.as_ref(), &digest), size, cached }
+    let title_part = title::instruction(lang, &TitleState::from_cache(&cache), &title::recent_areas(dir, now));
+    let prompts = title::typed_prompts(&records);
+    SummaryPlan::Generate { prompt: briefing::prompt(lang, &title_part, previous.as_ref(), &digest), size, cached, prompts }
 }
 
 /// Antwort von `claude` übernehmen (`None` = Aufruf gescheitert). Trifft sie das Format
@@ -295,6 +299,23 @@ pub fn finish_summary(
         ],
     );
     Some(summary)
+}
+
+/// Titel-Vorschlag aus der Antwort durch die Bremse (`title::decide`) schicken und den
+/// Stand speichern. Liefert den geltenden Titel (leer = noch keiner). Ein neu gesetzter
+/// Titel trägt seinen Bereich in die Bereichsliste ein.
+pub fn finish_title(dir: &Path, session_id: &str, output: Option<&str>, prompts: usize, now: f64, rules: TitleRules) -> String {
+    let cache = read_cache(dir, session_id).unwrap_or_default();
+    let old = TitleState::from_cache(&cache);
+    let proposal = output.and_then(briefing::parse_title).and_then(|t| title::clean(&t));
+    let new = title::decide(&old, proposal.as_deref(), prompts, rules);
+    if new != old {
+        let _ = merge_cache(dir, session_id, new.fields());
+        if new.title != old.title {
+            title::remember_area(dir, &new.title, now);
+        }
+    }
+    new.title
 }
 
 /// Cache-Dateien längst geschlossener Sessions entfernen (best effort, beim Start).

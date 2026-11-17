@@ -14,6 +14,7 @@
 //! Token-Zahlen sind ganze Zahlen.
 
 use deck_core::claude::hook_setup::STATUSLINE_REFRESH_S;
+use deck_core::claude::summary_cache::{read_cache, summary_dir};
 use deck_core::i18n::Lang;
 use deck_core::paths::{live_path, load_json, save_json, state_path};
 use deck_core::field::{number, raw_number, text};
@@ -184,12 +185,28 @@ pub fn line(rec: &Map<String, Value>, slot: &str, refs: &TileRefs, lang: Lang) -
     if head.is_empty() { body } else { format!("{head}\n{body}") }
 }
 
+/// Der Titel, den das Deck dem Chat gegeben hat (`deck_core::claude::title`, Feld
+/// `title` im Summary-Cache). Gilt nur ohne eigenen Namen (`/rename`).
+fn deck_title(env: &HookEnv, data: &Map<String, Value>) -> Option<String> {
+    let sid = text(data.get("session_id"))?;
+    let cache = read_cache(&summary_dir(&env.state_dir), sid)?;
+    Some(text(cache.get("title"))?.trim().to_string()).filter(|t| !t.is_empty())
+}
+
 /// Ein Lauf: Live-Datei schreiben (wenn ein Slot feststeht) und die Zeile liefern.
 pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
-    let mut rec = extract(&crate::parse_stdin(stdin), env.now);
+    let data = crate::parse_stdin(stdin);
+    let mut rec = extract(&data, env.now);
     // Deck-Zustand ist Beiwerk: ein Fehler hier macht nie die Statuszeile kaputt.
     let (mut shown_slot, mut refs) = (String::new(), TileRefs::default());
-    if let Some(slot) = env.resolve_slot()
+    let slot = env.resolve_slot();
+    if slot.is_some()
+        && rec.get("session_name").is_none_or(Value::is_null)
+        && let Some(t) = deck_title(env, &data)
+    {
+        rec.insert("session_name".into(), Value::String(t));
+    }
+    if let Some(slot) = slot
         && save_json(&live_path(&env.state_dir, &slot), &Value::Object(rec.clone())).is_ok()
     {
         refs = tile_refs(&slot, env);

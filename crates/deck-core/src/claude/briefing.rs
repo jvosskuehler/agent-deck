@@ -19,7 +19,8 @@ use crate::text::{char_len, squash_ws, take_chars};
 
 /// Stand des Formats. Hochzählen, wenn sich Prompt oder Felder ändern: dann wird jedes
 /// Lagebild einmal neu erzeugt (auch die Ein-Satz-Zusammenfassungen von vor Nov. 2026).
-pub const BRIEF_VERSION: u64 = 1;
+/// 2: fünfte Zeile `Titel:` für den mitwachsenden Chat-Titel (`title.rs`).
+pub const BRIEF_VERSION: u64 = 2;
 
 const INSTRUCTION_DE: &str = "Du bekommst den Verlauf einer Coding-Session zwischen einem Entwickler und einem KI-Agenten, eventuell dazu das bisherige Lagebild. Der Entwickler betreut viele Agenten gleichzeitig und kommt nach einer Pause zu diesem zurück. Schreib ihm auf Deutsch das Lagebild so, dass er ohne Nachlesen weitermachen kann.\n\nGenau vier Zeilen, jede beginnt mit ihrem Etikett, jede höchstens 30 Wörter:\nZiel: was der Entwickler erreichen will, in seinen Begriffen.\nStand: was erledigt ist. Sag dazu, ob es geprüft ist (Test, Build, Messung) oder nur behauptet.\nWartet auf dich: die offene Frage oder Entscheidung, so konkret, dass er antworten kann. Sonst das eine Wort: nichts\nNächster Schritt: was als Nächstes passiert und wer es tut.\n\nNenn Dateien, Tickets und Zahlen beim Namen. Gibt es ein bisheriges Lagebild, schreib es fort: übernimm, was noch stimmt, ersetze, was überholt ist. Keine Einleitung, keine Wertung, kein Markdown, nichts erfinden: was nicht im Verlauf steht, lässt du weg. Benutze KEINE Tools.\n\n";
 
@@ -80,16 +81,20 @@ impl Briefing {
     }
 }
 
-/// Etiketten beider Sprachen, kleingeschrieben, je Feld (auch ohne Umlaut).
-const KNOWN: [&[&str]; 4] =
-    [&["ziel", "goal"], &["stand", "status"], &["wartet auf dich", "waiting on you"], &["nächster schritt", "naechster schritt", "next step"]];
+/// Etiketten beider Sprachen, kleingeschrieben, je Feld (auch ohne Umlaut). Das fünfte
+/// ist der Titel: er gehört nicht zum Lagebild, muss aber erkannt werden, sonst hinge
+/// er als Fortsetzung am nächsten Schritt.
+const KNOWN: [&[&str]; 5] = [
+    &["ziel", "goal"],
+    &["stand", "status"],
+    &["wartet auf dich", "waiting on you"],
+    &["nächster schritt", "naechster schritt", "next step"],
+    &["titel", "title"],
+];
 
-/// Antwort des Modells → Lagebild. Etiketten in beiden Sprachen, Aufzählungszeichen und
-/// Fettdruck davor stören nicht; Zeilen ohne Etikett hängen am Feld darüber. `None`,
-/// wenn Ziel oder Stand fehlen: dann hat das Modell das Format verfehlt, und der alte
-/// Stand bleibt besser stehen.
-pub fn parse(raw: &str) -> Option<Briefing> {
-    let mut fields: [String; 4] = Default::default();
+/// Die Felder der Antwort in der Reihenfolge von `KNOWN`, roh.
+fn fields_of(raw: &str) -> [String; 5] {
+    let mut fields: [String; 5] = Default::default();
     let mut cur: Option<usize> = None;
     for line in raw.lines() {
         let clean = line.trim().trim_start_matches(['-', '*', '#', '•', ' ']);
@@ -116,6 +121,21 @@ pub fn parse(raw: &str) -> Option<Briefing> {
             }
         }
     }
+    fields
+}
+
+/// Der vorgeschlagene Chat-Titel aus der Antwort, roh (gesäubert wird in `title::clean`).
+pub fn parse_title(raw: &str) -> Option<String> {
+    let [.., title] = fields_of(raw);
+    (!title.trim().is_empty()).then(|| title.trim().to_string())
+}
+
+/// Antwort des Modells → Lagebild. Etiketten in beiden Sprachen, Aufzählungszeichen und
+/// Fettdruck davor stören nicht; Zeilen ohne Etikett hängen am Feld darüber. `None`,
+/// wenn Ziel oder Stand fehlen: dann hat das Modell das Format verfehlt, und der alte
+/// Stand bleibt besser stehen.
+pub fn parse(raw: &str) -> Option<Briefing> {
+    let fields = fields_of(raw);
     let cap = |s: &String| {
         // Backticks um Dateinamen setzt das Modell trotz „kein Markdown“; gezeigt wird
         // reiner Text, dort wären sie nur Zeichenmüll.
@@ -126,14 +146,15 @@ pub fn parse(raw: &str) -> Option<Briefing> {
     (!b.goal.is_empty() && !b.state.is_empty()).then_some(b)
 }
 
-/// Der ganze Prompt: Anweisung, bisheriges Lagebild (wenn es eines gibt), Auszug.
-pub fn prompt(lang: &str, previous: Option<&Briefing>, digest: &str) -> String {
+/// Der ganze Prompt: Anweisung, die Titel-Zeile (`title::instruction`, leer = keine),
+/// bisheriges Lagebild (wenn es eines gibt), Auszug.
+pub fn prompt(lang: &str, title_part: &str, previous: Option<&Briefing>, digest: &str) -> String {
     let prev = match previous {
         Some(b) if lang == "english" => format!("Previous briefing:\n{}\n\n", b.lines(lang)),
         Some(b) => format!("Bisheriges Lagebild:\n{}\n\n", b.lines(lang)),
         None => String::new(),
     };
-    format!("{}{prev}{CHAT_MARK}{digest}", instruction(lang))
+    format!("{}{title_part}{prev}{CHAT_MARK}{digest}", instruction(lang))
 }
 
 enum Item {

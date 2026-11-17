@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 
 use deck_core::claude::refs::Refs;
 use deck_core::claude::summary_cache::{
-    SummaryGates, SummaryPlan, cached_brief, cached_refs, cached_summary, ensure_refs, finish_summary, plan_summary,
+    SummaryGates, SummaryPlan, cached_brief, cached_refs, cached_summary, ensure_refs, finish_summary, finish_title, plan_summary,
     projects_dir, prune, summary_dir,
 };
 use deck_core::i18n::Lang;
@@ -278,8 +278,10 @@ fn generate(cfg: &SummaryConfig, runner: &dyn ClaudeRunner, gate: &Gate, sid: &s
     let lang = lang.setting_value();
     match plan_summary(&cfg.projects, &cfg.cache_dir, sid, cwd, lang, now_unix(), cfg.gates) {
         SummaryPlan::Cached(text) => text,
-        SummaryPlan::Generate { prompt, size, cached } => {
+        SummaryPlan::Generate { prompt, size, cached, prompts } => {
             let out = gate.run(|| runner.run(&prompt, &cfg.model, cfg.timeout, &cfg.cache_dir));
+            // Den Titel zeigt die Statuszeile ab ihrem nächsten Takt (`deck-hooks/src/statusline.rs`).
+            finish_title(&cfg.cache_dir, sid, out.as_deref(), prompts, now_unix(), Default::default());
             finish_summary(&cfg.cache_dir, sid, out.as_deref(), size, lang, now_unix(), cached)
         }
     }

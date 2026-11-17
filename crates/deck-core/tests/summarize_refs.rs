@@ -227,7 +227,7 @@ fn a_briefing_is_regenerated_only_on_growth_after_cooldown_or_language_change() 
     write_transcript(projects.path(), "C:/r", "s1", &[("user", "Baue das Deck neu"), ("assistant", "ok")]);
     let gates = SummaryGates::default();
     let plan = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1000.0, gates);
-    let SummaryPlan::Generate { prompt, size, cached } = plan else { panic!("ohne Cache muss erzeugt werden") };
+    let SummaryPlan::Generate { prompt, size, cached, .. } = plan else { panic!("ohne Cache muss erzeugt werden") };
     assert!(prompt.starts_with(briefing::instruction("german")) && prompt.ends_with("--- Chat ---\nUser: Baue das Deck neu\nAssistant: ok"));
     assert_eq!(cached, None);
     let answer = "Ziel: Deck neu bauen\nStand: Noch nichts.\nWartet auf dich: Tauri oder Electron?\nNächster Schritt: Du entscheidest.";
@@ -255,7 +255,7 @@ fn a_grown_transcript_updates_the_previous_briefing_and_an_old_one_line_summary_
     save_json(&cache.path().join("s1.json"), &json!({"summary": "Deck neu bauen", "size": size, "ts": 900.0, "lang": "german"})).unwrap();
     let gates = SummaryGates::default();
     let plan = plan_summary(projects.path(), cache.path(), "s1", Some("C:/r"), "german", 1000.0, gates);
-    let SummaryPlan::Generate { prompt, size, cached } = plan else { panic!("altes Format muss neu erzeugt werden") };
+    let SummaryPlan::Generate { prompt, size, cached, .. } = plan else { panic!("altes Format muss neu erzeugt werden") };
     assert!(!prompt.contains("Bisheriges Lagebild"));
     finish_summary(cache.path(), "s1", Some("Ziel: Deck neu bauen\nStand: Plan steht.\nWartet auf dich: nichts\nNächster Schritt: Agent baut."), size, "german", 1000.0, cached);
     // Der Verlauf wächst: das bisherige Lagebild geht mit in den Prompt.

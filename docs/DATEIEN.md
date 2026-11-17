@@ -16,6 +16,24 @@ Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Host
 `orphans.json`, `ui-alive.json` …) liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht
 neben dem Code.
 
+## Chat-Titel: `summaries\<session>.json`, `areas.json`
+
+Das Deck gibt jedem Chat einen Titel im Muster `Bereich: Thema` (`deck_core::claude::title`).
+Das Lagebild-Modell schreibt bei jedem Lauf eine Zeile `Titel:` mit; die App schickt sie
+durch die Bremse (erste Prüfung ab der 3. getippten Nachricht, dann alle 3, ein Wechsel
+gilt erst nach 2 gleichen Vorschlägen hintereinander) und legt den Stand im Summary-Cache
+ab: `title`, `title_cand`, `title_hits`, `title_checked_at`. Kein Ticket, kein PR im
+Titel, die Kopfzeile zeigt beide schon.
+
+Die Statuszeile (`deck-statusline`) liest `title` und trägt ihn als `session_name` in
+`<slot>.live.json` ein, solange Claude Code keinen eigenen Namen meldet (`/rename` geht
+vor). So kommt er in die Kopfzeile und auf die Kachel. An Claude Code geht er bewusst
+nicht (`hookSpecificOutput.sessionTitle`): ein Sessionname steht dort oben rechts im
+Eingabefeld.
+
+`summaries\areas.json`: Bereich → zuletzt benutzt (Unix-Sekunden). Das Modell bekommt die
+Bereiche der letzten 30 Tage, damit derselbe Bereich gleich heißt; es darf neue bilden.
+
 ## `<slot>.wtpid` und die Herkunftsmarke
 
 `wt_agent.ps1` schreibt vor claude atomar `{"pid", "created", "slot"}` (die Shell im Pane;
