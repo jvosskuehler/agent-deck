@@ -214,13 +214,13 @@ struct RangeSpec {
     buckets: usize,
 }
 
-/// Die Zeiträume der Ansicht: letzte Stunde in 5-Minuten-Eimern, 24 Stunden in Stunden,
-/// 7 Tage in Viertel-Tagen, 30 Tage in Tagen.
+/// Die Zeiträume der Ansicht: letzte Stunde in Minuten, 24 Stunden in Viertelstunden,
+/// 7 Tage in Stunden, 30 Tage in Viertel-Tagen.
 const RANGES: [RangeSpec; 4] = [
-    RangeSpec { key: "h1", step_s: 300.0, buckets: 12 },
-    RangeSpec { key: "d1", step_s: 3_600.0, buckets: 24 },
-    RangeSpec { key: "w1", step_s: 21_600.0, buckets: 28 },
-    RangeSpec { key: "m1", step_s: 86_400.0, buckets: 30 },
+    RangeSpec { key: "h1", step_s: 60.0, buckets: 60 },
+    RangeSpec { key: "d1", step_s: 900.0, buckets: 96 },
+    RangeSpec { key: "w1", step_s: 3_600.0, buckets: 168 },
+    RangeSpec { key: "m1", step_s: 21_600.0, buckets: 120 },
 ];
 
 /// Eine Reihe: ein Ticket über die Eimer eines Zeitraums.

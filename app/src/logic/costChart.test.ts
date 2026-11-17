@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CostView } from "../bindings/CostView";
-import { bandPath, chartModel, colorOf, fmtCost, MORE, niceMax, stack } from "./costChart";
+import { bandPath, chartModel, colorOf, fmtCost, MORE, niceMax, smooth, stack } from "./costChart";
 
 const mix = (v: number) => ({ input: 0, output: v * 0.2, write: v * 0.3, read: v * 0.5 });
 
@@ -21,7 +21,7 @@ function view(): CostView {
 
 describe("Kostengraph", () => {
   it("stapelt Farb-Tickets, dann weitere, dann ohne Ticket", () => {
-    const m = chartModel(view(), "d1", null, "de")!;
+    const m = chartModel(view(), "d1", null, "de", false)!;
     expect(m.bands.map((b) => b.key)).toEqual(["ORPH-1", MORE, ""]);
     expect(m.bands[1].values).toEqual([5, 5, 5]);
     expect(m.total).toBe(78);
@@ -30,7 +30,7 @@ describe("Kostengraph", () => {
   });
 
   it("zeigt im Fokus nur das eine Ticket im eigenen Maßstab", () => {
-    const m = chartModel(view(), "d1", "ORPH-2", "de")!;
+    const m = chartModel(view(), "d1", "ORPH-2", "de", false)!;
     expect(m.bands).toHaveLength(1);
     expect(m.max).toBe(5);
     expect(m.shown).toBe(15);
@@ -58,5 +58,23 @@ describe("Kostengraph", () => {
     expect(d.startsWith("M0,")).toBe(true);
     expect(d).toContain("L1000,");
     expect(d.endsWith("Z")).toBe(true);
+  });
+
+  it("glättet nur die Zeichnung, Tooltip und Summen bleiben echt", () => {
+    const m = chartModel(view(), "d1", "ORPH-1", "de")!;
+    expect(m.bands[0].values).toEqual([10, 20, 30]);
+    expect(m.shown).toBe(60);
+    const d = m.bands[0].drawn;
+    expect(d[0]).toBeGreaterThan(10);
+    expect(d[2]).toBeLessThan(30);
+  });
+
+  it("verschmiert eine Spitze, ohne Werte zu erfinden", () => {
+    const s = smooth([...new Array(8).fill(0), 90, ...new Array(8).fill(0)], 1.5);
+    expect(s[8]).toBeLessThan(90);
+    expect(s[7]).toBeGreaterThan(0);
+    expect(s.reduce((a, b) => a + b, 0)).toBeCloseTo(90, 0);
+    expect(smooth([1, 2, 3], 0)).toEqual([1, 2, 3]);
+    expect(smooth([5, 5, 5, 5], 1.5).every((v) => Math.abs(v - 5) < 1e-9)).toBe(true);
   });
 });

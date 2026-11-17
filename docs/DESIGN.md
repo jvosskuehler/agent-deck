@@ -110,8 +110,10 @@ oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es gan
   der Lücke direkt hinter dem vordersten Agentenfenster (geht mit den Agenten nach hinten).
 - **Oben, Tokenkosten:** große Zahl, darunter die Zusammensetzung (Cache lesen, Cache
   schreiben, Output, Input) und die Modelle. Gestapelte Fläche je Ticket über die Zeit,
-  Zeitraum 1 Std. / 24 Std. / 7 Tage / 30 Tage (merkt sich die Oberfläche), Fadenkreuz und
-  Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
+  Zeitraum 1 Std. / 24 Std. / 7 Tage / 30 Tage (merkt sich die Oberfläche) in Minuten,
+  Viertelstunden, Stunden und Vierteltagen. Gezeichnet wird leicht geglättet (Gauß) als
+  monotone Kurve, damit ein Verlauf statt eines Kamms entsteht; Tooltip und Summen zeigen
+  die echten Werte je Eimer. Fadenkreuz und Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
   Ticket“); Klick zeigt nur dieses Ticket im eigenen Maßstab. Einheit: Kosten in
   Input-Tokens von Opus 5.5 mit den API-Preisen je Modell (`deck_core::dash::costs`).
 - **Farben:** acht Plätze der geprüften Dataviz-Palette, je Thema eigene Stufen

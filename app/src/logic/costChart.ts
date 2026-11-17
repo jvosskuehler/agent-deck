@@ -78,26 +78,25 @@ export function bucketLabel(key: RangeKey, start: number, stepS: number, lang: L
     case "h1":
       return `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${until} ${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
     case "d1":
-      return `${dow} ${pad2(d.getHours())} ${until} ${pad2(e.getHours() || 24)}${t(lang, " Uhr", ":00")}`;
+      return `${dow} ${pad2(d.getHours())}:${pad2(d.getMinutes())} ${until} ${pad2(e.getHours() || (e.getMinutes() ? 0 : 24))}:${pad2(e.getMinutes())}`;
     case "w1":
-      return `${dow} ${date} ${pad2(d.getHours())} ${until} ${pad2(e.getHours() || 24)}${t(lang, " Uhr", ":00")}`;
     case "m1":
-      return `${dow} ${date}`;
+      return `${dow} ${date} ${pad2(d.getHours())} ${until} ${pad2(e.getHours() || 24)}${t(lang, " Uhr", ":00")}`;
   }
 }
 
 /** Achsenbeschriftung (nur jeder n-te Eimer), `null` = keine. */
-function tickLabel(key: RangeKey, start: number, i: number, lang: Lang): string | null {
+function tickLabel(key: RangeKey, start: number, lang: Lang): string | null {
   const d = new Date(start * 1000);
   switch (key) {
     case "h1":
-      return i % 3 === 0 ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}` : null;
+      return d.getMinutes() % 10 === 0 ? `${pad2(d.getHours())}:${pad2(d.getMinutes())}` : null;
     case "d1":
-      return d.getHours() % 4 === 0 ? `${pad2(d.getHours())}${t(lang, " Uhr", ":00")}` : null;
+      return d.getHours() % 4 === 0 && d.getMinutes() === 0 ? `${pad2(d.getHours())}${t(lang, " Uhr", ":00")}` : null;
     case "w1":
       return d.getHours() === 0 ? `${DOW[lang][d.getDay()]} ${d.getDate()}.` : null;
     case "m1":
-      return d.getDay() === 1 ? `${d.getDate()}.${d.getMonth() + 1}.` : null;
+      return d.getDay() === 1 && d.getHours() === 0 ? `${d.getDate()}.${d.getMonth() + 1}.` : null;
   }
 }
 
@@ -105,7 +104,34 @@ export interface Band {
   key: string;
   name: string;
   color: string;
+  /** Echte Werte je Eimer (Tooltip, Summen). */
   values: number[];
+  /** Gezeichnete Werte, geglättet. */
+  drawn: number[];
+}
+
+/** Breite der Glättung je Zeitraum in Eimern (Standardabweichung des Gauß-Kerns). */
+const SIGMA: Record<RangeKey, number> = { h1: 1.5, d1: 1.5, w1: 1.5, m1: 1 };
+
+/**
+ * Gauß-Glättung über die Eimer. An den Rändern wird der Kern abgeschnitten und neu
+ * gewichtet, damit der jüngste Eimer nicht zur Null hin abfällt. `sigma` 0 = unverändert.
+ */
+export function smooth(values: number[], sigma: number): number[] {
+  if (sigma <= 0) return values.slice();
+  const r = Math.ceil(sigma * 3);
+  const k = Array.from({ length: 2 * r + 1 }, (_, j) => Math.exp(-((j - r) ** 2) / (2 * sigma * sigma)));
+  return values.map((_, i) => {
+    let acc = 0;
+    let w = 0;
+    for (let j = -r; j <= r; j++) {
+      const v = values[i + j];
+      if (v === undefined) continue;
+      acc += v * k[j + r];
+      w += k[j + r];
+    }
+    return acc / w;
+  });
 }
 
 export interface RankRow {
@@ -148,7 +174,7 @@ const MODEL_NAMES: Record<string, string> = {
 };
 
 /** Das ganze Modell für Zeitraum `key` und Fokus `focus`; `null`, wenn der Zeitraum fehlt. */
-export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: Lang): ChartModel | null {
+export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: Lang, glatt = true): ChartModel | null {
   const range = view.ranges.find((r) => r.key === key);
   if (!range) return null;
   const n = range.starts.length;
@@ -162,15 +188,16 @@ export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: La
 
   let bands: Band[];
   if (focus === null) {
-    bands = view.colored.map((k) => ({ key: k, name: k, color: colorOf(view, k), values: byKey(k)?.values ?? zeros() }));
-    bands.push({ key: MORE, name: t(lang, "weitere Tickets", "other tickets"), color: "var(--c-more)", values: rest });
-    bands.push({ key: "", name: t(lang, "ohne Ticket", "no ticket"), color: "var(--c-none)", values: byKey("")?.values ?? zeros() });
+    bands = view.colored.map((k) => ({ key: k, name: k, color: colorOf(view, k), values: byKey(k)?.values ?? zeros(), drawn: [] }));
+    bands.push({ key: MORE, name: t(lang, "weitere Tickets", "other tickets"), color: "var(--c-more)", values: rest, drawn: [] });
+    bands.push({ key: "", name: t(lang, "ohne Ticket", "no ticket"), color: "var(--c-none)", values: byKey("")?.values ?? zeros(), drawn: [] });
   } else {
     const values = focus === MORE ? rest : (byKey(focus)?.values ?? zeros());
-    bands = [{ key: focus, name: nameOf(focus, lang), color: focus === MORE ? "var(--c-more)" : colorOf(view, focus), values }];
+    bands = [{ key: focus, name: nameOf(focus, lang), color: focus === MORE ? "var(--c-more)" : colorOf(view, focus), values, drawn: [] }];
   }
+  for (const b of bands) b.drawn = smooth(b.values, glatt ? SIGMA[key] : 0);
   const stackTop = zeros();
-  for (const b of bands) b.values.forEach((v, i) => (stackTop[i] += v));
+  for (const b of bands) b.drawn.forEach((v, i) => (stackTop[i] += v));
   const max = niceMax(Math.max(...stackTop, 0));
 
   // Rangliste: sieben größte Tickets, Rest gesammelt, „ohne Ticket“ zuletzt.
@@ -220,7 +247,7 @@ export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: La
     axisTop: fmtAxis(max),
     axisMid: fmtAxis(max / 2),
     ticks: range.starts.flatMap((s, i) => {
-      const label = tickLabel(key, s, i, lang);
+      const label = tickLabel(key, s, lang);
       return label ? [{ label, at: (i + 0.5) / n }] : [];
     }),
     rank,
@@ -244,27 +271,48 @@ export function nameOf(key: string, lang: Lang): string {
   return key;
 }
 
-/** Fläche eines Bandes im viewBox 0 0 1000 `h`, Punkte in Eimermitte, bis an beide Ränder. */
+/**
+ * Fläche eines Bandes im viewBox 0 0 1000 `h`, Punkte in Eimermitte, bis an beide Ränder.
+ * Ober- und Unterkante als monotone Kurve (Fritsch-Carlson): weich, aber ohne Überschwinger
+ * unter null oder über den Nachbarpunkt hinaus.
+ */
 export function bandPath(top: number[], bottom: number[], max: number, h: number): string {
   const n = top.length;
   if (n === 0) return "";
-  const x = (i: number) => (((i + 0.5) / n) * 1000).toFixed(1);
-  const y = (v: number) => (h - (v / max) * h).toFixed(1);
-  const upper = top.map((v, i) => `L${x(i)},${y(v)}`).join(" ");
-  const lower = bottom
-    .map((v, i) => `L${x(i)},${y(v)}`)
-    .reverse()
-    .join(" ");
-  return `M0,${y(top[0])} ${upper} L1000,${y(top[n - 1])} L1000,${y(bottom[n - 1])} ${lower} L0,${y(bottom[0])} Z`;
+  const xs = top.map((_, i) => ((i + 0.5) / n) * 1000);
+  const y = (v: number) => h - (v / max) * h;
+  const f = (v: number) => v.toFixed(1);
+  const upper = curve(xs, top.map(y));
+  const lower = curve(xs.slice().reverse(), bottom.map(y).reverse());
+  return `M0,${f(y(top[0]))} L${f(xs[0])},${f(y(top[0]))} ${upper} L1000,${f(y(top[n - 1]))} L1000,${f(y(bottom[n - 1]))} L${f(xs[n - 1])},${f(y(bottom[n - 1]))} ${lower} L0,${f(y(bottom[0]))} Z`;
+}
+
+/** Kubische Segmente durch alle Punkte; der erste Punkt ist schon gesetzt. */
+function curve(xs: number[], ys: number[]): string {
+  const n = xs.length;
+  if (n < 2) return "";
+  const d = xs.slice(1).map((x, i) => (ys[i + 1] - ys[i]) / (x - xs[i]));
+  const m = xs.map((_, i) => {
+    if (i === 0) return d[0];
+    if (i === n - 1) return d[n - 2];
+    return d[i - 1] * d[i] <= 0 ? 0 : (2 * d[i - 1] * d[i]) / (d[i - 1] + d[i]);
+  });
+  const f = (v: number) => v.toFixed(1);
+  const out: string[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = (xs[i + 1] - xs[i]) / 3;
+    out.push(`C${f(xs[i] + dx)},${f(ys[i] + m[i] * dx)} ${f(xs[i + 1] - dx)},${f(ys[i + 1] - m[i + 1] * dx)} ${f(xs[i + 1])},${f(ys[i + 1])}`);
+  }
+  return out.join(" ");
 }
 
 /** Stapelgrenzen: für jedes Band seine Ober- und Unterkante. */
 export function stack(bands: Band[]): { band: Band; top: number[]; bottom: number[] }[] {
-  const n = bands[0]?.values.length ?? 0;
+  const n = bands[0]?.drawn.length ?? 0;
   let acc = new Array<number>(n).fill(0);
   return bands.map((band) => {
     const bottom = acc;
-    acc = acc.map((a, i) => a + band.values[i]);
+    acc = acc.map((a, i) => a + band.drawn[i]);
     return { band, top: acc, bottom };
   });
 }
