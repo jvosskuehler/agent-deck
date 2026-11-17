@@ -134,3 +134,12 @@ fn status_labels_are_localized_and_running_reads_as_thinking() {
     assert_eq!(status_label(Lang::German, "lost"), "getrennt");
     assert_eq!(status_label(Lang::German, "bogus"), "idle");
 }
+
+#[test]
+fn claude_config_dir_moves_settings_transcripts_and_credentials_together() {
+    use deck_core::paths::claude_dir_in;
+    let home = std::path::Path::new(r"C:\Users\x");
+    assert_eq!(claude_dir_in(None, home), home.join(".claude"));
+    assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new("")), home), home.join(".claude"), "leer = nicht gesetzt");
+    assert_eq!(claude_dir_in(Some(std::ffi::OsStr::new(r"D:\cc")), home), std::path::PathBuf::from(r"D:\cc"));
+}

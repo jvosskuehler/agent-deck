@@ -30,6 +30,7 @@ pub mod dpapi;
 pub mod dpi;
 pub mod effects;
 pub mod focus;
+pub mod folder_pick;
 pub mod frame_fx;
 pub mod frame_fx_winter;
 pub mod frame_gpu;

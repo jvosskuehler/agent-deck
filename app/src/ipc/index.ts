@@ -47,6 +47,7 @@ export const commands = {
   openSettings: () => fire(getBackend().invoke("open_settings", {}), "open_settings"),
   setSetting: <K extends SettingKey>(key: K, value: SettingsView[K]) => getBackend().invoke("set_setting", { key, value }),
   restartPanel: () => getBackend().invoke("restart_panel", {}),
+  pickFolder: (start: string) => getBackend().invoke("pick_folder", { start }),
   focusBlock: (letter: string) => fire(getBackend().invoke("focus_block", { letter }), "focus_block"),
   tooltipContentSize: (width: number, height: number) =>
     fire(getBackend().invoke("tooltip_content_size", { width, height }), "tooltip_content_size"),

@@ -22,6 +22,7 @@ impl Rig {
 
     /// Ein Block B mit einem wartenden Agenten B1, dessen Cache gleich abläuft.
     fn waiting_agent(&mut self) {
+        self.deck.put("auto_compact", json!(true));
         self.wt_block("B", "repo");
         self.wt_agent("B1", B1);
         self.desk.add_wt(Hwnd(B1 as isize), "B1", Rect::new(0, 0, 800, 600), false);
@@ -33,6 +34,15 @@ impl Rig {
         let want = (B1, format!("{COMPACT}\r"));
         self.typed().into_iter().filter(|t| *t == want).count()
     }
+}
+
+#[test]
+fn a_new_install_sends_no_compact_because_it_costs_quota() {
+    let mut r = rig();
+    r.waiting_agent();
+    r.deck.put("auto_compact", json!(null));
+    r.deck.tick(NOW);
+    assert_eq!(r.compacts(), 0);
 }
 
 #[test]
@@ -97,6 +107,7 @@ fn not_without_a_running_status_line_and_not_to_a_forgotten_block() {
 #[test]
 fn a_terminal_agent_gets_compact_through_its_console_unless_you_sit_at_it() {
     let mut r = rig();
+    r.deck.put("auto_compact", json!(true));
     r.deck.wt.open_repo("A", "C:/x");
     r.deck.store.bindings.insert("A".into(), "x".into());
     r.wt_agent("A1", 4242);

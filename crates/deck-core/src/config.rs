@@ -5,13 +5,12 @@
 //! ein Ersatzwert verbirgt einen Tippfehler im Namen und lässt das Deck still mit einer
 //! anderen Zahl laufen als hier steht.
 
-use std::path::PathBuf;
-
 /// Branch-Name eines Ticket-worktree = dieses Präfix + kleingeschriebener Ticket-Slug.
 pub const TICKET_BRANCH_PREFIX: &str = "ticket/";
-/// Jira-Projekt, das einer reinen Nummer vorangestellt wird („2701“ → „PROJ-2701“).
-/// Leer: Nummern bleiben roh. Überschreibbar per deck_settings.json (`jira_prefix`).
-pub const JIRA_PROJECT_KEY: &str = "PROJ";
+/// Jira-Projekt, das einer reinen Nummer vorangestellt wird, solange keins eingestellt
+/// ist: keins. Aus „2701“ wird also kein ausgedachtes „PROJ-2701“; das Projekt kommt nur
+/// aus `deck_settings.json` (`jira_prefix`, `deck_settings::jira_prefix`).
+pub const JIRA_PROJECT_KEY: &str = "";
 
 /// Permission-Modi in der Shift+Tab-Reihenfolge von Claude Code (Deck-Namen). Claude
 /// Code hat keine Slash-Kommandos für die Modi, das Deck zählt also Shift+Tab. Bypass
@@ -20,7 +19,7 @@ pub const MODE_CYCLE: [&str; 4] = ["manual", "accept", "plan", "auto"];
 /// Modus, in dem ein frischer Chat startet.
 pub const MODE_START: &str = "manual";
 /// Startmodus für NEU per ＋ angelegte Agenten, einmalig nach dem ersten Hook-Event
-/// angefahren. Leer schaltet die Automatik ab.
+/// angefahren. Nur mit dem Schalter `auto_permission_mode` (neue Installationen: aus).
 pub const NEW_AGENT_MODE: &str = "auto";
 /// Sekunden nach dem ersten Hook warten, bevor getippt wird: der SessionStart-Hook
 /// feuert, bevor die TUI Shift+Tab sicher annimmt.
@@ -46,13 +45,6 @@ pub const TICKET_AUTODETECT: bool = true;
 /// Das Erkannte auch auf der Karte zeigen (gedimmt), solange kein zugewiesenes Ticket
 /// mit worktree die Zeile belegt.
 pub const TICKET_AUTODETECT_ON_CARD: bool = true;
-
-/// Heimat-Block: Windows-Terminal-Block über dem Ordner aller Repos, steht immer oben.
-/// Überschreibbar per deck_settings.json (`terminal_home`); ein fehlender Ordner
-/// schaltet ihn ab.
-pub fn terminal_home() -> PathBuf {
-    crate::paths::home_dir().join("Repos")
-}
 
 /// Sprung-Taste zum am längsten Wartenden (`attention.rs`). Strg+< liegt links
 /// einhändig und nimmt keinem Programm ein Kürzel weg. Leer schaltet sie ab.

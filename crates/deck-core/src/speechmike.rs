@@ -33,9 +33,10 @@ pub const DICTATION_MAX_MS: u64 = 5 * 60_000;
 /// Nach dem Stopp schickt ORPHEUS noch den letzten Abschnitt; so lange bleibt die Sperre.
 pub const AFTER_STOP_MS: u64 = 30_000;
 
-/// Ist die Funktion eingeschaltet? Fehlt die Einstellung, ja.
+/// Ist die Funktion eingeschaltet (`speechmike_voice`)? Neue Installationen: aus, denn
+/// sie legt einen globalen Tastatur-Hook (`paste_guard`).
 pub fn enabled(settings: &serde_json::Map<String, serde_json::Value>) -> bool {
-    settings.get("speechmike_voice").and_then(serde_json::Value::as_bool).unwrap_or(true)
+    crate::deck_settings::on(settings, crate::deck_settings::Switch::SpeechmikeVoice)
 }
 
 /// Merkt sich, ob Record gerade gedrückt ist, und meldet nur das Drücken.
@@ -66,7 +67,7 @@ impl RecordButton {
 /// Abschnitt per simuliertem Strg+V ins aktive Fenster ein. Ist das Claude im Terminal,
 /// käme der Text doppelt an; darum sperrt das Deck simulierte Tasten ins Terminal, solange
 /// ORPHEUS diktiert und [`AFTER_STOP_MS`] danach. Gilt nur für ORPHEUS' Umschaltbetrieb
-/// („Halten zum Aufnehmen“ aus), der bei Jorrit eingestellt ist.
+/// („Halten zum Aufnehmen“ aus), wie er beim Autor eingestellt ist.
 #[derive(Debug, Default)]
 pub struct OrpheusDictation {
     since: Option<u64>,
@@ -157,9 +158,9 @@ mod tests {
     }
 
     #[test]
-    fn on_unless_switched_off() {
-        assert!(enabled(&serde_json::Map::new()));
-        assert!(!enabled(json!({"speechmike_voice": false}).as_object().unwrap()));
-        assert!(enabled(json!({"speechmike_voice": "kaputt"}).as_object().unwrap()));
+    fn off_unless_switched_on_because_it_hooks_the_keyboard() {
+        assert!(!enabled(&serde_json::Map::new()));
+        assert!(enabled(json!({"speechmike_voice": true}).as_object().unwrap()));
+        assert!(!enabled(json!({"speechmike_voice": "kaputt"}).as_object().unwrap()));
     }
 }

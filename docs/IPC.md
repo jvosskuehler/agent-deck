@@ -58,6 +58,7 @@ nicht auf das erste Ereignis warten muss.
 | `open_usage_page` | – | – | claude.ai/settings/usage im Browser |
 | `open_settings` | – | – | Einstellungsfenster zeigen |
 | `set_setting` | `key` (Feldname aus `SettingsView`), `value` | `SettingsView` | sofort speichern |
+| `pick_folder` | `start` (Ordner, in dem der Dialog aufgeht) | Pfad oder `null` (abgebrochen) | „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows (`deck_win::folder_pick`), modal zum fragenden Fenster; gespeichert wird danach per `set_setting` |
 | `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
 | `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen) |
 | `panel_hold` | `hold: boolean` | – | Karte oder Block wird gezogen: Panel bleibt offen (höchstens 60 s) |

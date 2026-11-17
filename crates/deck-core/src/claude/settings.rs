@@ -12,13 +12,13 @@ use std::time::SystemTime;
 
 use serde_json::{Map, Value};
 
-use crate::paths::{atomic_write, home_dir};
+use crate::paths::{atomic_write, claude_dir};
 use crate::field::flag;
 
-/// `%USERPROFILE%\.claude\settings.json`, dieselbe Datei, in der Hooks und statusLine
-/// stehen.
+/// `settings.json` in Claude Codes Konfigurationsordner (`paths::claude_dir`), dieselbe
+/// Datei, in der Hooks und statusLine stehen.
 pub fn settings_path() -> PathBuf {
-    home_dir().join(".claude").join("settings.json")
+    claude_dir().join("settings.json")
 }
 
 /// (Anzeige, Wert). Reihenfolge = Dropdown-Reihenfolge; das ERSTE Paar ist zugleich

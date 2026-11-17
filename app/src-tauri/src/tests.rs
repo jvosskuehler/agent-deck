@@ -135,17 +135,30 @@ fn a_new_agent_gets_the_chosen_effort_as_a_start_flag() {
     fs::create_dir_all(r.deck.paths.claude_settings.parent().unwrap()).unwrap();
     fs::write(&r.deck.paths.claude_settings, r#"{"effortLevel": "high"}"#).unwrap();
     r.deck.create_agent("C", 100.0);
-    assert_eq!(r.last_claude_args(), ["--model", "opus[1m]", "--effort", "high"]);
+    assert_eq!(r.last_claude_args(), ["--effort", "high"], "ohne Deck-Modell kein --model");
 
     // Ultracode ist xhigh plus Schalter in settings.json; auf der Kommandozeile xhigh.
     fs::write(&r.deck.paths.claude_settings, r#"{"effortLevel": "xhigh", "ultracode": true}"#).unwrap();
+    r.deck.put("model", json!("opus[1m]"));
     r.deck.create_agent("C", 101.0);
     assert_eq!(r.last_claude_args(), ["--model", "opus[1m]", "--effort", "xhigh"]);
 }
 
 #[test]
+fn the_model_in_the_settings_window_is_exactly_what_a_new_agent_gets() {
+    let mut r = rig();
+    assert_eq!(r.deck.settings_view().model, "", "Standard: Claude Code wählt selbst");
+    r.deck.set_setting("model", &json!("fable")).unwrap();
+    assert_eq!(r.deck.settings_view().model, "fable");
+    r.deck.set_setting("model", &json!("")).unwrap();
+    assert!(!r.deck.store.settings.contains_key("model"), "Standard nimmt den Schlüssel heraus");
+}
+
+#[test]
 fn a_new_agent_is_focused_once_it_appears_and_driven_into_auto_mode() {
     let mut r = rig();
+    r.deck.put("auto_permission_mode", json!(true));
+    r.deck.put("model", json!("opus[1m]"));
     r.wt_block("C", "repo");
     r.wt_agent("C1", 51);
     r.deck.tick(100.0);
@@ -164,6 +177,20 @@ fn a_new_agent_is_focused_once_it_appears_and_driven_into_auto_mode() {
     r.state("C2", json!({"slot": "C2", "status": "idle", "ts": 104.0, "mode": "auto"}));
     r.deck.tick(104.1);
     assert!(!r.deck.pending_auto.contains_key("C2"), "im Ziel angekommen");
+}
+
+#[test]
+fn without_the_switch_a_new_agent_stays_in_its_start_mode() {
+    let mut r = rig();
+    r.wt_block("C", "repo");
+    r.deck.tick(100.0);
+    r.deck.create_agent("C", 100.0);
+    r.wt_agent("C1", 52);
+    r.desk.add_wt(Hwnd(52), "C1", Rect::new(0, 0, 800, 600), false);
+    r.deck.tick(101.0);
+    assert_eq!(r.deck.active_slot.as_deref(), Some("C1"), "fokussiert wird trotzdem");
+    assert!(r.deck.pending_auto.is_empty(), "kein Shift+Tab");
+    assert_eq!(r.deck.settings_view().mode, "default", "das Fenster zeigt, was wirklich gilt");
 }
 
 #[test]
@@ -245,6 +272,7 @@ fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
 #[test]
 fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_at_once() {
     let mut r = rig();
+    r.deck.put("jira_prefix", json!("PROJ"));
     r.wt_block("A", "repo");
     r.wt_agent("A1", 81);
     r.deck.assign_ticket("A1", "2701");
@@ -278,7 +306,7 @@ fn the_mode_menu_counts_shift_tab_from_the_remembered_mode() {
 fn the_home_block_takes_the_first_free_letter_and_its_folder_name() {
     let mut r = rig();
     let home = r._tmp.path().join("Repos");
-    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(home.join("api").join(".git")).unwrap();
     r.deck.store.settings.insert("terminal_home".into(), home.to_string_lossy().into_owned().into());
     r.deck.store.bindings.insert("A".into(), "other".into());
     r.deck.ensure_home_terminal();
@@ -434,6 +462,26 @@ fn a_dead_shell_frees_its_slot_and_its_pid_file() {
 }
 
 #[test]
+fn without_a_usable_repos_folder_there_is_no_home_block_until_one_is_chosen() {
+    let mut r = rig();
+    r.deck.ensure_home_terminal();
+    assert_eq!(r.deck.home_win, None);
+    assert_eq!(r.deck.settings_view().repos_state, deck_core::deck_settings::ReposState::Unset);
+    let empty = r._tmp.path().join("leer");
+    fs::create_dir_all(&empty).unwrap();
+    r.deck.set_setting("reposRoot", &json!(empty.to_string_lossy())).unwrap();
+    assert_eq!(r.deck.home_win, None, "ohne git-Repo darin kein Heimat-Block");
+    assert_eq!(r.deck.settings_view().repos_state, deck_core::deck_settings::ReposState::NoRepos);
+    let repos = r._tmp.path().join("src");
+    fs::create_dir_all(repos.join("api").join(".git")).unwrap();
+    r.deck.store.settings.insert("terminal_home".into(), json!("C:/alt"));
+    r.deck.set_setting("reposRoot", &json!(repos.to_string_lossy())).unwrap();
+    assert_eq!(r.deck.home_win.as_deref(), Some("A"), "sofort da, ohne Neustart");
+    assert!(!r.deck.store.settings.contains_key("terminal_home"), "der alte Schlüssel gilt nicht mehr daneben");
+    assert_eq!(r.deck.repos_root.as_deref(), Some(repos.as_path()));
+}
+
+#[test]
 fn settings_go_to_the_right_file_and_take_effect_at_once() {
     let mut r = rig();
     use crate::settings::Effect;
@@ -441,7 +489,14 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     assert_eq!(r.deck.set_setting("effort", &json!("Ultracode")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("model", &json!("fable")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("language", &json!("english")), Ok(Effect::Language));
-    assert!(r.deck.set_setting("jiraPrefix", &json!("ORPH")).is_err(), "nicht mehr im Fenster");
+    r.deck.set_setting("jiraPrefix", &json!(" orph ")).unwrap();
+    assert_eq!(r.deck.jira_prefix(), "ORPH");
+    assert!(r.deck.set_setting("jiraPrefix", &json!("OR PH")).is_err(), "nur Buchstaben und Ziffern");
+    for key in ["titan", "storeUpdate", "speechmikeVoice", "autoPermissionMode", "prAutomation"] {
+        r.deck.set_setting(key, &json!(true)).unwrap();
+    }
+    r.deck.set_setting("prReviewer", &json!("octocat")).unwrap();
+    assert!(r.deck.set_setting("titan", &json!("ja")).is_err());
     let edge = r.deck.set_setting("dockEdge", &json!("bottom")).unwrap();
     assert_eq!(edge, Effect::Edge(deck_core::dock::Edge::Bottom));
     assert!(r.deck.set_setting("nonsense", &json!(1)).is_err());
@@ -452,5 +507,9 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     let v = r.deck.settings_view();
     assert_eq!((v.model.as_str(), v.effort.as_str(), v.language.as_str()), ("fable", "Ultracode", "english"));
     assert_eq!(v.dock_edge.as_str(), "bottom");
+    assert!(v.titan && v.store_update && v.speechmike_voice && v.auto_permission_mode && v.pr_automation);
+    assert_eq!((v.pr_reviewer.as_str(), v.github_org.as_str(), v.jira_prefix.as_str()), ("octocat", "", "ORPH"));
+    let file = deck_core::paths::load_json(&r.deck.paths.app_dir.join(deck_core::paths::SETTINGS_FILE)).unwrap();
+    assert_eq!((file["titan"].clone(), file["pr_reviewer"].clone()), (json!(true), json!("octocat")));
     assert!(r.deck.lang.is_english());
 }

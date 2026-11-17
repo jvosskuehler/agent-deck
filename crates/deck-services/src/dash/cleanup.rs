@@ -1,5 +1,6 @@
-//! Datenquelle `cleanup`: gemergte worktrees in `%USERPROFILE%\Repos\wt\` finden und auf
-//! Knopfdruck entfernen (Karte `deck_core::dash::cleanup`).
+//! Datenquelle `cleanup`: gemergte worktrees im Sammelordner `<Repos-Ordner>\wt\` finden
+//! (`deck_settings::REPOS_ROOT`; ohne brauchbaren Repos-Ordner sucht der Dienst nichts) und
+//! auf Knopfdruck entfernen (Karte `deck_core::dash::cleanup`).
 //!
 //! SICHERHEIT (das Modul LÖSCHT worktrees und Branches): entfernt wird nur, was
 //! [`deck_core::dash::cleanup::classify`] als entfernbar einstuft, und zwar beim Scan UND
@@ -108,12 +109,13 @@ struct Control {
 struct Inbox {
     merged: Vec<MergedPr>,
     in_use: Vec<String>,
+    /// Sammelordner der worktrees; `None` = kein Repos-Ordner eingestellt.
+    wt_root: Option<PathBuf>,
 }
 
 struct State {
     git: Arc<dyn Git>,
     log: LogFile,
-    wt_root: PathBuf,
     inbox: Mutex<Inbox>,
     snap: Mutex<CleanupSnapshot>,
     /// Scan und Löschen nie gleichzeitig.
@@ -147,8 +149,7 @@ impl CleanupService {
             state: Arc::new(State {
                 git,
                 log,
-                wt_root,
-                inbox: Mutex::new(Inbox::default()),
+                inbox: Mutex::new(Inbox { wt_root: Some(wt_root), ..Inbox::default() }),
                 snap: Mutex::new(CleanupSnapshot::default()),
                 op: Mutex::new(()),
                 ctl: Mutex::new(Control::default()),
@@ -159,11 +160,28 @@ impl CleanupService {
         }
     }
 
-    /// Die echte Fassung: `%USERPROFILE%\Repos\wt`, Protokoll `state\dash-cleanup.log`.
+    /// Die echte Fassung, Protokoll `state\dash-cleanup.log`. Den Ordner setzt die App
+    /// aus den Einstellungen (`set_repos_root`), bis dahin sucht sie nirgends.
     pub fn system(state_dir: &Path) -> CleanupService {
-        let home = std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_default();
         let log = LogFile::new(state_dir.join(LOG_FILE), 200_000, Rotate::Rename);
-        CleanupService::new(Arc::new(TimedGit::default()), log, home.join("Repos").join("wt"))
+        let s = CleanupService::new(Arc::new(TimedGit::default()), log, PathBuf::new());
+        lock(&s.state.inbox).wt_root = None;
+        s
+    }
+
+    /// Repos-Ordner aus den Einstellungen (`None` = keiner, der taugt); gesucht wird in
+    /// seinem Unterordner `wt`. Bei Änderung neu scannen.
+    pub fn set_repos_root(&self, root: Option<&Path>) {
+        let wt_root = root.map(|r| r.join("wt"));
+        let changed = {
+            let mut inbox = lock(&self.state.inbox);
+            let changed = inbox.wt_root != wt_root;
+            inbox.wt_root = wt_root;
+            changed
+        };
+        if changed {
+            self.rescan();
+        }
     }
 
     /// Thread starten (erster Scan sofort); ein zweiter Aufruf ersetzt nur den Rückruf.
@@ -283,19 +301,19 @@ fn count(c: &[WtCandidate], s: WtState) -> usize {
 
 fn scan(st: &State) {
     let _op = lock(&st.op);
-    let (merged, in_use) = {
+    let (merged, in_use, wt_root) = {
         let inbox = lock(&st.inbox);
-        (inbox.merged.clone(), inbox.in_use.clone())
+        (inbox.merged.clone(), inbox.in_use.clone(), inbox.wt_root.clone())
     };
     let mut error = None;
     let mut candidates = Vec::new();
-    if !merged.is_empty() && st.wt_root.is_dir() {
-        if std::fs::read_dir(&st.wt_root).is_err() {
+    if let Some(wt_root) = wt_root.filter(|r| !merged.is_empty() && r.is_dir()) {
+        if std::fs::read_dir(&wt_root).is_err() {
             error = Some("Ordner wt nicht lesbar".to_string());
         }
         let inputs = Inputs { git: st.git.as_ref(), merged: &merged, in_use: &in_use };
         let mut cache = HashMap::new();
-        candidates = list_child_dirs(&st.wt_root).iter().filter_map(|d| inputs.inspect(d, &mut cache)).collect();
+        candidates = list_child_dirs(&wt_root).iter().filter_map(|d| inputs.inspect(d, &mut cache)).collect();
     }
     let mut snap = lock(&st.snap);
     let before = (count(&snap.candidates, WtState::Removable), count(&snap.candidates, WtState::Changed));

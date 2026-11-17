@@ -67,6 +67,8 @@ export interface Commands {
   dash_action: { args: { command: string }; ret: void };
   open_settings: { args: Record<string, never>; ret: void };
   set_setting: { args: { key: SettingKey; value: SettingsView[SettingKey] }; ret: SettingsView };
+  /** „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows; `null` = abgebrochen. Speichern danach per set_setting. */
+  pick_folder: { args: { start: string }; ret: string | null };
   /** „Panel neu starten“: frische Instanz, diese endet. */
   restart_panel: { args: Record<string, never>; ret: void };
   /** Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen, verbinden). */

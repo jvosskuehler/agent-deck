@@ -46,7 +46,12 @@ cd app; pnpm install; pnpm tauri dev                 # App im Entwicklungsmodus
 cd app; pnpm dev                                     # nur Oberfläche im Browser, Daten aus dem Mock
 cd app; pnpm build; pnpm test                        # Typprüfung, Build, Oberflächen-Tests
 pwsh tools\install.ps1                               # bauen, installieren, Hooks, starten
+pwsh tools\package.ps1                               # Paket dist\agent-deck-<version>-win-x64.zip
 ```
+
+`tools\install.ps1`, `uninstall.ps1` und `package.ps1` müssen auch unter Windows
+PowerShell 5.1 laufen (Kolleginnen und Kollegen haben oft kein pwsh): UTF-8 mit BOM,
+keine 7er-Syntax (`??`, `?:`, `&&`), jeder `winget`-Aufruf mit `--source winget`.
 
 `cargo` liegt unter `%USERPROFILE%\.cargo\bin` (ohne PATH-Eintrag). Das Deck läuft aus
 `%LOCALAPPDATA%\claude-agent-deck\bin`: Änderungen sind erst nach `install.ps1` sichtbar.

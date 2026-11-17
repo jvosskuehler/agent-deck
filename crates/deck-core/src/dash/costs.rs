@@ -185,11 +185,12 @@ static WT_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^(cs|isd)-(\d
 /// Höchstens so viele Tickets darf ein Werkzeugaufruf berühren, sonst ist er ein Überblick.
 const OVERVIEW_TICKETS: usize = 3;
 
-/// Ticket zu einem Worktree-Ordner: `4258-api` → `ORPH-4258`, `deck-dashboard` →
-/// `agent-deck`, `cs-231-x` → `CS-231`; alles andere (`mono`, `manual49-client`) → keins.
+/// Ticket zu einem Worktree-Ordner: `4258-api` → `ORPH-4258` (ohne Jira-Projekt die
+/// bloße Nummer `4258`, kein ausgedachter Key), `deck-dashboard` → `agent-deck`,
+/// `cs-231-x` → `CS-231`; alles andere (`mono`, `manual49-client`) → keins.
 pub fn ticket_of_worktree(folder: &str, prefix: &str) -> Option<String> {
     if let Some(c) = WT_NR.captures(folder) {
-        return Some(format!("{prefix}-{}", &c[1]));
+        return Some(if prefix.is_empty() { c[1].to_string() } else { format!("{prefix}-{}", &c[1]) });
     }
     if folder.to_ascii_lowercase().starts_with("deck") {
         return Some("agent-deck".into());
@@ -242,7 +243,7 @@ pub fn read_line(line: &str, prefix: &str) -> Option<LineFacts> {
     // Vorfilter: Zeilen ohne Antwort und ohne möglichen Pfad gar nicht erst zerlegen.
     let maybe_path = line.contains("wt/") || line.contains("wt\\\\") || line.contains("agent-deck");
     let maybe_reply = line.contains("\"usage\"");
-    let maybe_branch = line.contains(&format!("{prefix}-"));
+    let maybe_branch = !prefix.is_empty() && line.contains(&format!("{prefix}-"));
     if !maybe_path && !maybe_reply && !maybe_branch {
         return None;
     }
@@ -253,6 +254,7 @@ pub fn read_line(line: &str, prefix: &str) -> Option<LineFacts> {
         hits.extend(hits_in(cwd, prefix));
     }
     if let Some(c) = l.git_branch.as_deref().and_then(|b| BRANCH.captures(b))
+        && !prefix.is_empty()
         && &c[1] == prefix
     {
         hits.insert(format!("{prefix}-{}", &c[2]));

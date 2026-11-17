@@ -12,6 +12,11 @@ describe("Segment zum gespeicherten Wert", () => {
     expect(matchOption(modelOptions(), "opus")).toBe("opus[1m]");
   });
 
+  it("zeigt ohne Deck-Modell Standard, denn dann startet der Agent ohne --model", () => {
+    expect(matchOption(modelOptions(), "")).toBe("");
+    expect(modelOptions("en")[0]).toEqual({ value: "", label: "Default" });
+  });
+
   it("trifft Effort unabhängig von Groß- und Kleinschreibung", () => {
     expect(matchOption(effortOptions(), "ultracode")).toBe("Ultracode");
   });
@@ -34,7 +39,21 @@ describe("Texte", () => {
   });
 
   it("enthalten keine Gedankenstriche", () => {
-    const keys = ["waitingForAgents", "usageOpen", "newAgentsHint", "liveNote", "autoCompact"] as const;
+    const keys = [
+      "waitingForAgents",
+      "usageOpen",
+      "newAgentsHint",
+      "liveNote",
+      "autoCompact",
+      "reposUnset",
+      "reposMissing",
+      "reposNoRepos",
+      "jiraPrefix",
+      "titanHint",
+      "storeUpdateHint",
+      "speechmikeVoiceHint",
+      "prAutomationHint",
+    ] as const;
     for (const k of keys) {
       for (const lang of ["de", "en"] as const) expect(t(lang, k)).not.toMatch(/[—–]/);
     }

@@ -104,9 +104,9 @@ pub fn create_all(app: &AppHandle, english: bool) -> tauri::Result<()> {
     let tip = overlay(app, TOOLTIP, "Agent Deck Tooltip", (360.0, 120.0))?;
     tip.set_ignore_cursor_events(true)?;
     info(app)?;
-    // Höhe = gemessene Inhaltshöhe (556 px seit dem Schalter „Automatisch kompaktieren“,
-    // gemessen 12.11.2026) plus etwas Luft.
-    dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (480.0, 572.0))?;
+    // Zwei Spalten (Konto/Agenten links, Deck/Automatik rechts); die Höhe ist nur der
+    // Start, `fit_dialog` bringt das Fenster auf die gemessene Inhaltshöhe.
+    dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (960.0, 640.0))?;
     dialog(app, TICKET, "Ticket", (380.0, 150.0))?;
     dialog(app, KEYS, if english { "Shortcuts" } else { "Tastenkürzel" }, (500.0, 250.0))?;
     dialog(app, GLOW, if english { "Adjust glow" } else { "Glow einstellen" }, (720.0, 760.0))?;

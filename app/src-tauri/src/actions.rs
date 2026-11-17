@@ -4,7 +4,7 @@
 
 use deck_core::agent_flags::flags;
 use deck_core::attention::next_slot;
-use deck_core::claude::settings::{MODEL_CHOICES, effort_label, read_values};
+use deck_core::claude::settings::{effort_label, read_values};
 use deck_core::config::MODE_START;
 use deck_core::slot_state::{clear_state, read_all, write_state};
 use deck_core::status_model::mode_steps;
@@ -44,7 +44,8 @@ impl Deck {
     }
 
     /// ＋-Kachel: ein weiteres Claude-Terminal mit Modell und Effort aus den Einstellungen
-    /// als `--model` und `--effort`. Startschalter schlagen alles: `--model` das zuletzt
+    /// als `--model` und `--effort`. Ohne Modell im Deck (neue Installation, „Standard“)
+    /// kein `--model`: dann gilt Claude Codes eigene Wahl. Startschalter schlagen alles: `--model` das zuletzt
     /// per /model gemerkte Modell, `--effort` den Wert, den `/effort` je Modell in
     /// settings.json merkt. Das globale `effortLevel` zählt seit Claude Code 2.1.3xx für
     /// aktuelle Modelle nicht mehr (nur noch als Altwert); ohne den Schalter startete am
@@ -53,10 +54,10 @@ impl Deck {
         if !self.wt.has(win) {
             return;
         }
-        let model = self.setting_str("model").unwrap_or_else(|| MODEL_CHOICES[0].1.to_string());
-        let args = flags(None, Some(&model), self.chosen_effort(), None);
+        let model = self.chosen_model();
+        let args = flags(None, model.as_deref(), self.chosen_effort(), None);
         let before = self.wt.terminals(win);
-        if self.wt.create_agent(win, Some(&model), Some(&args)) {
+        if self.wt.create_agent(win, model.as_deref(), Some(&args)) {
             self.await_new = Some(AwaitNew { win: win.to_string(), before, ts: now });
         }
     }
@@ -248,6 +249,11 @@ impl Deck {
         let cur = read_values(&self.paths.claude_settings);
         let set = cur.effort.as_ref().and_then(Value::as_str);
         (set.is_some() || cur.ultracode).then(|| effort_label(set, cur.ultracode))
+    }
+
+    /// Modell neuer Agenten aus `deck_settings.json` (`model`); `None` = ohne `--model`.
+    pub(crate) fn chosen_model(&self) -> Option<String> {
+        deck_core::deck_settings::model(&self.store.settings)
     }
 
     /// Ein Wert aus `deck_settings.json` als Text (leer = fehlt).

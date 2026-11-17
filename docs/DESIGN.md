@@ -90,7 +90,7 @@ Blöcke; Hover in der Ticketfarbe); ist der Block nicht verbunden, steht daneben
 „nicht verbunden“ (11 px gedämpft). Einen Host nennt der Kopf nicht: alle Agenten laufen
 in Windows Terminal. Eine Schiene links neben dem Block gibt es seit 11.11.2026 nicht
 mehr: sie stammte aus der Zeit, als die Blöcke VS-Code-Fenster waren. Heimat-Block
-(`Repos`) steht immer oben.
+(der Repos-Ordner) steht immer oben; ohne brauchbaren Repos-Ordner gibt es keinen.
 
 Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nach vorn,
 Rechtsklick öffnet das native Menü (vergessen; beim Heimat-Block kein Menü). Ein ✕ für
@@ -118,7 +118,7 @@ oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es gan
   (`dash.css`, `--c1` … `--c8`). Ein Ticket behält seine Farbe in jedem Zeitraum
   (`CostView.colored`); weitere Tickets und „ohne Ticket“ sind grau.
 - **Unten, Leiste:** Kacheln PRs (offen, bereit, bei dir, warten), Reviews für dich, Titan
-  (nur mit verwaisten Läufen, rot getönt), Worktrees (nur mit Entfernbarem). Klick auf eine
+  (nur mit eingeschaltetem Schalter „Titan“ und verwaisten Läufen, rot getönt), Worktrees (nur mit Entfernbarem). Klick auf eine
   Kachel zeigt ihre Liste statt des Graphen; nochmal oder „← Tokenkosten“ zurück.
 - **Listen:** PRs mit Status nach „wer ist am Zug“ (mergebereit, CI rot, Änderungen offen,
   Reviewer anfragen, wartet auf Re-Review, wartet auf Review, Draft), Klick öffnet GitHub.
@@ -170,16 +170,39 @@ Bleibt auf dem Monitor der Karte.
 
 Eigenes Fenster im Aufbau von `einstellungen-glas.html`, im Papier-Look: Grund in
 Panelfarbe, Segmente auf dem Overlay (gewählt hell als Blatt im Kartengrund, dunkel eine
-Stufe heller). Zwei Bereiche, beide nur aus Segmenten: **Neue Agenten** (Modell, Modus,
-Effort) und **Deck** (Sprache, Andocken). „Panel neu starten“ steht als kleiner, leiser
-Knopf rechts in der Kopfzeile von **Deck**, so hoch wie der Hinweis neben „Neue Agenten“.
+Stufe heller). Die Höhe folgt dem Inhalt (`useDialogFit`), höchstens bis zur
+Arbeitsfläche, darüber rollt es. Vier Bereiche, durch Haarlinien getrennt:
+
+- **Konto und Ordner** („gilt für dieses Konto“): Repos-Ordner als Pfad in Plex Mono auf
+  dem Overlay (Radius 9, zu lang: vorn gekürzt) mit dem leisen Knopf „Ändern…“ rechts
+  darin, der den Ordner-Dialog von Windows öffnet; darunter das Jira-Projekt als
+  Textfeld (Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px; gespeichert beim
+  Verlassen oder mit Enter, Escape verwirft).
+- **Neue Agenten** (Modell mit „Standard“ = ohne `--model`, Modus, Effort als Segmente;
+  dazu der Schalter „Neue Agenten in Auto schalten“).
+- **Deck** (Sprache, Andocken als Segmente; Schalter Info-Fenster). „Panel neu starten“
+  steht als kleiner, leiser Knopf rechts in der Kopfzeile, so hoch wie der Hinweis neben
+  „Neue Agenten“.
+- **Automatik** („läuft nur, was du einschaltest“): Auto-Compact, PowerShell und Terminal
+  aktualisieren, SpeechMike, Titan, PR-Automatik. Bei eingeschalteter PR-Automatik
+  darunter zwei Textfelder nebeneinander: Reviewer und GitHub-Organisation.
+
+Ein Schalter ist eine Zeile: links der Name (12 px, Textfarbe) und darunter klein und
+gedämpft, was er nach außen tut; rechts „An | Aus“ als schmale Segmente (118 px, 26 px
+hoch). So bleiben viele Schalter kurz, ohne eine zweite Bedienform einzuführen.
+
+Taugt der Repos-Ordner nicht (nicht gewählt, nicht gefunden, kein git-Repo darin), steht
+unter der Kopfzeile ein Hinweis in der Farbe von „Rückfrage“ (Fläche Pigment 22 % über
+Panel, Schrift Ink, halbfett, Radius 10), und die Ordnerzeile trägt einen Ring im
+Pigment, ihr Name die Ink-Farbe. Das Deck öffnet das Fenster dann beim Start selbst.
 Kein Speichern-Knopf: jede Änderung gilt sofort, ein kurzes „Gespeichert“ bestätigt.
 
-Bewusst **nicht** (seit 09.11.2026, Jorrit arbeitet nur noch in Windows Terminal): kein
-Warnsatz und kein Rot bei Bypass, kein Ring um den Chat, kein Jira-Präfix, kein
-Heimatordner und kein „Repo öffnen“. Jira-Präfix
-(`jira_prefix`) und Heimatordner (`terminal_home`) liest das Deck weiter aus
-`deck_settings.json`, wenn sie dort von Hand stehen.
+Bewusst **nicht** (seit 09.11.2026): kein Warnsatz und kein Rot bei Bypass, kein Ring um
+den Chat, kein „Repo öffnen“. Jira-Projekt und Repos-Ordner waren vom 09.11. bis
+17.11.2026 ebenfalls draußen, weil nur der Autor das Deck benutzte. Diese Entscheidung
+ist zurückgenommen: seit Kolleginnen und Kollegen das Deck installieren, darf nichts
+Persönliches fest eingebaut sein, und beides muss sich ohne Handarbeit an
+`deck_settings.json` einstellen lassen.
 
 ## Schrift und Texte
 

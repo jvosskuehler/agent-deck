@@ -44,6 +44,18 @@ pub fn home_dir() -> PathBuf {
     PathBuf::from(env_nonempty("HOME").unwrap_or_else(|| ".".into()))
 }
 
+/// Claude Codes Konfigurationsordner: `CLAUDE_CONFIG_DIR`, sonst `~/.claude`. Darin
+/// liegen `settings.json`, `projects\` (Transcripts) und `.credentials.json`. Wer den
+/// Ordner verlegt hat, soll nicht durchs Raster fallen; alle Stellen fragen hier.
+pub fn claude_dir() -> PathBuf {
+    claude_dir_in(std::env::var_os("CLAUDE_CONFIG_DIR").as_deref(), &home_dir())
+}
+
+/// [`claude_dir`] mit hereingereichter Umgebung (Tests). Leer = nicht gesetzt.
+pub fn claude_dir_in(config_dir: Option<&std::ffi::OsStr>, home: &Path) -> PathBuf {
+    config_dir.filter(|v| !v.is_empty()).map_or_else(|| home.join(".claude"), PathBuf::from)
+}
+
 /// `%LOCALAPPDATA%`, ersatzweise der Heimatordner (wie `paths.STATE_DIR` in Python).
 pub fn local_app_data() -> PathBuf {
     env_nonempty("LOCALAPPDATA").map_or_else(home_dir, PathBuf::from)

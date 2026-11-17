@@ -35,24 +35,47 @@ pub enum DashTone {
     Bad,
 }
 
-/// Schalter in `deck_settings.json`: Info-Karten zeigen (Standard an).
+use crate::deck_settings::{Switch, on};
+
+type Settings = serde_json::Map<String, serde_json::Value>;
+
+/// Schalter in `deck_settings.json`: Info-Fenster zeigen (Standard an, es liest nur).
 pub const SETTING: &str = "dashboard";
 
-/// Sind die Info-Karten eingeschaltet? Nur ein ausdrückliches `false` schaltet ab.
-pub fn enabled(settings: &serde_json::Map<String, serde_json::Value>) -> bool {
-    settings.get(SETTING).and_then(serde_json::Value::as_bool).unwrap_or(true)
+/// Ist das Info-Fenster eingeschaltet?
+pub fn enabled(settings: &Settings) -> bool {
+    on(settings, Switch::Dashboard)
+}
+
+/// Titan-Kachel samt ssh-Abfrage (`titan`, neue Installationen: aus). Aus heißt: kein
+/// einziger ssh-Aufruf.
+pub fn titan_enabled(settings: &Settings) -> bool {
+    on(settings, Switch::Titan)
+}
+
+/// PR-Automatik (`pr_automation`, neue Installationen: aus): mergt, setzt Reviewer und
+/// Assignee, startet Hintergrund-Agenten. Die eine Stelle, an der sie fragen muss.
+pub fn automation_enabled(settings: &Settings) -> bool {
+    on(settings, Switch::PrAutomation)
 }
 
 /// Hosts, deren Adressen ein Klick auf eine Info-Karte öffnen darf. Die Adressen kommen
 /// aus fremden Antworten (GitHub, Jira); was dort steht, soll keinen beliebigen Aufruf
 /// auslösen können.
-const URL_HOSTS: [&str; 3] = ["github.com", "idmedizin.atlassian.net", "claude.ai"];
+const URL_HOSTS: [&str; 2] = ["github.com", "claude.ai"];
 
-/// Darf `open_dash_url` diese Adresse öffnen? Nur `https://` auf [`URL_HOSTS`].
+/// Jira Cloud: jede Seite `<firma>.atlassian.net`, denn jede Firma hat ihre eigene.
+const URL_HOST_SUFFIX: &str = ".atlassian.net";
+
+/// Darf `open_dash_url` diese Adresse öffnen? Nur `https://` auf [`URL_HOSTS`] oder einen
+/// Host `<name>.atlassian.net` (genau eine Ebene, ohne Port, ohne Anmeldedaten).
 pub fn allowed_url(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("https://") else { return false };
     let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    URL_HOSTS.contains(&host) && !url.chars().any(char::is_whitespace)
+    let jira = host.strip_suffix(URL_HOST_SUFFIX).is_some_and(|name| {
+        !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    });
+    (URL_HOSTS.contains(&host) || jira) && !url.chars().any(char::is_whitespace)
 }
 
 #[cfg(test)]
@@ -63,6 +86,14 @@ mod tests {
     fn only_https_links_to_known_hosts_open() {
         assert!(allowed_url("https://github.com/pulls"));
         assert!(allowed_url("https://idmedizin.atlassian.net/browse/ORPH-4256"));
+        assert!(allowed_url("https://acme-dev.atlassian.net/browse/ABC-1"));
+        assert!(!allowed_url("https://atlassian.net/browse/ABC-1"), "kein Firmenname");
+        assert!(!allowed_url("https://.atlassian.net/x"));
+        assert!(!allowed_url("https://evil.example/x.atlassian.net"), "Pfad zählt nicht als Host");
+        assert!(!allowed_url("https://a.b.atlassian.net/x"), "nur eine Ebene");
+        assert!(!allowed_url("https://user@acme.atlassian.net/x"), "keine Anmeldedaten");
+        assert!(!allowed_url("https://acme.atlassian.net.evil.example/x"));
+        assert!(!allowed_url("https://acme.atlassian.net:8443/x"), "kein Port");
         assert!(!allowed_url("http://github.com/pulls"));
         assert!(!allowed_url("https://github.com.evil.example/x"));
         assert!(!allowed_url("file:///C:/Windows/System32/calc.exe"));

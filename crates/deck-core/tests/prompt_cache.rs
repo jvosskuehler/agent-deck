@@ -130,8 +130,8 @@ fn the_memo_sends_once_per_cache_state() {
 }
 
 #[test]
-fn the_switch_is_on_unless_it_is_turned_off() {
-    assert!(enabled(&obj(json!({}))));
+fn the_switch_is_off_unless_turned_on_because_compacting_costs_quota() {
+    assert!(!enabled(&obj(json!({}))));
     assert!(enabled(&obj(json!({"auto_compact": true}))));
     assert!(!enabled(&obj(json!({"auto_compact": false}))));
 }

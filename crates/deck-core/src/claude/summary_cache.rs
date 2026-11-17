@@ -19,12 +19,12 @@ use crate::claude::briefing::{self, BRIEF_VERSION, Briefing};
 use crate::claude::summarize::{enc_cwd, extract_turns_from_values, transcript_lines};
 use crate::claude::title::{self, TitleRules, TitleState};
 use crate::claude::worktree_use::active_worktree;
-use crate::paths::{home_dir, load_json, save_json};
+use crate::paths::{load_json, save_json};
 use crate::field::number;
 
-/// `~/.claude/projects`: die Transcripts von Claude Code.
+/// `projects` in Claude Codes Konfigurationsordner (`paths::claude_dir`): die Transcripts.
 pub fn projects_dir() -> PathBuf {
-    home_dir().join(".claude").join("projects")
+    crate::paths::claude_dir().join("projects")
 }
 
 /// `state\summaries`: der Cache.

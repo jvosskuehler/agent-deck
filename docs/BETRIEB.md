@@ -12,17 +12,66 @@ die Exe; das Installationspaket macht `pnpm bundle` (zusätzlich `tauri.bundle.c
 mit `externalBin`). `wt_agent.ps1` und `agent-taskbar.ico` (in `resources/`) sind in die
 Exe eingebaut und werden beim Start in den App-Ordner geschrieben.
 
+## Paket
+
+`tools\package.ps1` (`-SkipBuild` nimmt `target\release`) legt
+`dist\agent-deck-<version>-win-x64.zip` an, flach: die sechs Programme (`agent-deck`,
+`deck-report`, `deck-statusline`, `deck-console`, `deck-watchdog`, `deck-setup`),
+`install.ps1`, `uninstall.ps1`, `LICENSE`, `version.txt`. Dazu `dist\install.ps1` einzeln.
+Ein Tag `v<version>` startet `.github/workflows/release.yml`: baut auf `windows-latest`,
+prüft Tag gegen `tauri.conf.json` und hängt Zip und `install.ps1` an das Release, das
+`install.ps1 -Download` über die GitHub-API (`/releases/latest`, ohne Anmeldung) findet.
+
 ## Installieren
 
-`pwsh tools\install.ps1` (`-SkipBuild` nimmt das schon gebaute Release): bauen, Deck und
-Wächter beenden, alle Programme samt `deck-setup` nach
-`%LOCALAPPDATA%\claude-agent-deck\bin` kopieren, `deck-setup remove-vscode-extension`
-(nimmt die frühere VS-Code-Extension aus `~/.vscode/extensions`, nur ihren Eintrag und
-Ordner; Übergangsschritt, kann später entfallen), `deck-setup install` und `check` (Hooks
-in `~/.claude/settings.json`), Deck starten und prüfen, dass es läuft.
-`deck-setup uninstall` nimmt die Hooks wieder heraus.
+`tools\install.ps1` läuft unter Windows PowerShell 5.1 und PowerShell 7 (UTF-8 mit BOM,
+sonst zerlegt 5.1 die Umlaute). Quelle: neben dem Skript liegende Programme (entpacktes
+Paket), `-Package <zip>`, `-Download` oder `-FromSource`/`-SkipBuild` (Vorgabe im
+Checkout). Ablauf:
+
+1. Voraussetzungen: Windows Terminal, WebView2-Laufzeit, `claude` (PATH oder
+   `~\.local\bin\claude.exe`) sind Pflicht; PowerShell 7, `gh` (mit `gh auth status`),
+   `acli`, OpenSSH-Client nur Hinweise. Jeder `winget`-Hinweis trägt `--source winget`:
+   auf einem frischen Server 2025 scheitert die msstore-Quelle am Zertifikat
+   (0x8a15005e).
+2. Deck und Wächter beenden (Wächter zuerst), Programme nach
+   `%LOCALAPPDATA%\claude-agent-deck\bin`, dazu `uninstall.ps1` und `version.txt`;
+   Herkunftsmarke entfernen (`Unblock-File`), sonst fragt SmartScreen.
+3. Nur wenn es `deck_settings.json` noch nicht gibt: Fragen nach Repos-Ordner, Jira-Kürzel,
+   Autostart; daraus eine neue Datei mit `settings_version: 1`, `repos_root`,
+   `jira_prefix` und allen Schaltern mit Wirkung nach außen auf `false`. Eine vorhandene
+   Datei wird nie überschrieben, ein Update fragt nichts.
+4. `deck-setup remove-vscode-extension`, nur wenn `~\.vscode\extensions\agent-deck-bridge*`
+   da ist (Übergangsschritt, kann entfallen).
+5. `deck-setup install --statusline keep|replace` und `check`, `deck-setup wt-profile`,
+   `deck-setup shortcut` (beim ersten Mal, danach nur, wenn die Verknüpfung noch da ist),
+   Autostart als Wert `AgentDeck` unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+6. Deck starten und prüfen, dass es läuft.
+
+`tools\uninstall.ps1` (liegt nach der Installation in `bin`): Deck und Wächter beenden,
+`deck-setup uninstall`, `shortcut --remove`, `wt-profile --remove`, Autostart weg, dann
+nach Rückfrage (`-KeepData`, `-RemoveData`) den ganzen Ordner
+`%LOCALAPPDATA%\claude-agent-deck`; sonst nur die Programme.
+
+### deck-setup
+
+| Befehl | Wirkung |
+|---|---|
+| `install --bin <ordner> [--statusline keep\|replace]` | sechs Hooks in Claudes `settings.json` (`CLAUDE_CONFIG_DIR`, sonst `~\.claude`). Eine fremde statusLine bleibt bei `keep` (Vorgabe); `replace` sichert sie vorher nach `%LOCALAPPDATA%\claude-agent-deck\statusline.before.json`. Zeigt die statusLine schon auf das Deck, ändert sich an ihr nichts. Vor jeder Änderung `settings.json.bak-<zeit>` daneben. |
+| `check --bin <ordner>` | Befunde: fehlende Einträge, `cmd /c`, Pfade ins Leere |
+| `uninstall` | unsere Einträge heraus, gesicherte statusLine zurück (nicht, wenn inzwischen eine andere eingetragen ist; dann bleibt die Sicherung liegen) |
+| `shortcut [--bin <ordner>] [--remove]` | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Agent Deck.lnk` auf `bin\agent-deck.exe`, Arbeitsordner `bin`, Symbol aus der Exe, `System.AppUserModel.ID` = `de.idm.agentdeck` |
+| `wt-profile [--remove]` | Fragment `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck\agent-deck.json`: verstecktes Profil „Agent Deck“ (`closeOnExit: always`) und die Schemata `papier-ebenen`, `papier-ebenen-nacht`. Kein Fragment, wenn die `settings.json` des Terminals schon ein eigenes Profil „Agent Deck“ hat. |
+| `remove-vscode-extension` | Eintrag und Ordner der früheren VS-Code-Extension weg |
 
 Das Deck läuft aus `bin`: eine Änderung ist erst nach Build und Installation sichtbar.
+
+Eine neue Installation startet ohne jede Automatik mit Wirkung nach außen (kein ssh,
+kein winget, kein Tastatur-Hook, kein Shift+Tab, kein `/compact`, kein erzwungenes
+Modell) und ohne Repos-Ordner: das Einstellungsfenster geht beim ersten Start auf. Eine
+bestehende Installation behält beim ersten Start der neuen Fassung alles, wie es war
+(Versionierung in `docs/DATEIEN.md`, „`deck_settings.json`“). Claude Codes Ordner kommt
+überall aus `CLAUDE_CONFIG_DIR`, sonst `~/.claude` (`deck_core::paths::claude_dir`).
 
 ## Diagnose
 
@@ -46,7 +95,8 @@ sichtbaren Fensters, `ui-alive.json`, Selbst-Neustart nach 60 s) und `instance_g
 Ein Store-Update von PowerShell beendet jede `pwsh.exe` und damit jeden Agenten.
 Seitdem: automatische Store-Updates per Richtlinie aus
 (`HKLM\SOFTWARE\Policies\Microsoft\WindowsStore`, `AutoDownload` = 2); das Deck holt
-PowerShell und Windows Terminal selbst nach (`deck_services::store_update`: eine Minute
+PowerShell und Windows Terminal selbst nach, wenn der Schalter `store_update` an ist
+(`deck_services::store_update`: eine Minute
 nach dem Start, höchstens alle 12 h, nur ohne lebenden Agenten und nur, wenn das
 Programm gerade nicht läuft).
 
@@ -63,6 +113,8 @@ Nur gegen Attrappen getestet:
   einen Agenten an.
 - Worktree-Aufräumen.
 - `deck-setup remove-vscode-extension` auf dem echten Rechner.
+- Installation aus dem Paket auf einem frischen Rechner (Server 2025, nur PowerShell 5.1):
+  Windows-Suche findet „Agent Deck“, das Terminal lädt das Fragment.
 - `crash_resume` bei einem echten Absturz.
 - Ob `live.json` `cwd` bei Agenten im `wt/`-Ordner den worktree trägt.
 - „Ohne Fenster“ echt (startet node/pwsh/cmd versteckt):

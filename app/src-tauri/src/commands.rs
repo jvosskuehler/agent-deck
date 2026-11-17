@@ -141,6 +141,28 @@ pub async fn set_setting(app: AppHandle, key: String, value: Value) -> Res<Setti
     Ok(view)
 }
 
+/// „Ändern…“ am Repos-Ordner: der Ordner-Dialog von Windows, modal zum Fenster, das
+/// fragt. Gibt den gewählten Pfad zurück (`None` = abgebrochen); speichern tut die
+/// Oberfläche danach mit `set_setting`, wie jede andere Änderung.
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle, window: tauri::WebviewWindow, start: String) -> Res<Option<String>> {
+    let owner = window.hwnd().map_or(0, |h| h.0 as isize);
+    let title = lock(&shared(&app).deck).lang.l("Repos-Ordner wählen", "Choose the repos folder").to_string();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let start = std::path::PathBuf::from(start.trim());
+        deck_win::folder_pick::pick_folder(owner, &title, Some(&start))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    match picked {
+        Ok(p) => Ok(p.map(|p| p.to_string_lossy().into_owned())),
+        Err(e) => {
+            note(format!("Ordner-Dialog: {e}"));
+            Err(e.to_string())
+        }
+    }
+}
+
 /// „Panel neu starten“ (`panel.py: restart`): eine frische Instanz mit denselben
 /// Argumenten und derselben Umgebung, dann diese beenden. Tauri gibt vorher Port und
 /// Einzelinstanz-Sperre frei. Bewusst ohne „normales Ende“ im Herzschlag: kommt das

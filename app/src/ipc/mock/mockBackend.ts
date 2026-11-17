@@ -20,7 +20,7 @@ import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRe
 import type { OrphanView } from "../../bindings/OrphanView";
 import { mockDash } from "./mockDash";
 import type { DashView } from "../../bindings/DashView";
-import { initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
+import { freshSettings, initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
 
@@ -57,6 +57,8 @@ export function createMockBackend(): Backend {
   if (params.get("lang") === "en") settings.language = "english";
   if (params.get("mode")) settings.mode = params.get("mode")!;
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
+  // `?fresh=1`: eine neue Installation (kein Repos-Ordner, alle Automatik aus).
+  if (params.get("fresh") === "1") Object.assign(settings, freshSettings());
 
   let lang: Lang = langFromSetting(settings.language);
   const homeRows = (params.get("rows") ?? "3,3").split(",").map(Number).filter((n) => n > 0);
@@ -205,6 +207,7 @@ export function createMockBackend(): Backend {
         orphans = mockOrphans(lang, params.get("orphanError") === "1").filter((o) => keep.has(o.id));
         pushView();
       }
+      if (key === "reposRoot") settings.reposState = String(value) === "" ? "unset" : "ok";
       if (key === "dockEdge") {
         dock = { ...dock, edge: String(value) };
         emit("deck://dock", { ...dock });
@@ -213,6 +216,10 @@ export function createMockBackend(): Backend {
       return { ...settings };
     },
     restart_panel: () => console.info("[mock] Panel neu starten"),
+    pick_folder: ({ start }) => {
+      console.info("[mock] Ordner-Dialog ab", start);
+      return "C:/Users/kollegin/src";
+    },
     show_block_menu: ({ letter }) => console.info("[mock] Kontextmenü des Kopfes", letter),
     panel_hold: () => undefined,
     panel_drag: ({ mode }) => console.info("[mock] Panel ziehen", mode),

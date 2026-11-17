@@ -81,6 +81,30 @@ fn saved_runtime_files_survive_a_reload() {
 }
 
 #[test]
+fn an_unversioned_settings_file_is_migrated_once_and_written_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let file = dir.path().join(paths::SETTINGS_FILE);
+    save_json(&file, &json!({"dock_edge": "left"})).unwrap();
+    let s = BindStore::load_with_home(dir.path(), home.path());
+    assert_eq!(s.settings["titan"], true);
+    let back = load_json(&file).unwrap();
+    assert_eq!(back["settings_version"], 1);
+    assert_eq!(back["model"], "opus[1m]");
+}
+
+#[test]
+fn a_new_install_writes_only_the_version_so_a_later_change_is_not_taken_for_an_old_install() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let mut s = BindStore::load_with_home(dir.path(), home.path());
+    s.settings.insert("dock_edge".into(), "left".into());
+    s.save_settings();
+    let again = BindStore::load_with_home(dir.path(), home.path());
+    assert_eq!(Value::Object(again.settings), json!({"settings_version": 1, "dock_edge": "left"}));
+}
+
+#[test]
 fn write_state_keeps_extra_fields_and_flips_only_status_and_time() {
     let dir = tempfile::tempdir().unwrap();
     save_json(&paths::state_path(dir.path(), "A1"), &json!({"slot": "A1", "status": "done", "ts": 1.0, "prompt": "Hallo"})).unwrap();

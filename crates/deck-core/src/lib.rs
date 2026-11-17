@@ -21,6 +21,7 @@ pub mod crash_resume;
 pub mod dash;
 pub mod dock;
 pub mod field;
+pub mod deck_settings;
 pub mod deck_view;
 pub mod front;
 pub mod git_head;

@@ -58,6 +58,15 @@ fn worktree_folders_name_their_ticket() {
 }
 
 #[test]
+fn without_a_jira_project_a_worktree_number_stays_a_bare_number_and_branches_name_nothing() {
+    assert_eq!(ticket_of_worktree("4258-api", "").as_deref(), Some("4258"));
+    let one = reply("m", "2026-11-16T08:00:00Z", "claude-opus-5-5", r#"{"command":"cd C:\\src\\wt\\4258-api"}"#);
+    assert_eq!(read_line(&one, "").unwrap().hits, ["4258"]);
+    let l = reply("m", "2026-11-16T08:00:00Z", "claude-opus-5-5", "").replace(r#""gitBranch":"HEAD""#, r#""gitBranch":"fix/ABC-4189""#);
+    assert!(read_line(&l, "").unwrap().hits.is_empty());
+}
+
+#[test]
 fn tool_calls_name_the_ticket_and_an_overview_call_does_not() {
     let one = reply("m", "2026-11-16T08:00:00Z", "claude-opus-5-5", r#"{"command":"cd C:\\Repos\\wt\\4258-api && dotnet test"}"#);
     assert_eq!(read_line(&one, "ORPH").unwrap().hits, ["ORPH-4258"]);

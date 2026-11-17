@@ -14,7 +14,45 @@ daran. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 
 Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts,
 `orphans.json`, `ui-alive.json` …) liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht
-neben dem Code.
+neben dem Code. Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die
+fremde statusLine, die `deck-setup install --statusline replace` ersetzt hat;
+`deck-setup uninstall` legt sie zurück und löscht die Datei.
+
+## `deck_settings.json`: Einstellungen und ihre Version
+
+Liegt im App-Ordner, geschrieben von der App (Einstellungsfenster) und vom Installer.
+Schlüssel, Vorgaben und Migration stehen in `deck_core::deck_settings`; gelesen wird
+tolerant, ein Schalter mit falschem Typ gilt als fehlend.
+
+**Version.** `settings_version` (heute `1`). Beim Laden (`BindStore::load`):
+
+- Datei fehlt, ist leer oder `{}`: **neue Installation**. Es wird nur
+  `settings_version: 1` geschrieben; jeder fehlende Schlüssel hat seine Vorgabe (unten).
+- Datei mit Inhalt, aber ohne `settings_version` (auch unlesbar): **bestehende
+  Installation** von vor dem 17.11.2026. Jeder fehlende Schalter wird ausdrücklich mit dem
+  bisherigen Wert eingetragen, dazu `model`, `jira_prefix` und `repos_root` wie bisher;
+  vorhandene Werte bleiben. Dann `settings_version: 1`, sofort zurückgeschrieben.
+- Mit `settings_version`: nichts wird ergänzt. So bleiben auch die Antworten des
+  Installers, wie sie sind.
+
+| Schlüssel | Art | neue Installation | Migration (alte Datei ohne Wert) | Wirkung |
+|---|---|---|---|---|
+| `repos_root` | Pfad | fehlt | `terminal_home`, sonst `~/Repos`, wenn es ihn gibt | Heimat-Block, worktree-Aufräumen (`<repos_root>\wt`); ohne brauchbaren Ordner (fehlt, kein Unterordner mit `.git`) keins von beiden, das Einstellungsfenster geht beim Start auf |
+| `terminal_home` | Pfad | – | wird nach `repos_root` kopiert | alter Name, nur noch Rückfall; „Ändern…“ nimmt ihn heraus |
+| `jira_prefix` | Text | leer | `ORPH` | Jira-Projekt; leer = Nummern bleiben Nummern, kein ausgedachter Key |
+| `model` | Text | fehlt | `opus[1m]` | `--model` neuer Agenten; fehlt = Claude Codes eigene Wahl |
+| `titan` | bool | `false` | `true` | Titan-Kachel, ssh alle 60 s |
+| `store_update` | bool | `false` | `true` | winget-Update von PowerShell und Windows Terminal |
+| `speechmike_voice` | bool | `false` | `true` | SpeechMike-Sprechtaste samt Tastatur-Hook (ab Neustart) |
+| `auto_permission_mode` | bool | `false` | `true` | neue Agenten per Shift+Tab in Auto |
+| `auto_compact` | bool | `false` | `true` | `/compact` vor Ablauf des Prompt-Caches |
+| `dashboard` | bool | `true` | `true` | Info-Fenster |
+| `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
+| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik |
+| `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik |
+
+Dazu wie bisher ohne Version: `dock_edge`, `dock_along`, `panel_pos`, `panel_zoom`, die
+Tastenkürzel (`jump_hotkey` …), `glow`, `group_shadow`, `frame_season`.
 
 ## Chat-Titel: `summaries\<session>.json`, `areas.json`
 
