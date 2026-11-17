@@ -1,3 +1,9 @@
 # Ziel der aus Rust erzeugten TypeScript-Typen (ts-rs), relativ zur Workspace-Wurzel.
 [env]
 TS_RS_EXPORT_DIR = { value = "app/src/bindings", relative = true }
+
+# C-Laufzeit statisch einbinden: auf einem frischen Windows fehlt VCRUNTIME140.dll
+# (gemessen 17.11.2026 auf Server 2025, 0xC0000135), dann startet weder deck-setup
+# noch ein Hook. Mit crt-static braucht das Paket kein VC++-Redistributable.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
