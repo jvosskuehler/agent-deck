@@ -8,7 +8,8 @@ Installiert oder aktualisiert das Agent Deck auf diesem Rechner.
   2. beendet deck-watchdog und agent-deck (der Wächter zuerst, sonst startet er die App neu)
   3. kopiert die Programme nach %LOCALAPPDATA%\claude-agent-deck\bin und räumt die
      frühere VS-Code-Extension des Decks weg (deck-setup remove-vscode-extension)
-  4. richtet die Hooks in ~/.claude/settings.json auf diese Programme (deck-setup install)
+  4. richtet die Hooks in ~/.claude/settings.json auf diese Programme (deck-setup install),
+     trägt fehlende Vorgaben ein (Modus Bypass, Effort high; Vorhandenes bleibt)
      und prüft sie (deck-setup check)
   5. startet agent-deck.exe und prüft, dass es läuft
 

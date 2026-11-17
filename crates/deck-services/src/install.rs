@@ -69,14 +69,17 @@ fn bin(bin_dir: &Path) -> String {
 
 /// Die sechs Hooks und die statusLine auf die Programme in `bin_dir` richten (dort liegen
 /// `deck-report.exe` und `deck-statusline.exe`). Fremde Einträge bleiben.
-/// `force_statusline` ersetzt auch eine fremde statusLine.
+/// `force_statusline` ersetzt auch eine fremde statusLine. Fehlen Modus oder Effort,
+/// kommen die Vorgaben des Decks hinein (`settings::fill_defaults`).
 pub fn install(settings_file: &Path, bin_dir: &Path, force_statusline: bool) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
     let opts = MergeOptions { force_statusline };
-    let (after, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
+    let (merged, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
+    let (after, defaults) = settings::fill_defaults(&merged);
     write(settings_file, &before, after, &mut r);
     r.extend_notes(&notes);
+    r.extend_notes(&defaults);
     r
 }
 
