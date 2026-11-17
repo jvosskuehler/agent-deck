@@ -21,7 +21,7 @@ function view(): CostView {
 
 describe("Kostengraph", () => {
   it("stapelt Farb-Tickets, dann weitere, dann ohne Ticket", () => {
-    const m = chartModel(view(), "d1", null, "de", false)!;
+    const m = chartModel(view(), "d1", null, "de")!;
     expect(m.bands.map((b) => b.key)).toEqual(["ORPH-1", MORE, ""]);
     expect(m.bands[1].values).toEqual([5, 5, 5]);
     expect(m.total).toBe(78);
@@ -30,7 +30,7 @@ describe("Kostengraph", () => {
   });
 
   it("zeigt im Fokus nur das eine Ticket im eigenen Maßstab", () => {
-    const m = chartModel(view(), "d1", "ORPH-2", "de", false)!;
+    const m = chartModel(view(), "d1", "ORPH-2", "de")!;
     expect(m.bands).toHaveLength(1);
     expect(m.max).toBe(5);
     expect(m.shown).toBe(15);
@@ -61,12 +61,18 @@ describe("Kostengraph", () => {
   });
 
   it("glättet nur die Zeichnung, Tooltip und Summen bleiben echt", () => {
-    const m = chartModel(view(), "d1", "ORPH-1", "de")!;
+    const m = chartModel(view(), "d1", "ORPH-1", "de", 6)!;
     expect(m.bands[0].values).toEqual([10, 20, 30]);
     expect(m.shown).toBe(60);
     const d = m.bands[0].drawn;
     expect(d[0]).toBeGreaterThan(10);
     expect(d[2]).toBeLessThan(30);
+  });
+
+  it("glättet stärker, je weniger Platz ein Eimer hat", () => {
+    const spread = (px: number) => chartModel(view(), "d1", "ORPH-1", "de", px)!.bands[0].drawn;
+    expect(spread(600)[0]).toBeLessThan(spread(60)[0]);
+    expect(chartModel(view(), "d1", "ORPH-1", "de")!.bands[0].drawn).toEqual([10, 20, 30]);
   });
 
   it("verschmiert eine Spitze, ohne Werte zu erfinden", () => {

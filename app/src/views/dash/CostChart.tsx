@@ -1,22 +1,31 @@
 // Kostengraph: gestapelte Fläche je Ticket über die Eimer des Zeitraums, mit
 // Fadenkreuz und Tooltip beim Überfahren. Die Rechnung steht in logic/costChart.ts.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bandPath, bucketLabel, fmtCost, stack, type ChartModel, type RangeKey } from "../../logic/costChart";
 import type { Lang } from "../../logic/i18n";
 
 /** Höhe der Zeichenfläche im viewBox; die Fläche wird auf die Kastenhöhe gestreckt. */
 const H = 300;
 
-export function CostChart({ model, rangeKey, lang }: { model: ChartModel; rangeKey: RangeKey; lang: Lang }) {
+/** `onWidth` meldet die Breite der Zeichenfläche; nach ihr richtet sich die Glättung. */
+export function CostChart({ model, rangeKey, lang, onWidth }: { model: ChartModel; rangeKey: RangeKey; lang: Lang; onWidth(px: number): void }) {
   const [hover, setHover] = useState<number | null>(null);
+  const plot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = plot.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => onWidth(Math.round(el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onWidth]);
   const n = model.range.starts.length;
   const layers = stack(model.bands);
   const tip = hover === null ? null : tooltip(model, layers, hover, rangeKey, lang);
   const pos = hover === null ? 0 : ((hover + 0.5) / n) * 100;
   return (
     <div className="cchart">
-      <div className="cchart-plot">
+      <div className="cchart-plot" ref={plot}>
         <div className="cchart-grid" aria-hidden="true">
           <span className="cchart-line" style={{ top: 0 }} />
           <span className="cchart-line" style={{ top: "50%" }} />

@@ -411,6 +411,42 @@
   line-height: 1.4;
 }
 
+/* Schmales Fenster (die freie Kachel neben vielen Agenten): Der Graph bekommt die volle
+   Breite, die Rangliste steht als zweispaltige Legende darunter, ohne Balken. */
+@media (max-width: 760px) {
+  .dchart-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .drank {
+    width: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 12px;
+    row-gap: 0;
+    overflow: visible;
+  }
+
+  .drank button {
+    padding: 3px 6px;
+  }
+
+  .drank-l {
+    font-size: 12px;
+  }
+
+  .drank-bar {
+    display: none;
+  }
+
+  .drank-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 2px 6px 0;
+  }
+}
+
 /* ── Leiste unten ──────────────────────────────────────────────────────── */
 
 .dfootbar {

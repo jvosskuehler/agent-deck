@@ -110,8 +110,12 @@ export interface Band {
   drawn: number[];
 }
 
-/** Breite der Glättung je Zeitraum in Eimern (Standardabweichung des Gauß-Kerns). */
-const SIGMA: Record<RangeKey, number> = { h1: 1.5, d1: 1.5, w1: 1.5, m1: 1 };
+/**
+ * Breite der Glättung in Bildschirmpunkten (Standardabweichung des Gauß-Kerns). In Pixeln
+ * statt in Eimern, damit der Verlauf in der schmalen Kachel genauso ruhig aussieht wie im
+ * aufgeklappten Fenster: weniger Platz je Eimer heißt mehr Eimer im Kern.
+ */
+export const SMOOTH_PX = 14;
 
 /**
  * Gauß-Glättung über die Eimer. An den Rändern wird der Kern abgeschnitten und neu
@@ -174,7 +178,8 @@ const MODEL_NAMES: Record<string, string> = {
 };
 
 /** Das ganze Modell für Zeitraum `key` und Fokus `focus`; `null`, wenn der Zeitraum fehlt. */
-export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: Lang, glatt = true): ChartModel | null {
+/** `plotPx` = Breite der Zeichenfläche; 0 = ungeglättet. */
+export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: Lang, plotPx = 0, smoothPx = SMOOTH_PX): ChartModel | null {
   const range = view.ranges.find((r) => r.key === key);
   if (!range) return null;
   const n = range.starts.length;
@@ -195,7 +200,8 @@ export function chartModel(view: CostView, key: RangeKey, focus: Focus, lang: La
     const values = focus === MORE ? rest : (byKey(focus)?.values ?? zeros());
     bands = [{ key: focus, name: nameOf(focus, lang), color: focus === MORE ? "var(--c-more)" : colorOf(view, focus), values, drawn: [] }];
   }
-  for (const b of bands) b.drawn = smooth(b.values, glatt ? SIGMA[key] : 0);
+  const sigma = plotPx > 0 ? (smoothPx * n) / plotPx : 0;
+  for (const b of bands) b.drawn = smooth(b.values, sigma);
   const stackTop = zeros();
   for (const b of bands) b.drawn.forEach((v, i) => (stackTop[i] += v));
   const max = niceMax(Math.max(...stackTop, 0));

@@ -134,7 +134,8 @@ function standText(stand: number, lang: Lang): string {
 }
 
 function CostPane({ dash, range, focus, setFocus, lang }: { dash: DashView | null; range: RangeKey; focus: Focus; setFocus(f: Focus): void; lang: Lang }) {
-  const model = dash?.costs ? chartModel(dash.costs, range, focus, lang) : null;
+  const [plotPx, setPlotPx] = useState(0);
+  const model = dash?.costs ? chartModel(dash.costs, range, focus, lang, plotPx) : null;
   if (!model || !dash?.costs) {
     return <p className="dempty">{t(lang, "Die Transcripts werden gelesen…", "Reading transcripts…")}</p>;
   }
@@ -156,7 +157,7 @@ function CostPane({ dash, range, focus, setFocus, lang }: { dash: DashView | nul
         <span className="dmix-models">{model.models}</span>
       </div>
       <div className="dchart-row">
-        <CostChart model={model} rangeKey={range} lang={lang} />
+        <CostChart model={model} rangeKey={range} lang={lang} onWidth={setPlotPx} />
         <div className="drank">
           {model.rank.map((r) => (
             <button

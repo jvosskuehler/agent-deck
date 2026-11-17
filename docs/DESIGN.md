@@ -111,9 +111,12 @@ oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es gan
 - **Oben, Tokenkosten:** große Zahl, darunter die Zusammensetzung (Cache lesen, Cache
   schreiben, Output, Input) und die Modelle. Gestapelte Fläche je Ticket über die Zeit,
   Zeitraum 1 Std. / 24 Std. / 7 Tage / 30 Tage (merkt sich die Oberfläche) in Minuten,
-  Viertelstunden, Stunden und Vierteltagen. Gezeichnet wird leicht geglättet (Gauß) als
+  Viertelstunden, Stunden und Vierteltagen. Gezeichnet wird geglättet (Gauß, Breite 14 px
+  auf dem Bildschirm, nicht in Eimern: im schmalen Fenster glättet es also stärker) als
   monotone Kurve, damit ein Verlauf statt eines Kamms entsteht; Tooltip und Summen zeigen
-  die echten Werte je Eimer. Fadenkreuz und Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
+  die echten Werte je Eimer. Ist das Fenster schmaler als 760 px (die freie Kachel neben
+  vielen Agenten), steht die Rangliste als zweispaltige Legende ohne Balken unter dem
+  Graphen, damit er die volle Breite bekommt. Fadenkreuz und Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
   Ticket“); Klick zeigt nur dieses Ticket im eigenen Maßstab. Einheit: Kosten in
   Input-Tokens von Opus 5.5 mit den API-Preisen je Modell (`deck_core::dash::costs`).
 - **Farben:** acht Plätze der geprüften Dataviz-Palette, je Thema eigene Stufen
