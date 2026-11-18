@@ -160,9 +160,12 @@ mod tests {
 
     #[test]
     fn the_old_command_gets_the_same_input_and_loses_its_trailing_newline() {
-        let out = run_command(&Shell::Cmd, "findstr meine", b"andere\r\nmeine-zeile\r\n", TIMEOUT);
+        // Großzügige Frist: hier geht es um Eingabe und Zeilenende, nicht ums Tempo. Auf dem
+        // GitHub-Runner braucht schon der Start von cmd mal über eine Sekunde (18.11.2026).
+        let slow_ok = Duration::from_secs(15);
+        let out = run_command(&Shell::Cmd, "findstr meine", b"andere\r\nmeine-zeile\r\n", slow_ok);
         assert_eq!(out.as_deref(), Some("meine-zeile"));
-        let out = run_command(&Shell::Cmd, "cmd /c echo meine-zeile", b"", TIMEOUT);
+        let out = run_command(&Shell::Cmd, "cmd /c echo meine-zeile", b"", slow_ok);
         assert_eq!(out.as_deref(), Some("meine-zeile"));
     }
 
