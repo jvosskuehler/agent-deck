@@ -38,6 +38,11 @@ fn activity(a: &Activity, i: &FeedInput) -> FeedEvent {
         Did::AgentFailed(t, why) => (FeedKind::Problem, format!("{}: {}", lang.l("Claude gescheitert", "Claude failed"), t.text(lang)), why.clone()),
         Did::AgentAborted(t) => (FeedKind::Minor, format!("{}: {}", lang.l("Claude abgebrochen", "Claude aborted"), t.text(lang)), String::new()),
         Did::AgentTimedOut(t) => (FeedKind::Problem, format!("{}: {}", lang.l("Claude nach 30 Min. abgebrochen", "Claude stopped after 30 min"), t.text(lang)), String::new()),
+        Did::CiGaveUp => (
+            FeedKind::Problem,
+            l("rote CI nach 2 Versuchen", "red CI after 2 attempts"),
+            l("kein weiterer Agent, bis die CI grün war", "no further agent until CI was green"),
+        ),
         Did::DraftReady => (FeedKind::Agent, l("Antwort-Entwurf bereit", "reply draft ready"), l("liegt oben unter „Braucht dich“", "see “Needs you” above")),
         Did::ReplySent => (FeedKind::Minor, l("Antwort gesendet", "reply sent"), String::new()),
         Did::ReplyFailed(why) => (FeedKind::Problem, l("Antwort nicht gesendet", "reply not sent"), why.clone()),

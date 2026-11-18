@@ -46,7 +46,7 @@ fn gh(args: &[&str]) -> Result<String, String> {
         return Ok(out.stdout);
     }
     let why = short_error(&out.stderr);
-    Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+    Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) })
 }
 
 fn graphql(query: &str, vars: &[(&str, &str)]) -> Result<(), String> {

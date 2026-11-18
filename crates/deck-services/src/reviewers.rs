@@ -63,7 +63,7 @@ impl GhDirectory {
             return serde_json::from_str(&out.stdout).map_err(|_| "Antwort kein JSON".to_string());
         }
         let why = short_error(&out.stderr);
-        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) })
     }
 
     fn all_pages(&self, full: bool, org: &str) -> Result<Vec<Member>, String> {
@@ -87,7 +87,7 @@ impl OrgDirectory for GhDirectory {
         let out = self.gh(&["api".into(), "user/orgs".into(), "--jq".into(), ".[].login".into()])?;
         if out.code != 0 {
             let why = short_error(&out.stderr);
-            return Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") });
+            return Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) });
         }
         Ok(out.stdout.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
     }

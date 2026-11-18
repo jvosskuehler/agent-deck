@@ -84,6 +84,9 @@ pub(crate) struct Inner {
     pub pr_dirs: HashMap<String, PathBuf>,
     /// Vom Deck gemergt, worktree noch aufzuräumen: (Repo, Branch, seit wann).
     pub to_clean: Vec<(String, String, f64)>,
+    /// Zuletzt geloggter Grund je PR, warum kein Agent startete. Geloggt wird nur ein
+    /// Wechsel, nicht jede Runde (sonst alle 15 s dieselbe Zeile).
+    pub not_started: HashMap<String, String>,
     pub version: u64,
     view: Option<(u64, f64, f64, Lang, FeedView, Option<CommentPopup>)>,
 }
@@ -128,6 +131,7 @@ impl FeedService {
             in_use: Vec::new(),
             pr_dirs: HashMap::new(),
             to_clean: Vec::new(),
+            not_started: HashMap::new(),
             version: 0,
             view: None,
         };

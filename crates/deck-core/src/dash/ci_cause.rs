@@ -138,6 +138,13 @@ pub fn cause(checks: &[Check], files: &[String], verdicts: &BTreeMap<u64, bool>)
     Some(if any_explained && all { CiCause::CodeSecurity } else { CiCause::Unknown })
 }
 
+/// Ist die CI durchgelaufen und nichts rot? Ohne Checks: nein (nichts gesehen).
+/// `merge-order` zählt nicht mit, es ist keine CI.
+pub fn all_green(checks: &[Check]) -> bool {
+    let ci: Vec<&Check> = checks.iter().filter(|c| c.name != super::merge_order::MERGE_ORDER).collect();
+    !ci.is_empty() && ci.iter().all(|c| !c.running && !c.failed)
+}
+
 /// Wann die CI zuletzt fertig wurde (für die Zeitleiste); 0 = unbekannt.
 pub fn finished_at(checks: &[Check]) -> f64 {
     if checks.iter().any(|c| c.running) {
@@ -259,5 +266,15 @@ mod tests {
         assert_eq!(finished_at(std::slice::from_ref(&c)), 100.0);
         c.running = true;
         assert_eq!(finished_at(&[c]), 0.0);
+    }
+
+    #[test]
+    fn all_green_needs_finished_checks_without_red_and_ignores_merge_order() {
+        assert!(all_green(&[chk("build", "CI", 1, false)]));
+        assert!(!all_green(&[]), "nichts gesehen ist nicht grün");
+        assert!(!all_green(&[chk("build", "CI", 1, true)]));
+        assert!(!all_green(&[Check { running: true, ..chk("build", "CI", 1, false) }]));
+        let order = Check { name: super::super::merge_order::MERGE_ORDER.into(), failed: true, ..Check::default() };
+        assert!(all_green(&[chk("build", "CI", 1, false), order]));
     }
 }

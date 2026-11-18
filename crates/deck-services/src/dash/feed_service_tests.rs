@@ -19,6 +19,8 @@ struct World {
     done: Arc<AtomicBool>,
     snap: Mutex<PrSnapshot>,
     now: AtomicU64,
+    /// GitHub hat den Branch beim Merge schon selbst gelöscht.
+    branch_gone: AtomicBool,
 }
 
 impl World {
@@ -65,6 +67,9 @@ impl GhWrite for Fake {
     }
     fn delete_branch(&self, repo: &str, branch: &str) -> Result<(), String> {
         self.0.call(format!("delete {repo} {branch}"));
+        if self.0.branch_gone.load(Ordering::SeqCst) {
+            return Err("gh: Reference does not exist (HTTP 422)".into());
+        }
         Ok(())
     }
     fn reply_thread(&self, thread: &str, body: &str) -> Result<(), String> {
@@ -385,3 +390,7 @@ fn with_the_setting_off_nothing_acts_even_if_the_old_state_said_on() {
     assert!(w.calls().is_empty() || w.calls().iter().all(|c| !c.starts_with("merge") && !c.starts_with("reviewer") && !c.starts_with("assignee")), "{:?}", w.calls());
     assert!(!svc.state().automation, "die Einstellung zieht das Gedächtnis nach");
 }
+
+// Regeln gegen Schleifen und Log-Spam der Automatik.
+#[path = "feed_rules_tests.rs"]
+mod rules;

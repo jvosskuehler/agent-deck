@@ -25,6 +25,9 @@ use crate::i18n::Lang;
 
 /// Höchstens so viele Hintergrund-Agenten zugleich.
 pub const MAX_RUNNING: usize = 2;
+/// Höchstens so viele Agenten auf eine rote CI, bis sie wieder grün war. Danach
+/// braucht der PR einen Menschen (Feed: „rote CI nach 2 Versuchen“).
+pub const MAX_CI_TRIES: u32 = 2;
 /// Laufzeitgrenze eines Agenten (s).
 pub const TIME_LIMIT_S: f64 = 30.0 * 60.0;
 
@@ -62,6 +65,9 @@ pub struct Due {
     /// Konflikt seit diesem Zeitpunkt (bei roter CI zählt der Commit).
     pub mark: f64,
     pub oid: String,
+    /// Rote CI, aber [`MAX_CI_TRIES`] schon verbraucht: nicht starten, nur einmal je
+    /// Commit melden und den Commit als bearbeitet merken.
+    pub exhausted: bool,
 }
 
 /// Die automatischen Aufträge eines PRs, höchstens einer (Konflikt vor roter CI vor
@@ -79,11 +85,12 @@ pub fn due_for(pr: &PrInfo, st: &FeedState, cause: Option<CiCause>) -> Option<Du
         && since > st.since
         && done.conflict < since
     {
-        return Some(Due { pr: key, task: TaskKind::Conflict, mark: since, oid: String::new() });
+        return Some(Due { pr: key, task: TaskKind::Conflict, mark: since, oid: String::new(), exhausted: false });
     }
     let finished = ci_cause::finished_at(&x.checks);
     if cause == Some(CiCause::Unknown) && finished > st.since && !x.head_oid.is_empty() && done.ci_oid != x.head_oid {
-        return Some(Due { pr: key, task: TaskKind::CiRed, mark: finished, oid: x.head_oid.clone() });
+        let exhausted = done.ci_tries >= MAX_CI_TRIES;
+        return Some(Due { pr: key, task: TaskKind::CiRed, mark: finished, oid: x.head_oid.clone(), exhausted });
     }
     let newest_bot = x
         .threads
@@ -92,7 +99,7 @@ pub fn due_for(pr: &PrInfo, st: &FeedState, cause: Option<CiCause>) -> Option<Du
         .filter_map(|t| t.head.as_ref().map(|c| c.at))
         .filter(|&at| at > st.since && at > done.bot)
         .fold(0.0, f64::max);
-    (newest_bot > 0.0).then(|| Due { pr: key, task: TaskKind::BotFindings, mark: newest_bot, oid: String::new() })
+    (newest_bot > 0.0).then(|| Due { pr: key, task: TaskKind::BotFindings, mark: newest_bot, oid: String::new(), exhausted: false })
 }
 
 /// Warum ein fälliger Auftrag noch nicht startet.
@@ -110,7 +117,7 @@ pub fn schedule(due: Vec<Due>, st: &FeedState, busy: impl Fn(&str) -> bool) -> (
     let mut running: Vec<String> = st.running().map(|r| r.pr.clone()).collect();
     let (mut start, mut wait) = (Vec::new(), Vec::new());
     for d in due {
-        if running.contains(&d.pr) {
+        if d.exhausted || running.contains(&d.pr) {
             continue;
         }
         if busy(&d.pr) {

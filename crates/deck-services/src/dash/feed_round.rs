@@ -146,10 +146,15 @@ fn run_acts(sh: &Shared, snap: &PrSnapshot, acts: Vec<Act>, now: f64) {
                 sh.log.note(&format!("{label}: gemergt"));
                 i.st.record(activity(snap, &key, Did::Merged, "", now));
                 drop(i);
+                // Viele Repos löschen den Branch beim Merge selbst („Automatically delete
+                // head branches“): dann antwortet GitHub mit 404, und das ist kein Fehler.
                 let deleted = sh.deps.write.delete_branch(repo, head_ref);
-                log_result(sh, &label, "Remote-Branch gelöscht", &deleted);
+                match &deleted {
+                    Err(e) if branch_already_gone(e) => sh.log.note(&format!("{label}: Remote-Branch schon von GitHub gelöscht")),
+                    r => log_result(sh, &label, "Remote-Branch gelöscht", r),
+                }
                 let mut i = lock(&sh.inner);
-                if deleted.is_ok() {
+                if deleted.as_ref().is_ok() || deleted.as_ref().is_err_and(|e| branch_already_gone(e)) {
                     i.st.record(activity(snap, &key, Did::BranchDeleted, "", now));
                 }
                 i.to_clean.push((repo.clone(), head_ref.clone(), now));
@@ -162,6 +167,12 @@ fn run_acts(sh: &Shared, snap: &PrSnapshot, acts: Vec<Act>, now: f64) {
             }
         }
     }
+}
+
+/// Meldet das Löschen „gibt es nicht (mehr)“? GitHub sagt dazu 404 bzw. 422
+/// „Reference does not exist“.
+pub(crate) fn branch_already_gone(e: &str) -> bool {
+    e.contains("HTTP 404") || e.contains("Reference does not exist")
 }
 
 fn log_result(sh: &Shared, label: &str, what: &str, r: &Result<(), String>) {

@@ -34,6 +34,9 @@ pub enum Did {
     AgentFailed(TaskKind, String),
     AgentAborted(TaskKind),
     AgentTimedOut(TaskKind),
+    /// Rote CI nach [`super::bg_tasks::MAX_CI_TRIES`] Versuchen: kein weiterer Agent,
+    /// bis die CI einmal grün war.
+    CiGaveUp,
     DraftReady,
     ReplySent,
     ReplyFailed(String),
@@ -122,6 +125,10 @@ pub struct Handled {
     pub bot: f64,
     /// Rote CI an diesem Commit ist bearbeitet.
     pub ci_oid: String,
+    /// So viele Agenten haben die rote CI schon versucht, seit sie zuletzt grün war.
+    /// Jeder Versuch pusht einen neuen Commit; ohne Zähler startete jeder rote Lauf am
+    /// neuen Commit den nächsten Agenten (einmal vier in 40 Minuten auf demselben PR).
+    pub ci_tries: u32,
     /// Konflikt seit diesem Zeitpunkt ist bearbeitet.
     pub conflict: f64,
     /// Reviewer bzw. Assignee schon einmal nachgetragen (nie zweimal: wer sich selbst
@@ -227,6 +234,11 @@ impl FeedState {
         let ok = snap.error.is_none() && snap.fetched_at > 0.0;
         let first_seen = if self.seen_any { now } else { self.since };
         for p in &snap.open {
+            if super::ci_cause::all_green(&p.extra.checks)
+                && let Some(h) = self.handled.get_mut(&p.key())
+            {
+                h.ci_tries = 0;
+            }
             if p.extra.conflicting {
                 self.conflict_since.entry(p.key()).or_insert(first_seen);
             } else {

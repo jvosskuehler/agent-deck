@@ -89,7 +89,7 @@ fn a_conflict_comes_before_red_ci_and_bot_findings() {
 fn at_most_two_agents_one_per_pr_and_none_where_a_session_works() {
     let mut st = FeedState::fresh(0.0);
     st.runs.push(run("A#1"));
-    let d = |pr: &str| Due { pr: pr.into(), task: TaskKind::BotFindings, mark: 1.0, oid: String::new() };
+    let d = |pr: &str| Due { pr: pr.into(), task: TaskKind::BotFindings, mark: 1.0, oid: String::new(), exhausted: false };
     let (start, wait) = schedule(vec![d("A#1"), d("B#2"), d("C#3"), d("D#4")], &st, |pr| pr == "B#2");
     assert_eq!(start.iter().map(|x| x.pr.as_str()).collect::<Vec<_>>(), ["C#3"]);
     assert_eq!(wait.iter().map(|(x, h)| (x.pr.as_str(), *h)).collect::<Vec<_>>(), [("B#2", Hold::SessionActive), ("D#4", Hold::Full)]);
@@ -127,4 +127,19 @@ fn the_report_is_the_last_result_line_of_the_stream() {
     assert_eq!(report_from_stream("{\"type\":\"result\",\"is_error\":true}"), Some((true, String::new())));
     assert_eq!(report_from_stream("garbage
 {\"type\":\"assistant\"}"), None);
+}
+
+#[test]
+fn red_ci_is_exhausted_after_the_maximum_tries_and_never_scheduled() {
+    let mut p = pr(2);
+    p.extra.head_oid = "abc".into();
+    p.extra.checks = vec![Check { failed: true, done_at: 200.0, ..Check::default() }];
+    let mut st = FeedState::fresh(100.0);
+    st.handled_mut(&p.key()).ci_tries = MAX_CI_TRIES - 1;
+    assert!(!due_for(&p, &st, Some(CiCause::Unknown)).unwrap().exhausted);
+    st.handled_mut(&p.key()).ci_tries = MAX_CI_TRIES;
+    let d = due_for(&p, &st, Some(CiCause::Unknown)).unwrap();
+    assert!(d.exhausted);
+    let (start, wait) = schedule(vec![d], &st, |_| false);
+    assert!(start.is_empty() && wait.is_empty());
 }

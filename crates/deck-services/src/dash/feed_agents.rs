@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use deck_core::dash::bg_tasks::{self, report_from_stream, Due, Hold, TaskKind, MAX_RUNNING, TIME_LIMIT_S};
+use deck_core::dash::bg_tasks::{self, report_from_stream, Due, Hold, TaskKind, MAX_CI_TRIES, MAX_RUNNING, TIME_LIMIT_S};
 use deck_core::dash::feed_state::{Did, Draft, Run, RunStatus};
 use deck_core::dash::pr_extra::Comment;
 use deck_core::dash::prs::{PrInfo, PrSnapshot};
@@ -38,6 +38,7 @@ fn safe(key: &str) -> String {
 
 /// Fällige automatische Aufträge starten (nur bei eingeschalteter Automatik).
 pub(crate) fn start_due(sh: &Shared, snap: &PrSnapshot, now: f64) {
+    let exhausted: Vec<Due>;
     let start = {
         let mut i = lock(&sh.inner);
         if !i.st.automation || snap.fetched_at <= 0.0 {
@@ -45,15 +46,42 @@ pub(crate) fn start_due(sh: &Shared, snap: &PrSnapshot, now: f64) {
             return;
         }
         let due: Vec<Due> = snap.open.iter().filter_map(|p| bg_tasks::due_for(p, &i.st, i.causes.get(&p.key()).copied().flatten())).collect();
+        exhausted = due.iter().filter(|d| d.exhausted).cloned().collect();
+        // Erledigt sich ein Grund (PR zu, nichts mehr fällig), darf derselbe Grund später
+        // wieder einmal ins Log.
+        i.not_started.retain(|k, _| due.iter().any(|d| d.pr == *k));
         let (start, wait) = bg_tasks::schedule(due, &i.st, |key| snap.open.iter().find(|p| p.key() == key).is_some_and(|p| busy(&i, p, None)));
         i.waiting = wait;
         start
     };
+    give_up(sh, snap, &exhausted, now);
     for d in start {
         let Some(pr) = snap.open.iter().find(|p| p.key() == d.pr) else { continue };
-        if let Err(e) = start_run(sh, snap, pr, d.task, None, Some(&d), now) {
-            sh.log.note(&format!("{}: Agent nicht gestartet: {e}", pr.label()));
+        match start_run(sh, snap, pr, d.task, None, Some(&d), now) {
+            Ok(_) => {
+                lock(&sh.inner).not_started.remove(&d.pr);
+            }
+            Err(e) => {
+                let changed = lock(&sh.inner).not_started.insert(d.pr.clone(), e.clone()).as_deref() != Some(e.as_str());
+                if changed {
+                    sh.log.note(&format!("{}: Agent nicht gestartet: {e}", pr.label()));
+                }
+            }
         }
+    }
+}
+
+/// Rote CI, für die [`MAX_CI_TRIES`] Agenten verbraucht sind: einmal je Commit melden
+/// und den Commit als bearbeitet merken, damit nichts mehr startet.
+fn give_up(sh: &Shared, snap: &PrSnapshot, due: &[Due], now: f64) {
+    for d in due.iter().filter(|d| d.exhausted) {
+        let label = snap.open.iter().find(|p| p.key() == d.pr).map(PrInfo::label).unwrap_or_default();
+        let mut i = lock(&sh.inner);
+        i.st.handled_mut(&d.pr).ci_oid = d.oid.clone();
+        i.st.record(activity(snap, &d.pr, Did::CiGaveUp, "", now));
+        i.dirty = true;
+        drop(i);
+        sh.log.note(&format!("{label}: rote CI nach {MAX_CI_TRIES} Agenten, kein weiterer Versuch bis grün"));
     }
 }
 
@@ -106,6 +134,9 @@ pub(crate) fn start_run(sh: &Shared, snap: &PrSnapshot, pr: &PrInfo, task: TaskK
     {
         let mut i = lock(&sh.inner);
         if let Err(e) = check(&i, Some(&dir)) {
+            // Den worktree merken: die nächste Runde erkennt die Session dann schon in
+            // `schedule` und versucht nicht alle 15 s denselben Start.
+            i.pr_dirs.insert(key.clone(), dir.clone());
             if due.is_some() {
                 i.waiting.retain(|(w, _)| w.pr != key);
                 i.waiting.push((due.cloned().expect("due"), Hold::SessionActive));
@@ -156,7 +187,10 @@ fn mark(i: &mut Inner, key: &str, d: &Due) {
     let h = i.st.handled_mut(key);
     match d.task {
         TaskKind::BotFindings => h.bot = d.mark,
-        TaskKind::CiRed => h.ci_oid = d.oid.clone(),
+        TaskKind::CiRed => {
+            h.ci_oid = d.oid.clone();
+            h.ci_tries += 1;
+        }
         TaskKind::Conflict => h.conflict = d.mark,
         TaskKind::HumanReply => {}
     }

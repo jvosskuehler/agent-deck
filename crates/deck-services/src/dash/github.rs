@@ -76,7 +76,7 @@ impl GhApi for GhCli {
             return Ok(out.stdout);
         }
         let why = hidden_cmd::short_error(&out.stderr);
-        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) })
     }
 
     fn job_log(&self, repo: &str, job_id: u64) -> Result<String, String> {
@@ -88,7 +88,7 @@ impl GhApi for GhCli {
             return Ok(out.stdout);
         }
         let why = hidden_cmd::short_error(&out.stderr);
-        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) })
     }
 
     fn approve(&self, url: &str) -> Result<(), String> {
@@ -104,7 +104,7 @@ impl GhApi for GhCli {
             return Ok(());
         }
         let why = hidden_cmd::short_error(&out.stderr);
-        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {why}") })
+        Err(if why.is_empty() { format!("gh: Exit {}", out.code) } else { format!("gh: {}", why.trim_start_matches("gh: ")) })
     }
 }
 
