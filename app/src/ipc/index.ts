@@ -54,6 +54,8 @@ export const commands = {
     fire(getBackend().invoke("tooltip_content_size", { width, height }), "tooltip_content_size"),
   dialogContentSize: (height: number, width?: number) =>
     fire(getBackend().invoke("dialog_content_size", width === undefined ? { height } : { height, width }), "dialog_content_size"),
+  /** Wie dialogContentSize, aber mit Antwort: fertig, wenn das Fenster seine Größe hat. */
+  resizeDialog: (height: number, width: number) => getBackend().invoke("dialog_content_size", { height, width }),
   showBlockMenu: (letter: string) => fire(getBackend().invoke("show_block_menu", { letter }), "show_block_menu"),
   panelHold: (hold: boolean) => fire(getBackend().invoke("panel_hold", { hold }), "panel_hold"),
   panelDrag: (mode: PanelDragMode, x: number, y: number) =>

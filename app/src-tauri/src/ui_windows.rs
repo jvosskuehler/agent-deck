@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 pub const PANEL: &str = "panel";
 pub const HANDLE: &str = "handle";
@@ -113,11 +113,16 @@ fn dialog(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri:
         .theme(None)
         .build()?;
     let me = w.clone();
-    w.on_window_event(move |e| {
-        if let WindowEvent::CloseRequested { api, .. } = e {
+    w.on_window_event(move |e| match e {
+        WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = me.hide();
         }
+        // Vom Nutzer gezogen: neuer Anker; selbst gesetzt: ignoriert (`dialog_fit`).
+        WindowEvent::Moved(p) => crate::dialog_fit::moved(me.label(), p.x, p.y),
+        // Windows hat das Fenster beim Monitorwechsel mitskaliert: Größe neu anlegen.
+        WindowEvent::ScaleFactorChanged { .. } => crate::dialog_fit::refit(&me),
+        _ => {}
     });
     Ok(w)
 }
@@ -167,34 +172,7 @@ pub fn raw_hwnd(app: &AppHandle, label: &str) -> isize {
 /// `width` ist angegeben. Nie größer als der Arbeitsbereich seines Monitors; ragt er unten
 /// oder rechts hinaus, rückt er zurück.
 pub fn fit_dialog(w: &WebviewWindow, height: f64, width: Option<f64>) -> tauri::Result<()> {
-    let scale = w.scale_factor()?;
-    let inner = w.inner_size()?;
-    let outer = w.outer_size()?;
-    // Titelleiste und Rahmen (physisch): Differenz zwischen Außen- und Innenmaß.
-    let chrome = outer.height.saturating_sub(inner.height);
-    let chrome_x = outer.width.saturating_sub(inner.width);
-    let mut want = (height * scale).ceil() as u32;
-    let mut want_w = width.map_or(inner.width, |x| (x * scale).round() as u32);
-    if let Some(m) = w.current_monitor()? {
-        let area = m.work_area();
-        want = want.min(area.size.height.saturating_sub(chrome));
-        want_w = want_w.min(area.size.width.saturating_sub(chrome_x));
-        let pos = w.outer_position()?;
-        let bottom = area.position.y + area.size.height as i32;
-        let right = area.position.x + area.size.width as i32;
-        let over = pos.y + (want + chrome) as i32 - bottom;
-        let over_x = pos.x + (want_w + chrome_x) as i32 - right;
-        if over > 0 || over_x > 0 {
-            let x = if over_x > 0 { (pos.x - over_x).max(area.position.x) } else { pos.x };
-            let y = if over > 0 { (pos.y - over).max(area.position.y) } else { pos.y };
-            w.set_position(PhysicalPosition::new(x, y))?;
-        }
-    }
-    // Rundung: ein Pixel Unterschied ist kein Grund, das Fenster neu zu setzen.
-    if want.abs_diff(inner.height) > 1 || want_w.abs_diff(inner.width) > 1 {
-        w.set_size(PhysicalSize::new(want_w, want))?;
-    }
-    Ok(())
+    crate::dialog_fit::fit(w, height, width)
 }
 
 /// Einen Dialog zeigen und nach vorn holen.
@@ -202,6 +180,7 @@ pub fn present(app: &AppHandle, label: &str) {
     if let Some(w) = get(app, label) {
         let _ = w.unminimize();
         let _ = w.show();
+        crate::dialog_fit::shown(&w);
         let _ = w.set_focus();
     }
 }

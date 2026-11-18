@@ -5,7 +5,19 @@
 html:has(.settings),
 body:has(.settings) {
   background: var(--panel);
-  overflow: auto;
+  /* Nie waagerecht rollen; senkrecht nur, wenn der Inhalt höher als der Bildschirm ist
+     (dann begrenzt Rust die Fensterhöhe). */
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Unsichtbare Vormessung der Ansicht nach dem Umschalten (SettingsView, `pending`). */
+.settings-probe {
+  position: fixed;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .settings-stage {
@@ -17,7 +29,12 @@ body:has(.settings) {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-width: 960px;
+  /* Feste Breite statt „so breit wie das Fenster“: beim Umschalten misst sich die
+     Ansicht schon in der Zielbreite, bevor das Fenster nachzieht. Sonst stünde der
+     erweiterte Inhalt einen Augenblick in der schmalen Spalte, wäre sehr hoch, und das
+     Fenster spränge hoch und wieder herunter (18.11.2026). */
+  box-sizing: border-box;
+  width: 960px;
   padding: 20px;
   background: var(--panel);
   color: var(--ink);
@@ -349,7 +366,7 @@ body:has(.settings) {
 /* Kompakt eine Spalte wie vor „Erweitert“; im Browser-Mock begrenzt die Breite hier, im
    Fenster setzt Rust sie (useDialogFit). */
 .settings:not([data-wide]) {
-  max-width: 480px;
+  width: 480px;
 }
 
 .set-footer {

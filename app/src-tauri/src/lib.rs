@@ -13,6 +13,7 @@ pub mod applog;
 pub mod crash_resume;
 pub mod commands;
 pub mod deck;
+pub mod dialog_fit;
 pub mod dock;
 pub mod dock_drag;
 pub mod focus_frame;
