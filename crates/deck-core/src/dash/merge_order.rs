@@ -2,7 +2,10 @@
 //!
 //! Konvention (17.11.2026): in der PR-Beschreibung eine oder mehrere Zeilen
 //! `Merge after: <repo>#<n>` bzw. `Merge after: <owner>/<repo>#<n>` (auch mehrere,
-//! durch Komma getrennt). Dazu wie bisher „after #N“ / „depends on #N“ im selben Repo.
+//! durch Komma getrennt), ebenso `Depends on:`, `Blocked by:`, `Requires:`. Dazu eine Zeile,
+//! die nur aus „after #N“ / „depends on #N“ besteht (selbes Repo). Mitten im Satz zählt
+//! nichts: ein Satz wie „…added an index after #12 was written“ hielt einen PR einen Tag
+//! lang fest, weil #12 ein geschlossener, nie gemergter PR war.
 //! Ob eine Abhängigkeit gemergt ist, fragt der Dienst selbst bei GitHub nach
 //! ([`deps_query`], [`parse_deps`]); unbekannt heißt warten.
 //!
@@ -24,10 +27,15 @@ pub const MERGE_ORDER: &str = "merge-order";
 /// Stand der Abhängigkeiten: PR-Schlüssel (`owner/repo#12`) → Zustand.
 pub type DepStates = BTreeMap<String, PrState>;
 
-static LINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?im)^[\s>*-]*merge\s+after\s*:\s*(.+)$").expect("LINE"));
+static LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?im)^[\s>*-]*(?:merge\s+after|depends\s+on|blocked\s+by|requires)\s*:\s*(.+)$").expect("LINE"));
 static REF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:([A-Za-z0-9_.-]+)/)?([A-Za-z0-9_.-]+)#(\d+)").expect("REF"));
-static AFTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:after|depends\s+on|blocked\s+by|requires)\s+(?:PR\s+)?#(\d+)").expect("AFTER"));
+/// `#N` ohne Repo in einer solchen Zeile: selbes Repo.
+static BARE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|[\s,(])#(\d+)").expect("BARE"));
+/// Eine Zeile nur aus „after #N“ (ohne Doppelpunkt), höchstens mit Punkt dahinter.
+static AFTER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?im)^[\s>*-]*(?:merge\s+after|after|depends\s+on|blocked\s+by|requires)\s+(?:PR\s+)?#(\d+)[\s.]*$").expect("AFTER")
+});
 
 /// Alle Abhängigkeiten aus der Beschreibung eines PRs in `repo` (`owner/name`), als
 /// PR-Schlüssel. Ein Repo ohne Besitzer gehört derselben Organisation.
@@ -39,6 +47,11 @@ pub fn dependencies(body: &str, repo: &str) -> Vec<String> {
             let o = r.get(1).map_or(owner, |m| m.as_str());
             let Ok(n) = r[3].parse::<u64>() else { continue };
             out.push(pr_key(&format!("{o}/{}", &r[2]), n));
+        }
+        for b in BARE.captures_iter(&line[1]) {
+            if let Ok(n) = b[1].parse::<u64>() {
+                out.push(pr_key(repo, n));
+            }
         }
     }
     for c in AFTER.captures_iter(body) {
@@ -111,6 +124,15 @@ mod tests {
             ["Org/orpheus-management-api#212", "Other/helm-charts#7", "Org/deck#3", "Org/orpheus-management-ui#9"]
         );
         assert!(dependencies("Merges after lunch #4 is fine", "Org/x").is_empty());
+        let other = "Depends on: #5, api#6\n- Blocked by: Other/x#1";
+        assert_eq!(dependencies(other, "Org/orpheus-management-ui"), ["Org/api#6", "Org/orpheus-management-ui#5", "Other/x#1"]);
+    }
+
+    #[test]
+    fn after_a_number_in_running_text_is_no_dependency() {
+        let body = "- **ABC-1 (#30)** added an index after #12 was written.\nThis requires #9 to be understood.";
+        assert!(dependencies(body, "Org/x").is_empty());
+        assert_eq!(dependencies("Depends on PR #3.", "Org/x"), ["Org/x#3"]);
         assert_eq!(dep_label("Org/orpheus-management-api#212"), "api#212");
     }
 
