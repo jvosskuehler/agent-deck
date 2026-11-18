@@ -15,7 +15,7 @@ fn org() -> Vec<Member> {
         m("lkrause", "Leon Krause"),
         m("anna-s", "Anna Schmidt"),
         m("aberger", "Anna-Lena Berger"),
-        m("jvk", "Jorrit Voßkühler"),
+        m("jweg", "Jörg Weißmüller"),
         m("brandt-dev", "Tim Brandt"),
         m("noname42", ""),
         Member { login: "xy-dev".into(), name: "Xaver Yilmaz".into(), emails: vec!["x.yilmaz@firma.de".into()] },
@@ -54,8 +54,8 @@ fn umlauts_and_their_spellings_count_as_the_same_letter() {
     for q in ["Müller", "mueller", "MULLER", "Leo Mueller"] {
         assert_eq!(login_of(resolve(&org(), q)), "leo-mxyz", "{q}");
     }
-    assert_eq!(login_of(resolve(&org(), "Vosskuehler")), "jvk");
-    assert_eq!(login_of(resolve(&org(), "voßkühler")), "jvk");
+    assert_eq!(login_of(resolve(&org(), "Weissmueller")), "jweg");
+    assert_eq!(login_of(resolve(&org(), "weißmüller")), "jweg");
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn several_people_with_the_same_first_name_are_offered_for_choice() {
 #[test]
 fn a_word_start_finds_a_name_when_nothing_matches_exactly() {
     assert_eq!(login_of(resolve(&org(), "Krau")), "lkrause");
-    assert_eq!(login_of(resolve(&org(), "Jor")), "jvk");
+    assert_eq!(login_of(resolve(&org(), "Jör")), "jweg");
 }
 
 #[test]
@@ -86,8 +86,8 @@ fn a_known_company_email_finds_its_member() {
 fn an_unknown_email_is_matched_by_its_local_part() {
     // Nachname allein, Initiale + Nachname mit und ohne Punkt, Vorname.Nachname.
     assert_eq!(login_of(resolve(&org(), "brandt@firma.de")), "brandt-dev");
-    assert_eq!(login_of(resolve(&org(), "a.schmidt@firma.de")), "jvk");
-    assert_eq!(login_of(resolve(&org(), "aschmidt@firma.de")), "jvk");
+    assert_eq!(login_of(resolve(&org(), "j.weissmueller@firma.de")), "jweg");
+    assert_eq!(login_of(resolve(&org(), "jweissmueller@firma.de")), "jweg");
     assert_eq!(login_of(resolve(&org(), "anna.schmidt@firma.de")), "anna-s");
     assert_eq!(login_of(resolve(&org(), "lkrause@firma.de")), "lkrause");
     assert_eq!(resolve(&org(), "unbekannt@firma.de"), Match::None);
