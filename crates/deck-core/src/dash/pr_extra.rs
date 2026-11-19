@@ -74,6 +74,8 @@ pub struct Review {
     pub state: String,
     /// Commit, auf den sich das Review bezieht; leer = unbekannt.
     pub oid: String,
+    /// REST-Id (`databaseId`), nötig zum Verwerfen (`stale_review`); 0 = unbekannt.
+    pub db_id: u64,
     /// Klasse aus dem Marker `<!-- claude-classification class=… -->` im Review-Text
     /// (nur Claude setzt ihn); leer = keiner.
     pub classification: String,
@@ -198,6 +200,7 @@ pub fn parse(n: &Value) -> PrExtra {
                 comment: comment(e, "submittedAt")?,
                 state: s(e, "state"),
                 oid: e.pointer("/commit/oid").and_then(Value::as_str).unwrap_or("").to_string(),
+                db_id: e.get("databaseId").and_then(Value::as_u64).unwrap_or(0),
                 classification: classification_of(e.get("raw").and_then(Value::as_str).unwrap_or("")),
             })
         })

@@ -111,6 +111,7 @@ Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`. Erste Stellen je F
 | Leiste weg, Neustart tut nichts | „Oberfläche hängt: …“ (sagt Hauptthread oder Webview), „Vorgänger-Deck … hing“ |
 | Agentenfenster plötzlich zu | „… ohne das Deck beendet …“; schweigt das Log, im Ereignisprotokoll nachsehen (AppXDeploymentServer/Operational, „Application Hang pwsh.exe … was closed“) |
 | PR nicht gemergt, Agent nicht gestartet, Jira nicht nachgezogen | `state\dash-feed.log` (je Merge, Agent, Ticket eine Zeile mit Grund); im Feed steht unter „Automatik“, worauf jeder PR wartet |
+| PR bleibt „blocked“, obwohl alles erledigt und freigegeben ist | `state\dash-feed.log` „überholtes Review von claude verworfen“ bzw. „Review verwerfen gescheitert“: ein altes „Änderungen gewünscht“ von Claude verwirft das Deck nur unter den Bedingungen in `deck_core::dash::stale_review`; ein Mensch wird nie verworfen |
 
 ### Hängendes Deck (11.11.2026)
 

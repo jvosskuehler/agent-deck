@@ -72,6 +72,10 @@ impl GhWrite for Fake {
         }
         Ok(())
     }
+    fn dismiss_review(&self, repo: &str, number: u64, id: u64, message: &str) -> Result<(), String> {
+        self.0.call(format!("dismiss {repo}#{number} {id} {message}"));
+        Ok(())
+    }
     fn reply_thread(&self, thread: &str, body: &str) -> Result<(), String> {
         self.0.call(format!("reply {thread} {body}"));
         Ok(())
@@ -390,7 +394,6 @@ fn with_the_setting_off_nothing_acts_even_if_the_old_state_said_on() {
     assert!(w.calls().is_empty() || w.calls().iter().all(|c| !c.starts_with("merge") && !c.starts_with("reviewer") && !c.starts_with("assignee")), "{:?}", w.calls());
     assert!(!svc.state().automation, "die Einstellung zieht das Gedächtnis nach");
 }
-
-// Regeln gegen Schleifen und Log-Spam der Automatik.
+// Regeln gegen Schleifen und Log-Spam der Automatik, Verwerfen überholter Bot-Reviews.
 #[path = "feed_rules_tests.rs"]
 mod rules;

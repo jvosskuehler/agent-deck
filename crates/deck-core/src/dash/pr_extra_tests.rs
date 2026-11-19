@@ -76,12 +76,12 @@ fn details_attach_to_the_open_pr_with_the_same_repo_and_number() {
 fn reviews_carry_commit_and_claude_classification_and_draft_switches_count_as_my_reaction() {
     let mut n = node();
     n["timelineItems"]["nodes"] = json!([
-        { "id": "a", "author": { "login": "claude", "__typename": "Bot" }, "state": "APPROVED", "submittedAt": "2026-11-17T10:10:00Z",
+        { "id": "a", "databaseId": 99, "author": { "login": "claude", "__typename": "Bot" }, "state": "APPROVED", "submittedAt": "2026-11-17T10:10:00Z",
           "raw": "Looks good.
 <!-- claude-classification class=high risk=high -->", "commit": { "oid": "abc" } },
         { "actor": { "login": "me" }, "createdAt": "2026-11-17T13:00:00Z" } ]);
     let x = parse(&n);
-    assert_eq!((x.reviews[0].oid.as_str(), x.reviews[0].classification.as_str()), ("abc", "high"));
+    assert_eq!((x.reviews[0].oid.as_str(), x.reviews[0].classification.as_str(), x.reviews[0].db_id), ("abc", "high", 99));
     assert!(x.approved_current(), "Claude-Freigabe am Kopf zählt");
     assert!(x.claude_high() && !x.approved_by_human());
     assert_eq!(x.my_last_activity("me"), parse_iso("2026-11-17T13:00:00Z").unwrap(), "auf Draft gestellt = reagiert");

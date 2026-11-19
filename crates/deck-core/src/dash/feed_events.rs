@@ -31,6 +31,12 @@ fn activity(a: &Activity, i: &FeedInput) -> FeedEvent {
         Did::MergeFailed(why) => (FeedKind::Problem, l("Merge gescheitert", "merge failed"), why.clone()),
         Did::BranchDeleted => (FeedKind::Minor, l("Branch gelöscht", "branch deleted"), String::new()),
         Did::ReviewerAdded(who) => (FeedKind::Minor, format!("{who} {}", lang.l("als Reviewer nachgetragen", "added as reviewer")), String::new()),
+        Did::ReviewDismissed(bot, head) => (
+            FeedKind::Minor,
+            format!("{} {bot} {}", lang.l("überholtes Review von", "stale review by"), lang.l("verworfen", "dismissed")),
+            format!("{} {head}", lang.l("alles erledigt in", "all addressed in")),
+        ),
+        Did::DismissFailed(why) => (FeedKind::Problem, l("Review nicht verworfen", "review not dismissed"), why.clone()),
         Did::AssigneeAdded => (FeedKind::Minor, l("dich als Assignee nachgetragen", "assigned to you"), String::new()),
         Did::WorktreeRemoved(folder) => (FeedKind::Minor, format!("{} wt/{folder} {}", lang.l("Worktree", "worktree"), lang.l("entfernt", "removed")), String::new()),
         Did::AgentStarted(t) => (FeedKind::Agent, format!("{}: {}", lang.l("Claude gestartet", "Claude started"), t.text(lang)), String::new()),

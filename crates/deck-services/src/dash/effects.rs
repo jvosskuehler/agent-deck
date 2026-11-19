@@ -1,5 +1,6 @@
 //! Die Wirkungen des PR-Feeds nach außen, je hinter einem Trait: GitHub schreiben
-//! ([`GhWrite`]: Reviewer, Assignee, Merge, Branch löschen, antworten, Thread auflösen),
+//! ([`GhWrite`]: Reviewer, Assignee, Merge, Branch löschen, Review verwerfen, antworten,
+//! Thread auflösen),
 //! Jira-Status ([`JiraApi`] über `acli`). Tests bekommen Attrappen; die echten Fassungen
 //! prüfen zusätzlich das Schutzgitter (`guard`), damit kein Test je etwas auslöst.
 //!
@@ -23,6 +24,8 @@ pub trait GhWrite: Send + Sync {
     fn add_assignee_me(&self, url: &str) -> Result<(), String>;
     fn merge(&self, url: &str) -> Result<(), String>;
     fn delete_branch(&self, repo: &str, branch: &str) -> Result<(), String>;
+    /// Ein Review verwerfen (REST, `id` = `databaseId`), mit Begründung.
+    fn dismiss_review(&self, repo: &str, number: u64, id: u64, message: &str) -> Result<(), String>;
     /// Antwort in einen Review-Thread.
     fn reply_thread(&self, thread_id: &str, body: &str) -> Result<(), String>;
     fn resolve_thread(&self, thread_id: &str) -> Result<(), String>;
@@ -80,6 +83,10 @@ impl GhWrite for GhCliWrite {
     }
     fn delete_branch(&self, repo: &str, branch: &str) -> Result<(), String> {
         gh(&["api", "-X", "DELETE", &format!("repos/{repo}/git/refs/heads/{branch}")]).map(drop)
+    }
+    fn dismiss_review(&self, repo: &str, number: u64, id: u64, message: &str) -> Result<(), String> {
+        let path = format!("repos/{repo}/pulls/{number}/reviews/{id}/dismissals");
+        gh(&["api", "-X", "PUT", &path, "-f", &format!("message={message}"), "-f", "event=DISMISS"]).map(drop)
     }
     fn reply_thread(&self, thread_id: &str, body: &str) -> Result<(), String> {
         graphql(
@@ -152,6 +159,7 @@ mod tests {
     #[test]
     fn real_writers_are_locked_in_tests() {
         assert!(GhCliWrite.merge("https://github.com/o/r/pull/1").unwrap_err().contains("gesperrt"));
+        assert!(GhCliWrite.dismiss_review("o/r", 1, 2, "x").unwrap_err().contains("gesperrt"));
         assert!(Acli.transition("ORPH-1", "Done").unwrap_err().contains("gesperrt"));
     }
 }

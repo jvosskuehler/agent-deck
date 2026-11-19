@@ -24,6 +24,7 @@ pub mod pr_extra;
 pub mod prs;
 pub mod reviewer_match;
 pub mod reviewers;
+pub mod stale_review;
 pub mod titan;
 
 use serde::{Deserialize, Serialize};

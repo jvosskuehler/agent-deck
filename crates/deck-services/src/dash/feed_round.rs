@@ -1,5 +1,6 @@
 //! Eine Runde des Feed-Dienstes (`feed_service.rs`): neuen Stand einarbeiten, Logs roter
-//! Checks holen, die Mechanik ausführen (nachtragen, mergen, Branch löschen), Jira
+//! Checks holen, die Mechanik ausführen (nachtragen, überholtes Bot-Review verwerfen,
+//! mergen, Branch löschen), Jira
 //! nachziehen, dann die Hintergrund-Agenten (`feed_agents.rs`).
 //!
 //! Ins Protokoll kommen nur PR-Kürzel, Tickets, Ids, Anzahlen, Dauern und kurze
@@ -123,6 +124,10 @@ fn run_acts(sh: &Shared, snap: &PrSnapshot, acts: Vec<Act>, now: f64) {
             Act::AddReviewer { pr, url, login } => (pr.clone(), Did::ReviewerAdded(login.clone()), sh.deps.write.add_reviewer(url, login)),
             Act::AddAssignee { pr, url } => (pr.clone(), Did::AssigneeAdded, sh.deps.write.add_assignee_me(url)),
             Act::Merge { pr, url, .. } => (pr.clone(), Did::Merged, sh.deps.write.merge(url)),
+            Act::DismissReview { pr, repo, number, dismissal: d } => {
+                let did = Did::ReviewDismissed(d.author.clone(), d.head.clone());
+                (pr.clone(), did, d.ids.iter().try_for_each(|id| sh.deps.write.dismiss_review(repo, *number, *id, &d.message)))
+            }
         };
         let label = activity(snap, &key, Did::Merged, "", now).label;
         let mut i = lock(&sh.inner);
@@ -158,6 +163,18 @@ fn run_acts(sh: &Shared, snap: &PrSnapshot, acts: Vec<Act>, now: f64) {
                     i.st.record(activity(snap, &key, Did::BranchDeleted, "", now));
                 }
                 i.to_clean.push((repo.clone(), head_ref.clone(), now));
+            }
+            // Einmal je Kopf: gelingt es, zeigt der nächste Abruf DISMISSED; scheitert
+            // es, erst mit einem neuen Commit wieder (sonst alle 3 Min. dieselbe Zeile).
+            (Act::DismissReview { dismissal: d, .. }, Ok(())) => {
+                sh.log.note(&format!("{label}: überholtes Review von {} verworfen ({} Stück), Kopf {}", d.author, d.ids.len(), d.head));
+                i.st.record(activity(snap, &key, did, "", now));
+            }
+            (Act::DismissReview { .. }, Err(e)) => {
+                sh.log.note(&format!("{label}: Review verwerfen gescheitert: {e}"));
+                let oid = snap.open.iter().find(|p| p.key() == key).map(|p| p.extra.head_oid.clone()).unwrap_or_default();
+                i.st.handled_mut(&key).dismiss_failed_oid = oid;
+                i.st.record(activity(snap, &key, Did::DismissFailed(e), "", now));
             }
             (Act::Merge { .. }, Err(e)) => {
                 sh.log.note(&format!("{label}: Merge gescheitert: {e}"));

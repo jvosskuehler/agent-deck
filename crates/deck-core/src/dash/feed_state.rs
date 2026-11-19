@@ -27,6 +27,10 @@ pub enum Did {
     MergeFailed(String),
     BranchDeleted,
     ReviewerAdded(String),
+    /// Überholtes „Änderungen gewünscht“ eines Bots verworfen: (Bot, Kopf-Commit kurz).
+    ReviewDismissed(String, String),
+    /// Verwerfen gescheitert: Grund.
+    DismissFailed(String),
     AssigneeAdded,
     WorktreeRemoved(String),
     AgentStarted(TaskKind),
@@ -137,6 +141,9 @@ pub struct Handled {
     pub assignee: bool,
     /// Merge an diesem Commit scheiterte (neuer Versuch erst mit neuem Commit).
     pub merge_failed_oid: String,
+    /// Verwerfen von Claudes überholtem Review scheiterte an diesem Commit
+    /// (`stale_review`; neuer Versuch erst mit neuem Commit).
+    pub dismiss_failed_oid: String,
 }
 
 /// Das ganze Gedächtnis.

@@ -118,7 +118,7 @@ fn a_present_merge_order_status_must_be_success() {
 }
 
 fn review(author: &str, bot: bool, state: &str, oid: &str, class: &str) -> Review {
-    Review { comment: Comment { author: author.into(), bot, at: 10.0, ..Comment::default() }, state: state.into(), oid: oid.into(), classification: class.into() }
+    Review { comment: Comment { author: author.into(), bot, at: 10.0, ..Comment::default() }, state: state.into(), oid: oid.into(), classification: class.into(), ..Review::default() }
 }
 
 #[test]

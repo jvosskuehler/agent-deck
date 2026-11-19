@@ -10,13 +10,16 @@
 //! eines Menschen, kein Status `merge-order` außer `success`, keine offene Abhängigkeit
 //! (`Merge after: <repo>#<n>` bzw. „after #N“ in der Beschreibung, laut GitHub gemergt,
 //! `merge_order.rs`; oder ein offener Backend-PR zum selben Ticket bei einem UI-PR). Gemergt wird mit
-//! `--merge`, nie `--auto`; danach wird der Remote-Branch gelöscht.
+//! `--merge`, nie `--auto`; danach wird der Remote-Branch gelöscht. Hält nur noch ein
+//! überholtes „Änderungen gewünscht“ von Claude den PR auf, wird es verworfen
+//! (`stale_review.rs`); gemergt wird dann nach dem nächsten Abruf.
 
 use super::bg_tasks::ticket_of;
 use super::ci_cause::CiCause;
 use super::merge_order;
 use super::feed_state::FeedState;
 use super::prs::{CiState, PrInfo};
+use super::stale_review::{self, Dismissal};
 use crate::i18n::Lang;
 
 /// Eine Wirkung nach außen.
@@ -25,6 +28,8 @@ pub enum Act {
     AddReviewer { pr: String, url: String, login: String },
     AddAssignee { pr: String, url: String },
     Merge { pr: String, url: String, repo: String, head_ref: String },
+    /// Claudes überholtes „Änderungen gewünscht“ verwerfen (`stale_review`).
+    DismissReview { pr: String, repo: String, number: u64, dismissal: Dismissal },
 }
 
 /// Worauf ein Merge wartet.
@@ -180,8 +185,11 @@ pub fn plan(open: &[PrInfo], st: &FeedState, cause: impl Fn(&PrInfo) -> Option<C
         if !me.is_empty() && !done.assignee && !x.assignees.iter().any(|a| a.eq_ignore_ascii_case(me)) {
             acts.push(Act::AddAssignee { pr: key.clone(), url: pr.url.clone() });
         }
-        if merge_wait(pr, open, cause(pr), st).is_none() {
+        let cause = cause(pr);
+        if merge_wait(pr, open, cause, st).is_none() {
             acts.push(Act::Merge { pr: key, url: pr.url.clone(), repo: pr.repo.clone(), head_ref: pr.head_ref.clone() });
+        } else if let Some(dismissal) = stale_review::dismissal(pr, open, cause, st) {
+            acts.push(Act::DismissReview { pr: key, repo: pr.repo.clone(), number: pr.number, dismissal });
         }
     }
     acts
