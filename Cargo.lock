@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "agent-deck"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "deck-core",
  "deck-services",
@@ -732,7 +732,7 @@ dependencies = [
 
 [[package]]
 name = "deck-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "regex",
  "serde",
@@ -743,7 +743,7 @@ dependencies = [
 
 [[package]]
 name = "deck-hooks"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "deck-core",
  "serde_json",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "deck-services"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "deck-win"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "tempfile",
  "thiserror 2.0.21",

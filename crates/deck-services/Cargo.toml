@@ -13,8 +13,8 @@ name = "deck-wsl"
 path = "src/bin/deck-wsl.rs"
 
 [dependencies]
-deck-core = { version = "0.2.0", path = "../deck-core" }
-deck-win = { version = "0.2.0", path = "../deck-win" }
+deck-core = { version = "0.3.0", path = "../deck-core" }
+deck-win = { version = "0.3.0", path = "../deck-win" }
 # AES-256-GCM für das Token von Claude Desktop (Chromium-„v10“-Blob). Die Python-
 # Fassung nahm Windows CNG; eine reine Rust-Crate ist hier kürzer und testbar.
 aes-gcm = "0.10.3"

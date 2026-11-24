@@ -16,7 +16,7 @@ name = "deck-statusline"
 path = "src/bin/deck-statusline.rs"
 
 [dependencies]
-deck-core = { version = "0.2.0", path = "../deck-core" }
+deck-core = { version = "0.3.0", path = "../deck-core" }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
 
 [dev-dependencies]
