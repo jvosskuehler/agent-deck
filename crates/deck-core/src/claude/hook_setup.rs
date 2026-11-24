@@ -1,6 +1,6 @@
 //! Unsere Einträge in Claudes settings.json: eintragen, prüfen, entfernen.
 //!
-//! Warum Code und keine Anleitung: sechs Einträge mit absolutem Pfad sind genau die
+//! Warum Code und keine Anleitung: sieben Einträge mit absolutem Pfad sind genau die
 //! Stelle, an der drei Fallen sitzen, die das Projekt schon Stunden gekostet haben. Ein
 //! fehlendes `|| exit 0` blockiert den Agenten (Exit ≠ 0 gilt bei UserPromptSubmit und
 //! PreToolUse als Veto), ein `cmd /c` davor lässt die Kacheln STILL grau, und ein Pfad
@@ -18,11 +18,19 @@ use regex::Regex;
 use serde_json::{Map, Value, json};
 
 /// (Hook-Event, Status-Argument, Matcher). Bewusst kein idle_prompt: „wartet“ =
-/// Notification, „fertig“ = Stop.
-pub const HOOKS: [(&str, &str, Option<&str>); 6] = [
+/// PermissionRequest oder Notification, „fertig“ = Stop.
+///
+/// PermissionRequest läuft, sobald Claude Code nach einer Berechtigung fragen will; die
+/// Notification `permission_prompt` erst, wenn der Dialog rund 6 s offen ist (gemessen
+/// 6,0 s, Claude Code 2.1.331). Notification bleibt für Rückfragen ohne
+/// PermissionRequest (MCP-Eingaben, `agent_needs_input`). `deck-report` gibt nichts aus
+/// und endet mit 0: das ist für Claude Code „keine Entscheidung“, der Dialog kommt wie
+/// sonst.
+pub const HOOKS: [(&str, &str, Option<&str>); 7] = [
     ("SessionStart", "idle", None),
     ("UserPromptSubmit", "thinking", None),
     ("PreToolUse", "running", Some("*")),
+    ("PermissionRequest", "waiting", None),
     ("PostToolUse", "thinking", Some("*")),
     ("Notification", "waiting", None),
     ("Stop", "done", None),
@@ -129,7 +137,7 @@ fn parent_of(p: &str) -> String {
 
 /// Zeigt ein Kommando schon auf `leaf` IN DIESEM Ordner? Toleranter als ein
 /// Stringvergleich: ein eigenes Anhängsel an der statusLine wird nicht jedes Mal neu
-/// geschrieben. Bei den sechs Hooks gilt das nicht, dort ist die exakte Form der Zweck.
+/// geschrieben. Bei den Hooks gilt das nicht, dort ist die exakte Form der Zweck.
 fn points_here(command: Option<&str>, bin_dir: &str, leaf: &str) -> bool {
     let Some(p) = command.and_then(command_path) else { return false };
     norm_path(&p) == norm_path(&format!("{bin_dir}/{leaf}"))

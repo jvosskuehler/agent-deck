@@ -58,6 +58,8 @@ mod tests_extension;
 #[cfg(test)]
 mod tests_head;
 #[cfg(test)]
+mod tests_query;
+#[cfg(test)]
 mod tests_refs;
 #[cfg(test)]
 mod tests_reserve;

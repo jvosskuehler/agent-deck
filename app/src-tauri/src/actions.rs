@@ -98,10 +98,11 @@ impl Deck {
     }
 
     /// Sprung-Taste: das Pane, das am längsten wartet; steht man schon bei einem
-    /// Wartenden, der nächste (reihum). Wartet niemand, passiert nichts.
+    /// Wartenden, der nächste (reihum). Wartet niemand, passiert nichts. Zählt der Stand
+    /// des letzten Takts, nicht die Dateien: eine abgelehnte Rückfrage steht dort noch als
+    /// `waiting` (`deck_core::query_end`).
     pub fn jump_to_waiting(&mut self) {
-        let states = read_all(&self.paths.state_dir);
-        if let Some(slot) = next_slot(&states, &self.shown_slots, self.active_slot.as_deref()) {
+        if let Some(slot) = next_slot(&self.states, &self.shown_slots, self.active_slot.as_deref()) {
             self.focus_slot(&slot);
         }
     }

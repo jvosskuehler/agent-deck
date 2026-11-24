@@ -161,6 +161,15 @@ fn thinking_falls_asleep_without_fresh_report_and_running_shows_as_thinking() {
 }
 
 #[test]
+fn an_open_question_neither_falls_asleep_nor_ends_because_the_status_line_keeps_writing() {
+    // Nur das Transcript beendet eine Rückfrage (`query_end`); Zeit und Statuszeile nicht.
+    let mut f = Fixture::new();
+    f.states = map(json!({"A1": {"status": "waiting", "ts": NOW - 3600.0}}));
+    f.live = map(json!({"A1": {"model": "Opus", "msg_tokens": 86, "ctx_tokens": 55176, "ts": NOW}}));
+    assert_eq!(f.tile("A1").status, Status::Waiting);
+}
+
+#[test]
 fn card_fields_come_from_live_values_state_and_remembered_effort() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "waiting", "ts": NOW, "effort": "high", "mode": "plan"},

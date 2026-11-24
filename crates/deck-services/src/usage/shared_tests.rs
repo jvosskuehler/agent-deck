@@ -202,6 +202,22 @@ fn the_log_names_whose_budget_was_empty() {
     assert!(log.contains("OK (Abruf, Desktop-Token) -> Cache aktualisiert, Takt 270s"), "{log}");
 }
 
+#[test]
+fn the_log_holds_changes_not_every_poll() {
+    // Je Durchgang ein Abruf: OK, OK, OK, zweimal 500, OK.
+    let ok = reply(200, None, "{}");
+    let r = rig(vec![ok.clone(), ok.clone(), ok.clone(), reply(500, None, ""), reply(500, None, ""), ok]);
+    for _ in 0..6 {
+        r.poller.get_usage(true);
+    }
+    let log = std::fs::read_to_string(r.poller.cache_path().with_file_name(LOG_FILE)).unwrap();
+    let lines: Vec<&str> = log.lines().map(|l| l.split("  ").last().unwrap()).collect();
+    assert_eq!(lines.len(), 3, "{log}");
+    assert!(lines[0].starts_with("OK (Abruf, CLI-Token)"), "erster Erfolg: {log}");
+    assert_eq!(lines[1], "HTTP 500 (letzter Wert bleibt) (vorher 3x OK)");
+    assert!(lines[2].starts_with("OK (Abruf") && lines[2].ends_with("(vorher 2x HTTP 500)"), "Erholung mit Anzahl: {log}");
+}
+
 // ── Zwei Konten (2026-11-08): der Cache trägt sein Konto ─────────────────────────────
 
 /// Cache eines Kontos, der noch eine Minute lebt.

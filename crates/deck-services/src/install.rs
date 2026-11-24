@@ -141,7 +141,7 @@ fn is_deck_statusline(m: &Map<String, Value>) -> bool {
     cmd.is_some_and(|c| hook_setup::owner(c) == hook_setup::Owner::Deck)
 }
 
-/// Die sechs Hooks und die statusLine auf die Programme in `bin_dir` richten (dort liegen
+/// Die Hooks (`HOOKS`) und die statusLine auf die Programme in `bin_dir` richten (dort liegen
 /// `deck-report.exe` und `deck-statusline.exe`). Fremde Hooks bleiben. Eine fremde
 /// statusLine kommt bei [`StatusLine::Replace`] (Vorgabe) vorher nach `saved_file`;
 /// bei [`StatusLine::Keep`] bleibt sie. Zeigt die statusLine schon auf das Deck, ändert

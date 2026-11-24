@@ -22,6 +22,7 @@ use deck_core::crash_resume::{Pending, ResumeMemo};
 use deck_core::deck_view::{DeckInput, StatusMemory, WindowInfo, build_deck_view, chat_worktree, slot_dirs};
 use deck_core::front::BackToggle;
 use deck_core::i18n::Lang;
+use deck_core::query_end::QueryWatch;
 use deck_core::slot_state::{SlotState, read_all, read_found_tickets, read_found_worktrees, read_live};
 use deck_core::status_model::{adopt_hook_mode, mode_cycle};
 use deck_core::view::{DeckView, RefView};
@@ -93,6 +94,8 @@ pub struct Deck {
     pub reserve_ts: f64,
     last_cycle: Option<Vec<String>>,
     memory: StatusMemory,
+    /// Rückfragen, die ohne Hook endeten (abgelehnt, abgebrochen), aus dem Transcript.
+    queries: QueryWatch,
     mode_cache: DefaultModeCache,
 }
 
@@ -135,6 +138,7 @@ impl Deck {
             reserve_ts: f64::NEG_INFINITY,
             last_cycle: None,
             memory: StatusMemory::default(),
+            queries: QueryWatch::default(),
             mode_cache: DefaultModeCache::new(),
         }
     }
@@ -199,6 +203,9 @@ impl Deck {
         // Agenten in WSL melden ihren worktree als Linux-Pfad.
         self.worktrees = read_found_worktrees(dir).into_iter().map(|(s, p)| (s, self.env.to_windows(&p))).collect();
         self.drop_inherited();
+        for (slot, end) in self.queries.settle(&mut self.states) {
+            crate::applog::note(format!("Rückfrage {slot} {} (ohne Hook, aus dem Transcript)", end.label()));
+        }
     }
 
     /// Meldungen des Vorgängers im selben Slot wegwerfen (`wt::inherited`): der Agent ist

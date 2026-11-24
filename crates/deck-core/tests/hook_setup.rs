@@ -32,7 +32,7 @@ fn merged(s: Value) -> (Map<String, Value>, Vec<Note>) {
 }
 
 #[test]
-fn a_fresh_file_gets_all_six_hooks_and_the_statusline() {
+fn a_fresh_file_gets_every_hook_and_the_statusline() {
     let (out, notes) = merged(json!({}));
     let events: Vec<&String> = out["hooks"].as_object().unwrap().keys().collect();
     assert_eq!(events, HOOKS.iter().map(|h| h.0).collect::<Vec<_>>());
@@ -177,6 +177,18 @@ fn remove_takes_out_only_our_entries() {
 }
 
 #[test]
+fn an_update_adds_the_permission_request_and_uninstall_takes_it_out_again() {
+    let (mut old, _) = merged(json!({}));
+    old["hooks"].as_object_mut().unwrap().shift_remove("PermissionRequest");
+    let (out, notes) = merge(&old, BIN, MergeOptions::default());
+    assert_eq!(cmds(&out, "PermissionRequest"), [hook_command(BIN, "waiting")]);
+    assert!(out["hooks"]["PermissionRequest"][0].get("matcher").is_none());
+    assert_eq!(notes.len(), 1, "nur der neue Eintrag: {notes:?}");
+    let (gone, _) = remove(&out);
+    assert!(gone.get("hooks").is_none(), "{gone:?}");
+}
+
+#[test]
 fn ownership_is_recognized_by_file_name_with_boundaries() {
     assert_eq!(owner("python C:\\tools\\my_report.py"), Owner::Foreign);
     assert_eq!(owner("python C:\\tools\\report.pyc"), Owner::Foreign);
@@ -201,7 +213,7 @@ fn audit_ok(s: &Map<String, Value>) -> Vec<Finding> {
 #[test]
 fn a_complete_set_yields_exactly_one_ok() {
     let f = audit_ok(&merged(json!({})).0);
-    assert_eq!(f, [("ok", format!("6 Hooks und die statusLine zeigen auf {BIN}"))]);
+    assert_eq!(f, [("ok", format!("7 Hooks und die statusLine zeigen auf {BIN}"))]);
 }
 
 #[test]
@@ -230,7 +242,7 @@ fn a_missing_program_fails_and_another_folder_warns() {
 fn short_and_long_windows_paths_are_the_same_folder() {
     let s = merge(&Map::new(), r"C:\Users\JORRIT~1\deck", MergeOptions::default()).0;
     let f = audit(&s, r"C:\Users\Jorrit-lang\deck", &|_| true, &|p| p.replace("JORRIT~1", "Jorrit-lang"));
-    assert_eq!(f, [("ok", r"6 Hooks und die statusLine zeigen auf C:\Users\Jorrit-lang\deck".to_string())]);
+    assert_eq!(f, [("ok", r"7 Hooks und die statusLine zeigen auf C:\Users\Jorrit-lang\deck".to_string())]);
 }
 
 #[test]

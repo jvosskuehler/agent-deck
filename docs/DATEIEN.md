@@ -12,6 +12,17 @@ ersetzen, kompaktes UTF-8-JSON über serde), nie mit Sperre lesen. Gelesen wird 
 ein Feld mit falschem Typ gilt als fehlend (`deck_core::field`), kein Hook scheitert
 daran. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 
+`transcript` ist der Pfad des Transcripts aus dem Hook-Eingang, als
+Windows-Pfad. Das Deck braucht ihn für eine Rückfrage, die ohne Hook endet: lehnt man
+den Berechtigungsdialog ab oder bricht ab, ruft Claude Code keinen Hook auf, die Datei
+bleibt auf `waiting`. Das Deck liest dann das Ende des Transcripts
+(`deck_core::query_end`) und zeigt den Agenten als `idle`, sobald dort nach dem `ts` der
+Rückfrage eine Ablehnung, ein Abbruch oder ein Compact steht. Nur in der Anzeige: die
+Datei bleibt, wie der Hook sie schrieb, bis zur nächsten Meldung.
+`waiting` melden zwei Hooks: `PermissionRequest` sofort, wenn Claude Code fragen will,
+`Notification` (`permission_prompt`) rund 6 s später; Rückfragen ohne Berechtigung
+(MCP-Eingaben) kommen nur über `Notification`.
+
 Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts,
 `orphans.json`, `ui-alive.json`, `heartbeat.json` …) liegen in
 `%LOCALAPPDATA%\claude-agent-deck\`, nicht neben dem Code. `heartbeat.json` liest nur

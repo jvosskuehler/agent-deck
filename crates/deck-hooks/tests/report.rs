@@ -146,3 +146,26 @@ fn a_wsl_agent_reports_its_linux_cwd_as_a_windows_path() {
     let rec = run_with(&env, "thinking", json!({"hook_event_name": "UserPromptSubmit", "cwd": "/home/dev/repos/api", "prompt": "los"})).unwrap();
     assert_eq!(rec["cwd"], r"\\wsl.localhost\Ubuntu\home\dev\repos\api");
 }
+
+#[test]
+fn a_permission_request_is_a_question_at_once_with_the_tool_it_asks_about() {
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_in(dir.path(), Some("A1"));
+    let rec = run_with(&env, "waiting", json!({"hook_event_name": "PermissionRequest", "permission_mode": "default",
+        "tool_name": "Write", "tool_input": {"file_path": "/tmp/x.txt", "content": "ok"},
+        "permission_suggestions": [{"type": "setMode", "mode": "acceptEdits"}]})).unwrap();
+    assert_eq!((rec["status"].as_str(), rec["mode"].as_str(), rec["activity"].as_str()), (Some("waiting"), Some("manual"), Some("Write: /tmp/x.txt")));
+}
+
+#[test]
+fn the_transcript_path_is_written_as_a_windows_path_and_carried_over() {
+    let d = tempfile::tempdir().unwrap();
+    let mut env = env_in(d.path(), Some("A1"));
+    env.wsl = Some(deck_core::wsl::Wsl::new("Ubuntu", "", "/mnt/"));
+    // Das Linux-Programm behält im Eingang den Linux-Pfad (`env::localize`).
+    let rec = run_with(&env, "running", json!({"transcript_path": "/home/dev/.claude/projects/x/s.jsonl", "tool_name": "Bash"})).unwrap();
+    let want = r"\\wsl.localhost\Ubuntu\home\dev\.claude\projects\x\s.jsonl";
+    assert_eq!(rec["transcript"], want);
+    let rec = run_with(&env, "waiting", json!({"hook_event_name": "Notification", "notification_type": "permission_prompt"})).unwrap();
+    assert_eq!(rec["transcript"], want, "fortgetragen");
+}

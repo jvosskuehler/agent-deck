@@ -50,6 +50,21 @@ fn every_path_ends_with_exit_zero_even_when_writing_is_impossible() {
 }
 
 #[test]
+fn a_permission_request_gets_no_output_so_claude_code_shows_its_dialog() {
+    // Exit 0 ohne Ausgabe ist bei PermissionRequest „keine Entscheidung“: ein JSON mit
+    // `decision` erlaubte oder verweigerte an der Stelle des Menschen.
+    let local = tempfile::tempdir().unwrap();
+    let input = r#"{"hook_event_name": "PermissionRequest", "tool_name": "Write", "tool_input": {"file_path": "/tmp/x"}}"#;
+    for slot in [Some("Q2"), None] {
+        let out = run(REPORT, &["waiting"], local.path(), slot, input.as_bytes());
+        assert_eq!(out.status.code(), Some(0));
+        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{slot:?}: {:?}", String::from_utf8_lossy(&out.stdout));
+    }
+    let p = local.path().join("claude-agent-deck").join("state").join("Q2.json");
+    assert!(std::fs::read_to_string(p).unwrap().contains(r#""status":"waiting""#));
+}
+
+#[test]
 fn the_status_line_arrives_as_utf8_even_with_umlauts() {
     let local = tempfile::tempdir().unwrap();
     let data = r#"{"model": {"display_name": "Opus"}, "session_name": "Eigenes Terminal für Claude Code"}"#.as_bytes();

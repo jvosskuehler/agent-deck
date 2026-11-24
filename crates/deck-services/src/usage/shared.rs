@@ -14,7 +14,9 @@
 //! genau einem Abruf, mit gelerntem Takt, Backoff und `Retry-After` (`policy.rs`).
 //! Diese Fassung ist damit ein gleichberechtigter Teilnehmer des gemeinsamen Pollers;
 //! sie schreibt dieselben Felder mit denselben Zahlentypen und dasselbe Protokoll
-//! (`poller.log`, von `doctor.py` nach Stunde ausgewertet). Der Tray liest mit
+//! (`poller.log`, von `doctor.py` nach Stunde ausgewertet). Ins Protokoll kommt nur ein
+//! Wechsel des Ergebnisses (erster Erfolg, Fehler, Erholung mit Anzahl der Wiederholungen),
+//! nicht jeder Abruf: alle zwei Minuten „OK“ beantwortet keine Frage. Der Tray liest mit
 //! `json.load`; Trenner und Maskierung sind ihm egal (`shared_format_tests.rs`).
 //!
 //! **Der Cache trägt sein Konto** (`account`, E-Mail klein, seit 2026-11-08). Ein Cache,
@@ -24,7 +26,7 @@
 //! das Budget des Endpoints wäre schnell weg.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 
@@ -114,6 +116,8 @@ pub struct SharedPoller {
     /// Zufall in [-1, 1] für die Streuung.
     unit_rand: Clock,
     log: LogFile,
+    /// Art des letzten Ergebnisses in diesem Prozess und wie oft hintereinander.
+    streak: Mutex<Option<(String, u32)>>,
 }
 
 /// Die Quellen-Namen zu den Token-Indizes (gleiche Reihenfolge wie `DiskTokens`), nur
@@ -159,7 +163,28 @@ impl SharedPoller {
     ) -> SharedPoller {
         let log = LogFile::new(dir.join(LOG_FILE), 131_072, Rotate::KeepTail(300))
             .with_prefix(format!("  pid={}  ", std::process::id()));
-        SharedPoller { dir, lock, tokens, http, clock, unit_rand, log }
+        SharedPoller { dir, lock, tokens, http, clock, unit_rand, log, streak: Mutex::new(None) }
+    }
+
+    /// Ein Ergebnis protokollieren, wenn es sich von dem vorigen unterscheidet (`kind`);
+    /// `details` (welche Quelle abgewiesen wurde) gehören dazu und kommen nur mit ihm.
+    /// Die Wiederholungen des vorigen Ergebnisses stehen in der Zeile des neuen.
+    fn note_outcome(&self, kind: &str, line: String, details: &[String]) {
+        let Ok(mut streak) = self.streak.lock() else { return };
+        let before = match streak.as_mut() {
+            Some((k, n)) if k == kind => {
+                *n += 1;
+                return;
+            }
+            Some((k, n)) if *n > 1 => format!(" (vorher {n}x {k})"),
+            _ => String::new(),
+        };
+        *streak = Some((kind.to_string(), 1));
+        drop(streak);
+        for d in details {
+            self.log.note(d);
+        }
+        self.log.note(&format!("{line}{before}"));
     }
 
     pub fn cache_path(&self) -> PathBuf {
@@ -237,14 +262,17 @@ impl SharedPoller {
                    "data_ts": c.get("data_ts").cloned().unwrap_or(Value::Null),
                    "error": error, "next_ts": next_ts, "n429": n429, "interval": interval})
         };
-        match self.fetch_raw(force) {
+        let mut details = Vec::new();
+        let result = self.fetch_raw(force, &mut details);
+        let note = |kind: &str, line: String| self.note_outcome(kind, line, &details);
+        match result {
             Ok((data, i)) => {
                 let iv = next_interval(Some(interval), true);
-                self.log.note(&format!("OK (Abruf, {}-Token) -> Cache aktualisiert, Takt {}s", src_name(i), iv as i64));
+                note("OK", format!("OK (Abruf, {}-Token) -> Cache aktualisiert, Takt {}s", src_name(i), iv as i64));
                 json!({"data": data, "data_ts": now, "error": null, "next_ts": now + jit(iv), "n429": 0, "interval": iv})
             }
             Err(FetchError::Http { code: code @ (401 | 403), .. }) => {
-                self.log.note(&format!("HTTP {code} (Token ungueltig)"));
+                note(&format!("HTTP {code}"), format!("HTTP {code} (Token ungueltig)"));
                 json!({"data": null, "data_ts": null, "error": "Token ungueltig – 'claude auth login'",
                        "next_ts": now + jit(interval), "n429": 0, "interval": interval})
             }
@@ -258,14 +286,11 @@ impl SharedPoller {
                 let iv = next_interval(Some(interval), false);
                 let wait = back.max(iv);
                 let src = ra.map_or_else(|| "geraten".to_string(), |r| format!("Retry-After {}s", r as i64));
-                self.log.note(&format!(
-                    "HTTP 429 (alle Tokens) -> warte {}s (n={n}, {src}), Takt jetzt {}s",
-                    wait as i64, iv as i64
-                ));
+                note("HTTP 429", format!("HTTP 429 (alle Tokens) -> warte {}s (n={n}, {src}), Takt jetzt {}s", wait as i64, iv as i64));
                 keep("Rate-Limit".into(), now + jit(wait), n, iv)
             }
             Err(FetchError::Http { code, .. }) => {
-                self.log.note(&format!("HTTP {code} (letzter Wert bleibt)"));
+                note(&format!("HTTP {code}"), format!("HTTP {code} (letzter Wert bleibt)"));
                 keep(format!("HTTP {code}"), now + jit(SOFT_RETRY), n429, interval)
             }
             Err(FetchError::Other(name)) => {
@@ -273,10 +298,7 @@ impl SharedPoller {
                 // nullt, rennt nach 25 s direkt in die nächste Sperre (2026-08-18: 22
                 // `getaddrinfo failed`, jeder hat das Limit weiter angeheizt).
                 let wait = if n429 == 0 { SOFT_RETRY } else { backoff_after_429(n429, None) };
-                self.log.note(&format!(
-                    "FEHLER {name} (letzter Wert bleibt, warte {}s, n429={n429})",
-                    wait as i64
-                ));
+                note(&format!("FEHLER {name}"), format!("FEHLER {name} (letzter Wert bleibt, warte {}s, n429={n429})", wait as i64));
                 keep(name, now + jit(wait), n429, interval)
             }
         }
@@ -285,9 +307,9 @@ impl SharedPoller {
     /// Ein Abruf; bei 401/403 einmal die Tokens frisch lesen. `force` liest schon beim
     /// ersten Versuch neu: nach einem Kontowechsel ist das gespeicherte Token zwar noch
     /// gültig, gehört aber zum falschen Konto und liefert brav die falschen Zahlen.
-    fn fetch_raw(&self, force: bool) -> Result<(Value, usize), FetchError> {
+    fn fetch_raw(&self, force: bool, details: &mut Vec<String>) -> Result<(Value, usize), FetchError> {
         let mut note = |i: usize, code: u16| {
-            self.log.note(&format!("  {}-Token -> HTTP {code}, naechste Quelle", src_name(i)));
+            details.push(format!("  {}-Token -> HTTP {code}, naechste Quelle", src_name(i)));
         };
         let tokens = self.tokens.tokens(force).map_err(|_| FetchError::Other("NoTokenError".into()))?;
         match fetch_usage(self.http.as_ref(), &tokens, &mut note) {

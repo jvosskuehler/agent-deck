@@ -36,6 +36,7 @@ pub mod orphans;
 pub mod paths;
 pub mod prompt_cache;
 pub mod prompts;
+pub mod query_end;
 pub mod ref_sources;
 pub mod reserve;
 pub mod season;

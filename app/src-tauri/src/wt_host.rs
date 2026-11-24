@@ -306,6 +306,7 @@ impl WtHost {
         if let Some(r) = self.reserve.slot() {
             started.remove(r);
         }
+        self.note_new_agents(&out, now);
         self.scanned = true;
         self.alive = out.clone();
         self.started = started;
@@ -345,6 +346,23 @@ impl WtHost {
         self.watch_screens(now);
         self.settle_due(now, &names);
         out
+    }
+
+    /// Neue Agenten ins Protokoll (Slot und PID, nichts vom Inhalt); beim ersten Blick
+    /// die schon laufenden in einer Zeile.
+    fn note_new_agents(&self, out: &BTreeMap<String, u32>, now: f64) {
+        if !self.scanned {
+            if !out.is_empty() {
+                note(format!("Agenten beim Start: {}", out.keys().cloned().collect::<Vec<_>>().join(", ")));
+            }
+            return;
+        }
+        for (slot, pid) in out.iter().filter(|(s, _)| !self.alive.contains_key(*s)) {
+            match self.pending.get(slot) {
+                Some(t) => note(format!("Agent {slot} läuft (pid {pid}, {:.1} s nach dem Öffnen)", now - t)),
+                None => note(format!("Agent {slot} läuft (pid {pid})")),
+            }
+        }
     }
 
     /// Hat ein Monitor eine neue Auflösung oder Skalierung, liegen die Fenster an ihren
@@ -611,6 +629,7 @@ impl WtHost {
     /// Kachel, erst dann geht der Vorhang weg. Man sieht den alten Block stehen und dann
     /// den neuen auf einmal, ohne Überlappen und ohne Nachruckeln.
     fn open_agent(&mut self, win: &str, name: &str, folder: &str, argv: &[String]) {
+        note(format!("Agent {name}: wird geöffnet"));
         let name = name.to_string();
         let (spot, order, ahead) = self.next_spot(win);
         self.pending.insert(name.clone(), (self.clock)());
@@ -804,6 +823,7 @@ impl WtHost {
     /// das Fenster dann selbst zu). `false` = der Slot lebt nicht.
     pub fn close_agent(&mut self, slot: &str) -> bool {
         let Some(pid) = self.alive_slots().get(slot).copied() else { return false };
+        note(format!("Agent {slot}: wird geschlossen (pid {pid})"));
         let path = self.setup.state_dir.join(format!("{slot}{}", wt::PID_SUFFIX));
         let p = self.fx.procs.clone();
         self.closing.insert(slot.to_string());
@@ -823,6 +843,8 @@ impl WtHost {
                 match p.kill_tree(pid) {
                     Ok(()) => {
                         let _ = fs::remove_file(&path);
+                        // Ein Ende ohne das Deck protokolliert `crash_resume` samt Urteil.
+                        note(format!("Agent {slot} beendet (vom Deck geschlossen)"));
                     }
                     Err(e) => {
                         note(format!("wt_host.close pid={pid}: {e}"));

@@ -1,8 +1,8 @@
 //! `deck-report <status>`: von den Claude-Code-Hooks aufgerufen, schreibt den Zustand
 //! des Agenten nach `state\<slot>.json`.
 //!
-//! Felder, die nur manche Events liefern (mode, effort, session_id, prompt), werden aus
-//! der vorigen Datei fortgetragen; das cwd des Hooks
+//! Felder, die nur manche Events liefern (mode, effort, session_id, prompt, transcript),
+//! werden aus der vorigen Datei fortgetragen; das cwd des Hooks
 //! ist das des Agenten (ein `cd` im Bash-Tool ändert es nicht). Ein Notification-Event,
 //! das keine echte Rückfrage ist, und ein SessionStart, der kein echter Start ist,
 //! lassen die Datei unberührt.
@@ -71,9 +71,14 @@ pub fn activity_of(data: &Data) -> Option<String> {
     Some(if detail.is_empty() { tn.to_string() } else { format!("{tn}: {detail}") })
 }
 
-/// Ist ein Notification-Event eine echte Rückfrage? Bevorzugt `notification_type`;
-/// ältere Versionen ohne das Feld erkennt der Text der Permission-Meldung.
+/// Ist ein „waiting“-Event eine echte Rückfrage? `PermissionRequest` immer: es läuft nur,
+/// wenn Claude Code gleich fragt (in Bypass und Auto gemessen nicht), und kommt rund 6 s
+/// vor der Notification. Bei Notification bevorzugt `notification_type`; ältere
+/// Versionen ohne das Feld erkennt der Text der Permission-Meldung.
 pub fn is_real_query(data: &Data) -> bool {
+    if data.get("hook_event_name").and_then(Value::as_str) == Some("PermissionRequest") {
+        return true;
+    }
     if let Some(nt) = data.get("notification_type").and_then(Value::as_str).filter(|s| !s.is_empty()) {
         return WAIT_NOTIFY.contains(&nt);
     }
@@ -137,6 +142,13 @@ pub fn run(status: &str, env: &HookEnv, stdin: impl FnOnce() -> Option<Vec<u8>>)
     }
     if let Some(prompt) = prompt_of(data).map(Value::from).or_else(|| carried("prompt")) {
         rec.insert("prompt".into(), prompt);
+    }
+    // Für `deck_core::query_end`: dort steht, ob eine Rückfrage ohne Hook endete. Das
+    // Linux-Programm behält den Linux-Pfad zum Lesen (`env::localize`), in die Datei kommt
+    // der Windows-Pfad.
+    let transcript = text(data.get("transcript_path")).map(|p| env.wsl.as_ref().map_or_else(|| p.to_string(), |w| w.to_windows(p)));
+    if let Some(tp) = transcript.map(Value::from).or_else(|| carried("transcript")) {
+        rec.insert("transcript".into(), tp);
     }
     save_json(&dst, &Value::Object(rec)).ok()?;
     Some(dst)
