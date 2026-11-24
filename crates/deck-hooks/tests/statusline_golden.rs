@@ -21,6 +21,7 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
         agent_slot: slot.map(String::from),
         cwd: None,
         now: NOW,
+        wsl: None,
     }
 }
 
@@ -72,28 +73,28 @@ fn the_header_shows_the_decks_ticket_with_and_without_pr_and_shortens_a_long_tit
         // mit Ticket: es steht vorn, der Titel wird um genau so viel kürzer
         (
             base.clone(),
-            Some(refs("ORPH-4116", false, None)),
-            "\x1b[1mB3 · ORPH-4116 · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
+            Some(refs("DEMO-4116", false, None)),
+            "\x1b[1mB3 · DEMO-4116 · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
         ),
         // nur geratenes Ticket: gedimmt
         (
             base.clone(),
-            Some(refs("ORPH-4116", true, None)),
-            "\x1b[1mB3 · \x1b[22;2mORPH-4116\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
+            Some(refs("DEMO-4116", true, None)),
+            "\x1b[1mB3 · \x1b[22;2mDEMO-4116\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der Statuszeile…\x1b[0m",
         ),
         // Ticket und PR aus dem stdin
         (
             with_pr.clone(),
-            Some(refs("ORPH-4116", false, Some(("#12", true)))),
-            "\x1b[1mB3 · ORPH-4116 · PR #347 \x1b[32mfreigegeben\x1b[39m · Agent Deck: Ticket aus der Kachel a…\x1b[0m",
+            Some(refs("DEMO-4116", false, Some(("#12", true)))),
+            "\x1b[1mB3 · DEMO-4116 · PR #347 \x1b[32mfreigegeben\x1b[39m · Agent Deck: Ticket aus der Kachel a…\x1b[0m",
         ),
         // PR ohne Ticket
         (with_pr, None, "\x1b[1mB3 · PR #347 \x1b[32mfreigegeben\x1b[39m · Agent Deck: Ticket aus der Kachel auch in der S…\x1b[0m"),
         // kein PR im stdin: der des Decks, hier geraten und gedimmt
         (
             base,
-            Some(refs("ORPH-4116", false, Some(("#12", true)))),
-            "\x1b[1mB3 · ORPH-4116 · \x1b[22;2mPR #12\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der St…\x1b[0m",
+            Some(refs("DEMO-4116", false, Some(("#12", true)))),
+            "\x1b[1mB3 · DEMO-4116 · \x1b[22;2mPR #12\x1b[22;1m · Agent Deck: Ticket aus der Kachel auch in der St…\x1b[0m",
         ),
     ];
     for (stdin, refs_json, want) in cases {
@@ -106,17 +107,17 @@ fn a_full_stdin_gives_the_golden_lines_in_both_languages() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), Some("A1"));
     std::fs::create_dir_all(&env.state_dir).unwrap();
-    save_json(&refs_path(&env.state_dir, "A1"), &refs("ORPH-4116", false, None)).unwrap();
+    save_json(&refs_path(&env.state_dir, "A1"), &refs("DEMO-4116", false, None)).unwrap();
     assert_eq!(
         run_with(&env, &full()),
-        "\x1b[1mA1 · ORPH-4116 · PR #12 \x1b[33mÄnderungen gewünscht\x1b[39m · Statuszeile für Wörter\x1b[0m\n\
+        "\x1b[1mA1 · DEMO-4116 · PR #12 \x1b[33mÄnderungen gewünscht\x1b[39m · Statuszeile für Wörter\x1b[0m\n\
          Opus 5.5  ·  effort xhigh  ·  ctx 42%  ·  cache 29 min"
     );
     std::fs::write(&env.claude_settings, r#"{"language": "english"}"#).unwrap();
-    save_json(&refs_path(&env.state_dir, "A1"), &refs("ORPH-1", false, None)).unwrap();
+    save_json(&refs_path(&env.state_dir, "A1"), &refs("DEMO-1", false, None)).unwrap();
     assert_eq!(
         run_with(&env, &full()),
-        "\x1b[1mA1 · ORPH-1 · PR #12 \x1b[33mchanges requested\x1b[39m · Statuszeile für Wörter\x1b[0m\n\
+        "\x1b[1mA1 · DEMO-1 · PR #12 \x1b[33mchanges requested\x1b[39m · Statuszeile für Wörter\x1b[0m\n\
          Opus 5.5  ·  effort xhigh  ·  ctx 42%  ·  cache 29 min"
     );
 }

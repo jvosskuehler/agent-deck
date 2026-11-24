@@ -34,7 +34,7 @@ impl GitFs for NoGit {
     }
 }
 
-/// `ref: refs/heads/feature/ORPH-4116` → `feature/ORPH-4116`. Ein losgelöster HEAD (nur
+/// `ref: refs/heads/feature/DEMO-4116` → `feature/DEMO-4116`. Ein losgelöster HEAD (nur
 /// ein Commit-Hash) hat keinen Branch.
 pub fn parse_head(content: &str) -> Option<String> {
     let line = content.lines().next()?.trim();
@@ -50,6 +50,11 @@ pub fn parse_gitdir(content: &str, base: &Path) -> Option<PathBuf> {
     let dir = line.strip_prefix("gitdir:")?.trim();
     if dir.is_empty() {
         return None;
+    }
+    // Ein worktree, den git in WSL angelegt hat, nennt seinen gitdir als Linux-Pfad
+    // (`/home/dev/repos/api/.git/worktrees/x`); gelesen wird über `\\wsl.localhost\…`.
+    if let Some(w) = crate::wsl::beside(&base.to_string_lossy(), dir) {
+        return Some(PathBuf::from(w));
     }
     let p = PathBuf::from(dir);
     Some(if p.is_absolute() { p } else { base.join(p) })

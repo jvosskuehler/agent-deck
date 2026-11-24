@@ -34,8 +34,10 @@ impl WindowsTheme for FakeTheme {
     }
 }
 
+const HAMBURG: Place = sun::p("hamburg", "Hamburg", "Hamburg", 53.55, 10.00);
+
 fn hamburg() -> &'static Place {
-    sun::place("hamburg").unwrap()
+    &HAMBURG
 }
 
 /// 17.11.2026 in UTC (Aufgang 06:48, Untergang 15:22).
@@ -121,7 +123,7 @@ fn the_thread_switches_once_a_place_is_set_and_stays_idle_without_one() {
     let s = SunSwitch::start(t.clone(), evening, Arc::new(|_| {}));
     std::thread::sleep(Duration::from_millis(50));
     assert!(t.writes().is_empty(), "ohne Ort tut er nichts");
-    s.set(Some(hamburg()));
+    s.set(Some(HAMBURG));
     let deadline = Instant::now() + Duration::from_secs(5);
     while t.writes().is_empty() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(10));

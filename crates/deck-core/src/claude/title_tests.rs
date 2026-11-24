@@ -69,7 +69,7 @@ fn clean_keeps_area_and_topic() {
 
 #[test]
 fn clean_drops_ticket_and_pr_numbers() {
-    assert_eq!(clean("Matrixbot: ORPH-4267 Sprachnachrichten").as_deref(), Some("Matrixbot: Sprachnachrichten"));
+    assert_eq!(clean("Matrixbot: DEMO-4267 Sprachnachrichten").as_deref(), Some("Matrixbot: Sprachnachrichten"));
     assert_eq!(clean("Kundenservice: Prompt für LLM (PR #359)").as_deref(), Some("Kundenservice: Prompt für LLM"));
     assert_eq!(clean("Kundenservice: Tiefe für $42664").as_deref(), Some("Kundenservice: Tiefe für"));
 }

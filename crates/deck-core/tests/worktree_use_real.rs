@@ -45,7 +45,7 @@ fn last_name(p: &str) -> String {
 #[ignore = "liest die echten Transcripts; nur von Hand"]
 fn print_detected_tickets_of_recent_sessions() {
     let n: usize = std::env::var("DECK_PROBE_N").ok().and_then(|v| v.parse().ok()).unwrap_or(20);
-    let prefix = std::env::var("DECK_PROBE_PREFIX").unwrap_or_else(|_| "ORPH".into());
+    let prefix = std::env::var("DECK_PROBE_PREFIX").unwrap_or_else(|_| "DEMO".into());
     let mut files: Vec<(std::time::SystemTime, std::path::PathBuf)> = Vec::new();
     for proj in std::fs::read_dir(projects_dir()).expect("projects").flatten() {
         for f in std::fs::read_dir(proj.path()).into_iter().flatten().flatten() {

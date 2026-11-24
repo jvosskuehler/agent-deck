@@ -1,6 +1,6 @@
 //! Die freie Kachel neben den Agentenfenstern eines Blocks: 5 Fenster liegen als 3 + 2,
-//! rechts unten bleibt eine Kachel leer (`arrange::grid_gap`). Dort steht das
-//! Info-Fenster (`dash_window.rs`).
+//! rechts unten bleibt eine Kachel leer (`arrange::grid_gap`). Der Kern zeigt dort
+//! nichts; eine Erweiterung kann sie füllen (`WtHost::gap`, `ui_windows::companion`).
 //!
 //! Eine Lücke gibt es nur, solange die Fenster so liegen, wie [`wt_tiles::tile`] sie
 //! gelegt hat. Hat der Nutzer eines verschoben, maximiert oder minimiert, weiß das Deck
@@ -14,10 +14,13 @@ use crate::wt_tiles;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gap {
-    /// Fläche des Info-Fensters (physische Pixel), wie eine Kachel ohne Statusring.
+    /// Fläche der freien Kachel (physische Pixel): die ganze Kachel samt dem Streifen, in
+    /// dem bei den Agenten der Statusring liegt. Wer sie füllt, malt dort selbst einen Rand
+    /// (`group_shadow::ring_px` breit), sonst schiene im Streifen und in runden Ecken der
+    /// Desktop durch.
     pub rect: Rect,
-    /// Das vorderste Agentenfenster des Blocks: das Info-Fenster liegt direkt dahinter,
-    /// also mit den Agenten zusammen vorn oder hinten, nie über einem fremden Fenster.
+    /// Das vorderste Agentenfenster des Blocks: wer die Lücke füllt, legt sich direkt
+    /// dahinter, also mit den Agenten zusammen vorn oder hinten, nie über ein fremdes Fenster.
     pub above: Hwnd,
 }
 
@@ -38,7 +41,8 @@ pub fn gap(desktop: &dyn Desktop, slots: &[String]) -> Option<Gap> {
     )?;
     let ours: Vec<Hwnd> = plan.iter().map(|(h, _)| *h).collect();
     let above = desktop.z_order().into_iter().find(|h| ours.contains(h)).unwrap_or(first);
-    Some(Gap { rect: wt_tiles::tile_rect(cell, scale), above })
+    let (x, y, w, h) = cell;
+    Some(Gap { rect: Rect::from_xywh(x as i32, y as i32, w as i32, h as i32), above })
 }
 
 #[cfg(test)]
@@ -68,10 +72,11 @@ mod tests {
         let d = tiled(5);
         let g = gap(&d, &slots(5)).expect("Lücke");
         let last = d.window_rect(Hwnd(104)).unwrap();
-        assert_eq!(g.rect.top, last.top, "gleiche Reihe wie das letzte Fenster");
-        assert!(g.rect.left > last.right, "rechts daneben, mit Statusring dazwischen");
-        assert_eq!(g.rect.width(), last.width(), "so breit wie eine Kachel");
-        assert_eq!(g.rect.height(), last.height());
+        let ring = deck_core::group_shadow::ring_px(1.0) as i32;
+        assert_eq!(g.rect.top, last.top - ring, "gleiche Reihe wie das letzte Fenster, samt Ring");
+        assert_eq!(g.rect.left, last.right + ring, "bündig an den Ring des Nachbarn");
+        assert_eq!(g.rect.width(), last.width() + 2 * ring, "so breit wie eine Kachel samt Ring");
+        assert_eq!(g.rect.height(), last.height() + 2 * ring);
     }
 
     #[test]
@@ -88,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn the_info_window_lies_right_behind_the_front_most_agent() {
+    fn the_gap_lies_right_behind_the_front_most_agent() {
         let d = tiled(5);
         d.set_foreground(Hwnd(999), "Browser", "Chrome_WidgetWin_1");
         d.set_foreground(Hwnd(103), "B4", deck_core::wt::WINDOW_CLASS);

@@ -128,7 +128,7 @@ fn restart(app_dir: &Path) -> ! {
         })
     });
     if !started {
-        note("Neustart: Kind nicht gestartet, der Wächter muss einspringen");
+        note("Neustart: Kind nicht gestartet, Deck muss von Hand neu gestartet werden");
     }
     // SAFETY: beendet nur den eigenen Prozess.
     unsafe {

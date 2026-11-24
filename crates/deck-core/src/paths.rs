@@ -29,6 +29,9 @@ pub const WT_HOSTS_FILE: &str = "wt_hosts.json";
 /// `{"statusLine": <alter Wert>}`. `deck-setup install` legt sie an, `deck-statusline`
 /// ruft ihr Kommando weiter auf, `deck-setup uninstall` legt sie zurück.
 pub const STATUSLINE_BACKUP_FILE: &str = "statusline.before.json";
+/// Dasselbe für die Claude-Einstellungen in der WSL-Distro der Agenten (`deck-setup install
+/// --wsl`); `deck-statusline` ruft sie dann in der Distro auf (`wsl.exe -e sh -c`).
+pub const STATUSLINE_BACKUP_WSL_FILE: &str = "statusline.before.wsl.json";
 
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.is_empty())

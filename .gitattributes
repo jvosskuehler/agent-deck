@@ -6,6 +6,9 @@
 *.bat  text eol=crlf
 *.ps1  text eol=crlf
 
+# Läuft in WSL (bash): ein CR am Zeilenende wäre Teil jedes Befehls.
+*.sh   text eol=lf
+
 # Quelltext explizit als Text (verhindert Fehlerkennung bei Umlauten)
 *.py   text
 *.js   text

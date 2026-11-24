@@ -16,6 +16,9 @@ use crate::applog::note;
 /// Ressourcen-Konfiguration.
 pub const WT_AGENT_SCRIPT: &str = include_str!("../../../resources/wt_agent.ps1");
 pub const WT_AGENT_FILE: &str = "wt_agent.ps1";
+/// Dasselbe für Agenten in WSL (`deck-wsl.exe` startet es in der Distro über `/mnt/c/…`).
+pub const WT_AGENT_SH: &str = include_str!("../../../resources/wt_agent.sh");
+pub const WT_AGENT_SH_FILE: &str = "wt_agent.sh";
 /// Taskleisten-Symbol der Terminal-Agenten (`tools/make_icons.py`), ebenso eingebaut.
 /// Windows liest es aus einer Datei, darum muss es auf der Platte liegen.
 pub const AGENT_ICON: &[u8] = include_bytes!("../../../resources/agent-taskbar.ico");
@@ -66,6 +69,24 @@ impl Paths {
         self.app_dir.join(WT_AGENT_FILE)
     }
 
+    /// `deck-wsl.exe` neben der App (Starter der Agenten in WSL).
+    pub fn wsl_launcher(&self) -> PathBuf {
+        self.exe_dir.join("deck-wsl.exe")
+    }
+
+    pub fn wt_agent_sh(&self) -> PathBuf {
+        self.app_dir.join(WT_AGENT_SH_FILE)
+    }
+
+    /// Agenten in WSL: Claudes Einstellungen und Transcripts liegen in der Distro.
+    pub fn with_claude_dir(mut self, dir: Option<PathBuf>) -> Paths {
+        if let Some(d) = dir {
+            self.claude_settings = d.join("settings.json");
+            self.projects_dir = d.join("projects");
+        }
+        self
+    }
+
     pub fn agent_icon(&self) -> PathBuf {
         self.app_dir.join(AGENT_ICON_FILE)
     }
@@ -76,7 +97,10 @@ impl Paths {
 /// so ersetzt ein Update eine alte Fassung, ohne bei jedem Start die Platte anzufassen.
 pub fn prepare(p: &Paths) {
     let _ = fs::create_dir_all(&p.state_dir);
-    let built_in: [(PathBuf, &[u8]); 2] = [(p.wt_agent_script(), WT_AGENT_SCRIPT.as_bytes()), (p.agent_icon(), AGENT_ICON)];
+    // Das Shell-Skript immer mit LF: ein CR am Zeilenende verstünde bash als Teil des Befehls.
+    let sh = WT_AGENT_SH.replace('\r', "");
+    let built_in: [(PathBuf, &[u8]); 3] =
+        [(p.wt_agent_script(), WT_AGENT_SCRIPT.as_bytes()), (p.wt_agent_sh(), sh.as_bytes()), (p.agent_icon(), AGENT_ICON)];
     for (path, bytes) in built_in {
         if fs::read(&path).ok().as_deref() != Some(bytes)
             && let Err(e) = paths::atomic_write(&path, bytes)
@@ -101,5 +125,6 @@ mod tests {
         assert!(p.state_dir.is_dir());
         assert_eq!(fs::read_to_string(p.wt_agent_script()).unwrap(), WT_AGENT_SCRIPT);
         assert_eq!(fs::read(p.agent_icon()).unwrap(), AGENT_ICON);
+        assert!(!fs::read(p.wt_agent_sh()).unwrap().contains(&b'\r'), "Shell-Skript mit LF");
     }
 }

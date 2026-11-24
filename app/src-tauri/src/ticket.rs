@@ -1,6 +1,7 @@
 //! Ein Ticket an einen Agenten geben (`deck/ui/ticket.py`); der Agent legt sich selbst
-//! einen git worktree an und meldet dessen Pfad in `state\<slot>.worktree`. Beim
-//! Schließen räumt das Deck genau diesen worktree wieder ab, nie den eines anderen Slots.
+//! einen git worktree an und meldet dessen Pfad in `state\<slot>.worktree`. Wird der Slot
+//! frei, vergisst das Deck den Marker; den worktree selbst lässt diese Ausgabe stehen
+//! (eine Erweiterung kann ihn über `on_slot_released` abräumen).
 
 use std::fs;
 use std::path::Path;
@@ -32,9 +33,12 @@ impl Deck {
         self.store.save_tickets();
         self.clear_found_ticket(slot);
         self.clear_worktree_marker(slot);
-        let prefix = self.jira_prefix();
-        let hub = self.hub_root(slot);
-        let text = ticket_prompt(&self.paths.state_dir, slot, ticket, "", &prefix, hub.as_deref());
+        let prefix = self.ticket_prefix();
+        // Pfade so, wie der Agent sie versteht: in WSL schreibt er den Marker über
+        // `/mnt/c/…` und kennt die Repos unter ihrem Linux-Pfad.
+        let hub = self.hub_root(slot).map(|h| self.env.for_agent(&h));
+        let state = std::path::PathBuf::from(self.env.for_agent(&self.paths.state_dir.to_string_lossy()));
+        let text = ticket_prompt(&state, slot, ticket, "", &prefix, hub.as_deref());
         self.wt.send_text(slot, &text, true);
     }
 
@@ -56,13 +60,13 @@ impl Deck {
         let _ = fs::remove_file(worktree_marker_path(&self.paths.state_dir, slot));
     }
 
-    /// Beim Schließen die worktree(s) des Slots entfernen. Die Signale (Marker, Ticket,
-    /// cwd) werden jetzt gelesen, solange sie noch da sind; das Entfernen (git,
-    /// blockierend) läuft im Hintergrund. Pfade, die ein ANDERER Slot per Marker
-    /// beansprucht, sind tabu: zwei Agenten am selben Ticket teilen sich einen.
+    /// Der Slot wird frei (Agent zu, neues Ticket): Erweiterungen bekommen Slot und Ticket,
+    /// solange Marker und Ticket noch da sind, dann vergisst das Deck den Marker.
     pub fn cleanup_worktrees(&mut self, slot: &str) {
         let ticket = self.store.tickets.get(slot).or_else(|| self.found.get(slot)).cloned();
-        self.services.cleanup_slot(slot, ticket.as_deref());
+        for e in self.ext.clone().iter() {
+            e.on_slot_released(self, slot, ticket.as_deref());
+        }
         self.clear_worktree_marker(slot);
     }
 }

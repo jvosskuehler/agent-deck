@@ -51,6 +51,13 @@ pub fn place(anchor: (i32, i32), size: (u32, u32), area: (i32, i32, u32, u32)) -
     (x, y)
 }
 
+/// Ob das Fenster (Innenmaß `inner`, physisch) für `want` neu gesetzt werden muss. Ein
+/// Pixel zu groß ist Rundung und bleibt; ein Pixel zu niedrig nicht, das gäbe einen
+/// Rollbalken (18.11.2026). Waagerecht rollt nichts (`overflow-x: hidden`).
+pub fn needs_resize(inner: (u32, u32), want: (u32, u32)) -> bool {
+    inner.1 < want.1 || inner.1 > want.1 + 1 || inner.0.abs_diff(want.0) > 1
+}
+
 /// Inhaltsgröße melden: merken und anwenden.
 pub fn fit(w: &WebviewWindow, height: f64, width: Option<f64>) -> tauri::Result<()> {
     with(w.label(), |f| f.content = Some((height, width)));
@@ -98,8 +105,7 @@ fn apply(w: &WebviewWindow) -> tauri::Result<()> {
         let pos = w.outer_position()?;
         let from = anchor.unwrap_or((pos.x, pos.y));
         let to = place(from, (want_w + chrome_x, want + chrome), (area.position.x, area.position.y, area.size.width, area.size.height));
-        // Rundung: ein Pixel Unterschied ist kein Grund, das Fenster neu zu setzen.
-        let resize = want.abs_diff(inner.height) > 1 || want_w.abs_diff(inner.width) > 1;
+        let resize = needs_resize((inner.width, inner.height), (want_w, want));
         if to == (pos.x, pos.y) && !resize {
             return Ok(());
         }
@@ -111,7 +117,7 @@ fn apply(w: &WebviewWindow) -> tauri::Result<()> {
         crate::native::move_to(hwnd, Area { left: to.0, top: to.1, right: to.0 + ow as i32, bottom: to.1 + oh as i32 });
         return Ok(());
     }
-    if want.abs_diff(inner.height) > 1 || want_w.abs_diff(inner.width) > 1 {
+    if needs_resize((inner.width, inner.height), (want_w, want)) {
         w.set_size(PhysicalSize::new(want_w, want))?;
     }
     Ok(())
@@ -119,7 +125,15 @@ fn apply(w: &WebviewWindow) -> tauri::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::place;
+    use super::{needs_resize, place};
+
+    #[test]
+    fn one_pixel_too_low_is_resized_one_too_high_is_not() {
+        assert!(needs_resize((960, 611), (960, 612)), "sonst Rollbalken");
+        assert!(!needs_resize((960, 613), (960, 612)));
+        assert!(!needs_resize((961, 612), (960, 612)));
+        assert!(needs_resize((960, 614), (960, 612)));
+    }
 
     const AREA: (i32, i32, u32, u32) = (0, 0, 1920, 1040);
 

@@ -118,6 +118,16 @@ pub trait Desktop: Send + Sync {
     fn curtain(&self, _areas: &[Rect]) -> Option<Box<dyn Curtain>> {
         None
     }
+    /// Fenster dieser Klasse mit genau diesem Titel, auch ein verstecktes
+    /// ([`crate::hidden::find_window`]). Ohne eigene Fassung keins.
+    fn find_window(&self, _class: &str, _title: &str) -> Option<Hwnd> {
+        None
+    }
+    /// Verstecken oder zeigen, ohne zu aktivieren ([`crate::hidden::set_visible`]).
+    /// `Ok(false)` = war schon so oder geht hier nicht.
+    fn set_visible(&self, _hwnd: Hwnd, _visible: bool) -> Result<bool> {
+        Ok(false)
+    }
 }
 
 /// Das Standbild aus [`Desktop::curtain`]. Gehört dem Thread, der es anlegt.
@@ -218,6 +228,12 @@ impl Desktop for Win32Desktop {
     }
     fn curtain(&self, areas: &[Rect]) -> Option<Box<dyn Curtain>> {
         crate::veil::Veil::cover(areas).map(|v| Box::new(v) as Box<dyn Curtain>)
+    }
+    fn find_window(&self, class: &str, title: &str) -> Option<Hwnd> {
+        crate::hidden::find_window(class, title)
+    }
+    fn set_visible(&self, hwnd: Hwnd, visible: bool) -> Result<bool> {
+        crate::hidden::set_visible(hwnd, visible)
     }
     fn set_border(&self, hwnd: Hwnd, rgb: u32) -> Result<bool> {
         focus::set_border_color(hwnd, rgb)

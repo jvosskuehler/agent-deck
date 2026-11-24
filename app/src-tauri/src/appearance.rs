@@ -8,16 +8,19 @@
 //! - **Agentenfenster:** neue gehen mit `--colorScheme` auf (`WtHost::set_color_scheme`,
 //!   gesetzt in `Deck::new` und `Deck::set_setting`).
 //! - **Sonnenstand:** ein Thread schaltet Windows selbst (`deck_services::sun_switch`);
-//!   nach dem Aufwachen sieht er sofort nach.
+//!   nach dem Aufwachen sieht er sofort nach. Den Ort gibt eine Erweiterung vor, sonst
+//!   kommt er grob aus der Zeitzone von Windows ([`sun_place`]).
 
 use std::sync::{Arc, OnceLock};
 
-use deck_core::appearance::{self, Appearance};
+use deck_core::appearance::Appearance;
+use deck_core::sun::Place;
 use deck_services::sun_switch::SunSwitch;
 use deck_services::sun_theme::RegistryTheme;
 use tauri::{AppHandle, Theme};
 
 use crate::applog::note;
+use crate::deck::Deck;
 use crate::state::{lock, shared};
 
 static SUN: OnceLock<SunSwitch> = OnceLock::new();
@@ -39,11 +42,20 @@ pub fn apply(app: &AppHandle) {
     let (a, place) = {
         let st = shared(app);
         let d = lock(&st.deck);
-        (Appearance::from_settings(&d.store.settings), appearance::sun_place(&d.store.settings))
+        (Appearance::from_settings(&d.store.settings), sun_place(&d))
     };
     deck_win::theme::force(a.forced_light());
     app.set_theme(a.forced_light().map(|light| if light { Theme::Light } else { Theme::Dark }));
     sun().set(a.follows_sun().then_some(place));
     let where_ = if a.follows_sun() { format!(" ({})", place.de) } else { String::new() };
     note(format!("Hell/Dunkel: {}{where_}", a.as_str()));
+}
+
+/// Der Ort für den Sonnenstand: von einer Erweiterung, sonst aus der Zeitzone von
+/// Windows (`deck_core::sun_zone`). Ohne lesbare Zeitzone: UTC.
+pub fn sun_place(deck: &Deck) -> Place {
+    deck.ext.sun_place(&deck.store.settings).unwrap_or_else(|| {
+        let (key, bias) = deck_win::time_zone::current().unwrap_or_default();
+        deck_core::sun_zone::place_for_zone(&key, bias)
+    })
 }

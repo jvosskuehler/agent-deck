@@ -189,7 +189,7 @@ fn turn_keys(text: &str, proj: &str, user: bool) -> Vec<(String, bool)> {
         add(format!("{proj}-{}", &c[1]), true);
     }
     if user {
-        // „Ticket 2701“ und diktiert „ORPHEUS 4112“ (die Spracheingabe macht aus dem
+        // „Ticket 2701“ und diktiert „DEMOPROJEKT 4112“ (die Spracheingabe macht aus dem
         // Key das ganze Wort): nur in getippten Nachrichten, in Antworten stehen Links
         // wie `issues/24384`.
         for c in find_with(&NUM_CTX_RE, text, |_| true, no_digit) {

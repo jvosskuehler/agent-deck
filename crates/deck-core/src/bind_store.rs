@@ -28,7 +28,7 @@ pub struct BindStore {
     pub effort: BTreeMap<String, String>,
     /// Slot → zugewiesene Ticket-ID (Anzeige auf der Karte).
     pub tickets: BTreeMap<String, String>,
-    /// Panel-weite Einstellungen (`repos_root`, `jira_prefix`, `jump_hotkey` …), schon auf
+    /// Panel-weite Einstellungen (`repos_root`, `appearance`, `jump_hotkey` …), schon auf
     /// die aktuelle Version gebracht (`deck_settings::migrate`).
     pub settings: Map<String, Value>,
     /// Fenster-Buchstabe → vom Nutzer gezogene Kachel-Reihenfolge.

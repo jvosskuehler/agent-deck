@@ -5,7 +5,6 @@
 // gewinnt das Ereignis: es ist das neuere.
 
 import { useEffect, useState } from "react";
-import type { DashView } from "../bindings/DashView";
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { TicketView } from "../bindings/TicketView";
@@ -14,6 +13,33 @@ import type { EventName, EventPayloads } from "./contract";
 import { commands, getBackend } from "./index";
 
 type Live<E extends EventName> = [EventPayloads[E] | null, (value: EventPayloads[E]) => void];
+
+/**
+ * Für Erweiterungen (`extensions.ts`): Startwert per eigenem Befehl, danach ihr Ereignis.
+ * Dieselben Regeln wie `useLive`: ein Ereignis vor der Antwort gewinnt.
+ */
+export function useExtraLive<T>(event: string, initial: () => Promise<T | null>): [T | null, (value: T) => void] {
+  const [value, setValue] = useState<T | null>(null);
+  useEffect(() => {
+    let gotEvent = false;
+    let alive = true;
+    const off = getBackend().listenAny<T>(event, (p) => {
+      gotEvent = true;
+      setValue(p);
+    });
+    initial()
+      .then((v) => {
+        if (alive && !gotEvent) setValue(v);
+      })
+      .catch((err) => console.warn(`[deck] Startwert für ${event} fehlt:`, err));
+    return () => {
+      alive = false;
+      off();
+    };
+    // initial ist je Ansicht fest; eine neue Funktion je Render soll nicht neu abonnieren.
+  }, [event]);
+  return [value, setValue];
+}
 
 /**
  * Startwert plus jedes Ereignis. Ein Startwert null (es gibt noch nichts, etwa keinen
@@ -45,10 +71,6 @@ function useLive<E extends EventName>(event: E, initial: () => Promise<EventPayl
 
 export function useDeckView(): DeckView | null {
   return useLive("deck://view", commands.getView)[0];
-}
-
-export function useDash(): DashView | null {
-  return useLive("deck://dash", commands.getDash)[0];
 }
 
 export function useDock(): DockView | null {

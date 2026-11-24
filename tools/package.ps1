@@ -11,6 +11,10 @@ Läuft unter Windows PowerShell 5.1 und PowerShell 7 (auch in GitHub Actions).
      Rechtsklick > Alle extrahieren ergibt genau einen Ordner
   3. legt install.ps1 zusätzlich einzeln nach dist\ (Release-Anhang für den Einzeiler)
 
+Dazu deck-report und deck-statusline als statische Linux-Programme (linux\ im Zip) für
+Agenten in WSL: gebaut mit dem lld, den Rust mitbringt (.cargo\config.toml), also ohne
+WSL, gcc oder zig. Das Ziel holt das Skript selbst (rustup target add).
+
 Die Version steht in app\src-tauri\tauri.conf.json.
 #>
 [CmdletBinding()]
@@ -23,7 +27,10 @@ $ErrorActionPreference = 'Stop'
 $Repo = Split-Path $PSScriptRoot -Parent
 if (-not $OutDir) { $OutDir = Join-Path $Repo 'dist' }
 $Release = Join-Path $Repo 'target\release'
-$Exes = @('agent-deck.exe', 'deck-report.exe', 'deck-statusline.exe', 'deck-console.exe', 'deck-watchdog.exe', 'deck-setup.exe')
+$LinuxTarget = 'x86_64-unknown-linux-musl'
+$LinuxRelease = Join-Path $Repo "target\$LinuxTarget\release"
+$LinuxHooks = @('deck-report', 'deck-statusline')
+$Exes = @('agent-deck.exe', 'deck-report.exe', 'deck-statusline.exe', 'deck-console.exe', 'deck-setup.exe', 'deck-wsl.exe')
 
 function Fail($text) { Write-Host "FEHLER: $text" -ForegroundColor Red; exit 1 }
 
@@ -51,11 +58,18 @@ if (-not $SkipBuild) {
         Invoke-Native 'pnpm' @('tauri', 'build', '--no-bundle')
     } finally { Pop-Location }
     Push-Location $Repo
-    try { Invoke-Native 'cargo' @('build', '--release', '-p', 'deck-services', '--bin', 'deck-setup') } finally { Pop-Location }
+    try {
+        Invoke-Native 'cargo' @('build', '--release', '-p', 'deck-services', '--bin', 'deck-setup', '--bin', 'deck-wsl')
+        Invoke-Native 'rustup' @('target', 'add', $LinuxTarget)
+        Invoke-Native 'cargo' @('build', '--release', '-p', 'deck-hooks', '--target', $LinuxTarget)
+    } finally { Pop-Location }
 }
 
 foreach ($exe in $Exes) {
     if (-not (Test-Path -LiteralPath (Join-Path $Release $exe))) { Fail "$exe fehlt in $Release (ohne -SkipBuild bauen)" }
+}
+foreach ($h in $LinuxHooks) {
+    if (-not (Test-Path -LiteralPath (Join-Path $LinuxRelease $h))) { Fail "$h (Linux) fehlt in $LinuxRelease (ohne -SkipBuild bauen)" }
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -63,7 +77,9 @@ $stage = Join-Path $OutDir $Name
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 foreach ($exe in $Exes) { Copy-Item -LiteralPath (Join-Path $Release $exe) -Destination $stage }
-foreach ($f in 'tools\install.ps1', 'tools\uninstall.ps1', 'LICENSE') { Copy-Item -LiteralPath (Join-Path $Repo $f) -Destination $stage }
+New-Item -ItemType Directory -Force -Path (Join-Path $stage 'linux') | Out-Null
+foreach ($h in $LinuxHooks) { Copy-Item -LiteralPath (Join-Path $LinuxRelease $h) -Destination (Join-Path $stage 'linux') }
+foreach ($f in 'tools\install.ps1', 'tools\install-wsl.ps1', 'tools\uninstall.ps1', 'LICENSE') { Copy-Item -LiteralPath (Join-Path $Repo $f) -Destination $stage }
 $papier = Join-Path $Repo 'resources\papier'
 if (-not (Test-Path -LiteralPath (Join-Path $papier 'fonts\IBMPlexMono-Regular.ttf'))) { Fail "$papier ist unvollständig" }
 New-Item -ItemType Directory -Force -Path (Join-Path $stage 'resources') | Out-Null

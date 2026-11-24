@@ -18,6 +18,7 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
         agent_slot: slot.map(String::from),
         cwd: None,
         now: 1000.5,
+        wsl: None,
     }
 }
 
@@ -38,9 +39,9 @@ fn refs(ticket: Option<(&str, bool)>, pr: Option<(&str, bool)>) -> TileRefs {
 #[test]
 fn the_status_line_starts_with_slot_ticket_and_title_in_bold() {
     let rec = obj(json!({"model": "opus", "effort": "xhigh", "ctx_pct": 41.2, "cost_usd": 1.5, "session_name": "Schrift-Einstellung im Client"}));
-    let out = line(&rec, "B2", &refs(Some(("ORPH-4116", false)), None), Lang::German);
+    let out = line(&rec, "B2", &refs(Some(("DEMO-4116", false)), None), Lang::German);
     let (head, body) = out.split_once('\n').unwrap();
-    assert_eq!(head, "\x1b[1mB2 · ORPH-4116 · Schrift-Einstellung im Client\x1b[0m");
+    assert_eq!(head, "\x1b[1mB2 · DEMO-4116 · Schrift-Einstellung im Client\x1b[0m");
     assert_eq!(body, "opus  ·  effort xhigh  ·  ctx 41%", "Kosten stehen nur in live.json");
     assert_eq!(line(&obj(json!({"model": "opus"})), "", &none(), Lang::German), "opus");
     let long = line(&obj(json!({"session_name": "x".repeat(200)})), "B1", &none(), Lang::German);
@@ -60,11 +61,11 @@ fn the_ticket_comes_only_from_the_decks_refs_file() {
     let env = env_in(dir.path(), None);
     std::fs::create_dir_all(&env.state_dir).unwrap();
     // Was der Hook früher selbst las, zählt nicht mehr: eine Quelle der Wahrheit.
-    std::fs::write(env.state_dir.join("Z9.ticket"), "ORPH-1\n").unwrap();
-    save_json(&dir.path().join("tickets.json"), &json!({"Z9": "ORPH-2"})).unwrap();
+    std::fs::write(env.state_dir.join("Z9.ticket"), "DEMO-1\n").unwrap();
+    save_json(&dir.path().join("tickets.json"), &json!({"Z9": "DEMO-2"})).unwrap();
     assert_eq!(tile_refs("Z9", &env), TileRefs::default());
-    save_json(&refs_path(&env.state_dir, "Z9"), &json!({"ticket": "ORPH-3", "ticket_source": "branch", "ticket_detected": false})).unwrap();
-    assert_eq!(tile_refs("Z9", &env).ticket.map(|t| t.text).as_deref(), Some("ORPH-3"));
+    save_json(&refs_path(&env.state_dir, "Z9"), &json!({"ticket": "DEMO-3", "ticket_source": "branch", "ticket_detected": false})).unwrap();
+    assert_eq!(tile_refs("Z9", &env).ticket.map(|t| t.text).as_deref(), Some("DEMO-3"));
     std::fs::write(refs_path(&env.state_dir, "Z9"), "{kaputt").unwrap();
     assert_eq!(tile_refs("Z9", &env), TileRefs::default(), "eine kaputte Datei zeigt nichts");
 }
@@ -150,8 +151,8 @@ fn the_quota_is_neither_shown_nor_written() {
 fn the_pr_stands_in_the_header_and_shortens_the_title() {
     let pr = extract(&obj(json!({"pr": {"number": 347, "url": "u", "review_state": "approved", "kind": "x"}})), 0.0)["pr"].clone();
     assert_eq!(pr, json!({"number": 347, "url": "u", "review_state": "approved"}));
-    let head = header("B2", &refs(Some(("ORPH-4116", false)), None), Some("Schrift"), Some(&pr), Lang::German);
-    assert!(head.starts_with("\x1b[1mB2 · ORPH-4116 · PR #347 \x1b[32mfreigegeben\x1b[39m · Schrift"), "{head:?}");
+    let head = header("B2", &refs(Some(("DEMO-4116", false)), None), Some("Schrift"), Some(&pr), Lang::German);
+    assert!(head.starts_with("\x1b[1mB2 · DEMO-4116 · PR #347 \x1b[32mfreigegeben\x1b[39m · Schrift"), "{head:?}");
     assert_eq!(head.matches("\x1b[0m").count(), 1, "fett bleibt bis zum Ende");
     let long = "x".repeat(200);
     let without = header("B2", &none(), Some(&long), None, Lang::German);
@@ -183,15 +184,15 @@ fn a_run_shows_the_pr_in_the_language_of_the_settings_and_writes_it() {
 
 #[test]
 fn a_guessed_ticket_or_pr_from_the_deck_stands_dimmed_and_the_claude_code_pr_wins() {
-    let guessed = refs(Some(("ORPH-7", true)), Some(("#12", true)));
+    let guessed = refs(Some(("DEMO-7", true)), Some(("#12", true)));
     assert_eq!(
         header("B3", &guessed, Some("T"), None, Lang::German),
-        "\x1b[1mB3 · \x1b[22;2mORPH-7\x1b[22;1m · \x1b[22;2mPR #12\x1b[22;1m · T\x1b[0m"
+        "\x1b[1mB3 · \x1b[22;2mDEMO-7\x1b[22;1m · \x1b[22;2mPR #12\x1b[22;1m · T\x1b[0m"
     );
     let pr = json!({"number": 347, "review_state": "approved"});
     assert_eq!(
-        header("B3", &refs(Some(("ORPH-7", false)), Some(("#12", true))), Some("T"), Some(&pr), Lang::German),
-        "\x1b[1mB3 · ORPH-7 · PR #347 \x1b[32mfreigegeben\x1b[39m · T\x1b[0m"
+        header("B3", &refs(Some(("DEMO-7", false)), Some(("#12", true))), Some("T"), Some(&pr), Lang::German),
+        "\x1b[1mB3 · DEMO-7 · PR #347 \x1b[32mfreigegeben\x1b[39m · T\x1b[0m"
     );
 }
 
@@ -213,7 +214,7 @@ fn ticket_and_pr_shorten_the_title_so_the_line_never_grows() {
     };
     let bare = header("B3", &none(), Some(&long), None, Lang::German);
     let pr = json!({"number": 347, "review_state": "changes_requested"});
-    for r in [refs(Some(("ORPH-4116", false)), None), refs(Some(("ORPH-4116", true)), Some(("#1234", false))), refs(None, Some(("#1", true)))] {
+    for r in [refs(Some(("DEMO-4116", false)), None), refs(Some(("DEMO-4116", true)), Some(("#1234", false))), refs(None, Some(("#1", true)))] {
         let with = header("B3", &r, Some(&long), None, Lang::German);
         assert_eq!(visible(&with), visible(&bare), "{with:?}");
         let with_pr = header("B3", &r, Some(&long), Some(&pr), Lang::German);
@@ -221,7 +222,7 @@ fn ticket_and_pr_shorten_the_title_so_the_line_never_grows() {
         assert!(with.contains('…'));
     }
     // Ein kurzer Titel wird nicht gekürzt, nur weil ein Ticket dazukommt.
-    assert!(header("B3", &refs(Some(("ORPH-4116", false)), None), Some("Kurz"), None, Lang::German).ends_with("Kurz\x1b[0m"));
+    assert!(header("B3", &refs(Some(("DEMO-4116", false)), None), Some("Kurz"), None, Lang::German).ends_with("Kurz\x1b[0m"));
 }
 
 #[test]

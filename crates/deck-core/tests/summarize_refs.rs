@@ -76,8 +76,8 @@ fn a_single_digit_key_needs_ticket_context() {
 
 #[test]
 fn the_first_typed_task_outweighs_later_mentions_and_ties_go_to_the_latest() {
-    let turns = [t("user", "ORPH-3728 bitte umsetzen"), t("assistant", "ok"), t("user", "nebenbei ORPH-4062"), t("assistant", "ORPH-4062, verstanden")];
-    assert_eq!(find_ticket(&turns, Some("ORPH"), 2), "ORPH-3728");
+    let turns = [t("user", "DEMO-3728 bitte umsetzen"), t("assistant", "ok"), t("user", "nebenbei DEMO-4062"), t("assistant", "DEMO-4062, verstanden")];
+    assert_eq!(find_ticket(&turns, Some("DEMO"), 2), "DEMO-3728");
     assert_eq!(find_ticket(&[t("user", "erst ABC-11"), t("user", "jetzt ABC-22")], None, 2), "ABC-11");
     let later = [t("user", "los geht es"), t("user", "erst ABC-11"), t("user", "jetzt ABC-22")];
     assert_eq!(find_ticket(&later, None, 2), "ABC-22", "gleiches Gewicht: der zuletzt genannte");
@@ -97,23 +97,23 @@ fn what_only_the_agent_says_needs_several_answers() {
 
 #[test]
 fn an_answer_listing_many_tickets_is_an_overview_and_does_not_count() {
-    // Gesehen am 09.11.2026: Auftrag ORPH-3728, die Antworten zählten Ticket-Bereiche
-    // auf („257 Tickets (ORPH-1212 bis ORPH-3715)“), die Kachel zeigte ORPH-1212.
-    let list = "257 Tickets (ORPH-1212 bis ORPH-3715), 100 Tickets (ORPH-716 bis ORPH-1211)";
-    let mut turns = vec![t("user", "ORPH-3728 kannst du das umsetzen?")];
+    // Gesehen am 09.11.2026: Auftrag DEMO-3728, die Antworten zählten Ticket-Bereiche
+    // auf („257 Tickets (DEMO-1212 bis DEMO-3715)“), die Kachel zeigte DEMO-1212.
+    let list = "257 Tickets (DEMO-1212 bis DEMO-3715), 100 Tickets (DEMO-716 bis DEMO-1211)";
+    let mut turns = vec![t("user", "DEMO-3728 kannst du das umsetzen?")];
     turns.extend((0..6).map(|_| t("assistant", list)));
-    assert_eq!(find_ticket(&turns, Some("ORPH"), 2), "ORPH-3728");
+    assert_eq!(find_ticket(&turns, Some("DEMO"), 2), "DEMO-3728");
     let only_lists: Vec<Turn> = (0..6).map(|_| t("assistant", list)).collect();
-    assert_eq!(find_ticket(&only_lists, Some("ORPH"), 2), "");
+    assert_eq!(find_ticket(&only_lists, Some("DEMO"), 2), "");
 }
 
 #[test]
 fn a_bare_number_counts_only_when_typed_and_a_spoken_project_name_counts_too() {
-    assert_eq!(find_ticket(&user("Kannst du mal ORPHEUS 4112 für mich machen?"), Some("ORPH"), 2), "ORPH-4112");
-    assert_eq!(find_ticket(&user("orph 4116 bitte"), Some("ORPH"), 2), "ORPH-4116");
-    assert_eq!(find_ticket(&user("ORPHEUS 4.1.0 ist raus"), Some("ORPH"), 2), "", "eine Version ist kein Ticket");
+    assert_eq!(find_ticket(&user("Kannst du mal DEMOPROJEKT 4112 für mich machen?"), Some("DEMO"), 2), "DEMO-4112");
+    assert_eq!(find_ticket(&user("demo 4116 bitte"), Some("DEMO"), 2), "DEMO-4116");
+    assert_eq!(find_ticket(&user("DEMOPROJEKT 4.1.0 ist raus"), Some("DEMO"), 2), "", "eine Version ist kein Ticket");
     let links: Vec<Turn> = (0..5).map(|_| t("assistant", "siehe Issue #24384 im Tracker")).collect();
-    assert_eq!(find_ticket(&links, Some("ORPH"), 2), "", "Issue-Nummern in Antworten sind keine Tickets");
+    assert_eq!(find_ticket(&links, Some("DEMO"), 2), "", "Issue-Nummern in Antworten sind keine Tickets");
 }
 
 #[test]
@@ -198,26 +198,26 @@ fn cached_refs_of_an_older_calculation_or_another_project_do_not_count() {
     let projects = tempfile::tempdir().unwrap();
     let cache = tempfile::tempdir().unwrap();
     write_transcript(projects.path(), "C:/r", "s1", &[("user", "nur reden")]);
-    save_json(&cache.path().join("s1.json"), &json!({"refs_size": 1, "ticket": "ORPH-1212", "pr": "20068"})).unwrap();
-    assert_eq!(cached_refs(cache.path(), "s1", Some("ORPH")), Refs::default());
-    assert_eq!(ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("ORPH")), Refs::default());
+    save_json(&cache.path().join("s1.json"), &json!({"refs_size": 1, "ticket": "DEMO-1212", "pr": "20068"})).unwrap();
+    assert_eq!(cached_refs(cache.path(), "s1", Some("DEMO")), Refs::default());
+    assert_eq!(ensure_refs(projects.path(), cache.path(), "s1", Some("C:/r"), Some("DEMO")), Refs::default());
     write_transcript(projects.path(), "C:/r", "s2", &[("user", "Ticket 4116 bitte")]);
     assert_eq!(ensure_refs(projects.path(), cache.path(), "s2", Some("C:/r"), Some("PROJ")).ticket, "PROJ-4116");
-    assert_eq!(cached_refs(cache.path(), "s2", Some("ORPH")), Refs::default(), "anderes Projekt");
-    assert_eq!(ensure_refs(projects.path(), cache.path(), "s2", Some("C:/r"), Some("ORPH")).ticket, "ORPH-4116");
+    assert_eq!(cached_refs(cache.path(), "s2", Some("DEMO")), Refs::default(), "anderes Projekt");
+    assert_eq!(ensure_refs(projects.path(), cache.path(), "s2", Some("C:/r"), Some("DEMO")).ticket, "DEMO-4116");
 }
 
 #[test]
 fn injected_user_lines_are_no_typed_turns_but_pasted_text_blocks_are() {
     let lines = vec![
-        json!({"type": "user", "isMeta": true, "message": {"content": "Base directory for this skill: ORPH-1"}}).to_string(),
-        json!({"type": "user", "isCompactSummary": true, "message": {"content": "Summary: ORPH-2, ORPH-3"}}).to_string(),
-        json!({"type": "user", "isSidechain": true, "message": {"content": "Subagent: ORPH-4"}}).to_string(),
-        json!({"type": "user", "toolUseResult": {"stdout": "x"}, "message": {"content": "ORPH-5"}}).to_string(),
-        json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "ORPH-6"}, {"type": "text", "text": "ORPH-7"}]}}).to_string(),
-        json!({"type": "user", "message": {"content": [{"type": "text", "text": "ORPH-4116 bitte"}, {"type": "image", "source": {}}]}}).to_string(),
+        json!({"type": "user", "isMeta": true, "message": {"content": "Base directory for this skill: DEMO-1"}}).to_string(),
+        json!({"type": "user", "isCompactSummary": true, "message": {"content": "Summary: DEMO-2, DEMO-3"}}).to_string(),
+        json!({"type": "user", "isSidechain": true, "message": {"content": "Subagent: DEMO-4"}}).to_string(),
+        json!({"type": "user", "toolUseResult": {"stdout": "x"}, "message": {"content": "DEMO-5"}}).to_string(),
+        json!({"type": "user", "message": {"content": [{"type": "tool_result", "content": "DEMO-6"}, {"type": "text", "text": "DEMO-7"}]}}).to_string(),
+        json!({"type": "user", "message": {"content": [{"type": "text", "text": "DEMO-4116 bitte"}, {"type": "image", "source": {}}]}}).to_string(),
     ];
-    assert_eq!(extract_turns(&lines), [t("user", "ORPH-4116 bitte")]);
+    assert_eq!(extract_turns(&lines), [t("user", "DEMO-4116 bitte")]);
 }
 
 #[test]

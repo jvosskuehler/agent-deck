@@ -120,3 +120,44 @@ pub fn grid_gap(n: i64, area: Area, max_cols: i64) -> Option<Rect> {
     let last = cells[(full - 1) as usize];
     Some((first.0, first.1, last.0 + last.2 - first.0, first.3))
 }
+
+/// Reihenfolge fürs nächste Kacheln: wer schon liegt, behält seinen Platz (`lying`, so
+/// wie die Fenster auf dem Bildschirm liegen), wer dazukommt, kommt hinten dran (`live`
+/// in seiner Reihenfolge). Nur lebende, jeder genau einmal, ohne `gone`.
+///
+/// Früher hieß das `lying + live` mit `Vec::dedup`, das nur benachbarte Doppelte
+/// entfernt: aus A1 A2 A3 + A1 A2 A3 ohne A2 wurde A1 A3 A1 A3, gekachelt als 2 × 2,
+/// und die übrigen Fenster landeten nach dem Schließen in der unteren Hälfte (gemessen
+/// 24.11.2026 mit `tools/probe`, Ablauf `close`; erst ein zweiter Vorhang richtete es).
+pub fn keep_order(lying: &[String], live: &[String], gone: Option<&str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in lying.iter().chain(live) {
+        if live.contains(s) && Some(s.as_str()) != gone && !out.contains(s) {
+            out.push(s.clone());
+        }
+    }
+    out
+}
+
+/// Ein Monitor, wie das Kacheln ihn sieht: Gerätename, Arbeitsfläche, Skalierung.
+pub type Screen = (String, Area, f64);
+
+/// Soll das Deck nach einer Änderung der Anzeige die Blöcke nachkacheln? Nur wenn es
+/// dieselben Monitore sind und einer eine andere Arbeitsfläche oder Skalierung hat
+/// (Auflösung, Skalierung, Taskleiste umgestellt). Sonst blieben die Fenster an ihren
+/// alten Pixeln stehen, mit Lücken oder übereinander (gemessen 24.11.2026 in der Test-VM).
+/// Kommt ein Monitor dazu oder fällt einer weg (KVM, Dock), bleibt alles liegen: dann
+/// entscheidet der Mensch mit „alle holen“, wohin der Block soll.
+pub fn resized_in_place(before: &[Screen], after: &[Screen]) -> bool {
+    let names = |s: &[Screen]| {
+        let mut n: Vec<String> = s.iter().map(|(d, _, _)| d.clone()).collect();
+        n.sort();
+        n
+    };
+    if before.is_empty() || names(before) != names(after) {
+        return false;
+    }
+    after.iter().any(|(d, area, scale)| {
+        before.iter().any(|(bd, ba, bs)| bd == d && (ba != area || (bs - scale).abs() > 0.001))
+    })
+}

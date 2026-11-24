@@ -7,9 +7,10 @@
 
 /// Branch-Name eines Ticket-worktree = dieses Präfix + kleingeschriebener Ticket-Slug.
 pub const TICKET_BRANCH_PREFIX: &str = "ticket/";
-/// Jira-Projekt, das einer reinen Nummer vorangestellt wird, solange keins eingestellt
-/// ist: keins. Aus „2701“ wird also kein ausgedachtes „PROJ-2701“; das Projekt kommt nur
-/// aus `deck_settings.json` (`jira_prefix`, `deck_settings::jira_prefix`).
+/// Projektkürzel, das einer reinen Ticketnummer vorangestellt wird, solange keins bekannt
+/// ist: keins. Aus „2701“ wird also kein ausgedachtes „PROJ-2701“. Ein Kürzel kann nur
+/// eine Erweiterung vorgeben (`extension.rs` der App, `ticket_prefix`); ohne erkennt das
+/// Deck Tickets allgemein an `ABC-123` (`ref_sources.rs`).
 pub const JIRA_PROJECT_KEY: &str = "";
 
 /// Permission-Modi in der Shift+Tab-Reihenfolge von Claude Code (Deck-Namen). Claude
@@ -87,7 +88,3 @@ pub const NEW_AGENT_HOTKEY: &str = "ctrl+alt+n";
 /// Tastatur nichts. Überschreibbar per `fullscreen_hotkey`, leer = aus.
 pub const FULLSCREEN_HOTKEY: &str = "ctrl+alt+f";
 
-/// Info-Fenster aufklappen (`dash_window.rs`, `toggle`): D wie Dashboard. Zeigt es mitten
-/// auf dem Monitor unter dem Zeiger, auch ohne freie Kachel; nochmal = wieder weg. AltGr+D
-/// tippt auf der deutschen Tastatur nichts. Überschreibbar per `dash_hotkey`, leer = aus.
-pub const DASH_HOTKEY: &str = "ctrl+alt+d";

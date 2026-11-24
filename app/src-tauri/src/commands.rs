@@ -149,9 +149,14 @@ pub async fn set_setting(app: AppHandle, key: String, value: Value) -> Res<Setti
 #[tauri::command]
 pub async fn pick_folder(app: AppHandle, window: tauri::WebviewWindow, start: String) -> Res<Option<String>> {
     let owner = window.hwnd().map_or(0, |h| h.0 as isize);
-    let title = lock(&shared(&app).deck).lang.l("Repos-Ordner wählen", "Choose the repos folder").to_string();
+    let (title, env) = {
+        let st = shared(&app);
+        let deck = lock(&st.deck);
+        (deck.lang.l("Repos-Ordner wählen", "Choose the repos folder").to_string(), deck_core::wsl::AgentEnv::from_settings(&deck.store.settings))
+    };
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        let start = std::path::PathBuf::from(start.trim());
+        // In WSL ist der Ordner ein Linux-Pfad; der Dialog geht über `\\wsl.localhost` auf.
+        let start = std::path::PathBuf::from(env.to_windows(start.trim()));
         deck_win::folder_pick::pick_folder(owner, &title, Some(&start))
     })
     .await
@@ -167,8 +172,8 @@ pub async fn pick_folder(app: AppHandle, window: tauri::WebviewWindow, start: St
 
 /// „Panel neu starten“ (`panel.py: restart`): eine frische Instanz mit denselben
 /// Argumenten und derselben Umgebung, dann diese beenden. Tauri gibt vorher Port und
-/// Einzelinstanz-Sperre frei. Bewusst ohne „normales Ende“ im Herzschlag: kommt das
-/// Kind nicht hoch, soll der Wächter einspringen.
+/// Einzelinstanz-Sperre frei. Im Herzschlag steht „restart“, nicht „exit“: so sieht der
+/// nächste Start, dass dieses Ende kein gewolltes war.
 #[tauri::command]
 pub async fn restart_panel(app: AppHandle) -> Res<()> {
     shared(&app).restarting.store(true, Ordering::SeqCst);

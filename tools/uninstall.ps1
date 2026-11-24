@@ -117,7 +117,7 @@ try { $oldEncoding = [Console]::OutputEncoding; [Console]::OutputEncoding = New-
 try {
     if (-not $Quiet) { Write-Host 'Agent Deck wird entfernt.' -ForegroundColor Cyan; Write-Host '' }
 
-    # Der Wächter zuerst, sonst startet er die App gleich wieder.
+    # deck-watchdog gab es bis 24.11.2026; ein alter, noch laufender startete die App sonst neu.
     foreach ($name in 'deck-watchdog', 'agent-deck') {
         foreach ($p in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue

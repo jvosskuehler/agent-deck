@@ -54,11 +54,7 @@ describe("Texte", () => {
       "reposUnset",
       "reposMissing",
       "reposNoRepos",
-      "jiraPrefix",
-      "titanHint",
-      "storeUpdateHint",
-      "speechmikeVoiceHint",
-      "prAutomationHint",
+      "appearanceSunHint",
     ] as const;
     for (const k of keys) {
       for (const lang of ["de", "en"] as const) expect(t(lang, k)).not.toMatch(/[—–]/);

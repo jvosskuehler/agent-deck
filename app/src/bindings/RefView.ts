@@ -6,7 +6,7 @@ import type { RefSource } from "./RefSource";
  */
 export type RefView = { 
 /**
- * Angezeigter Text: „ORPH-4116“ bzw. „#347“, schon gekürzt.
+ * Angezeigter Text: „DEMO-4116“ bzw. „#347“, schon gekürzt.
  */
 text: string, source: RefSource, 
 /**

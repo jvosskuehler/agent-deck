@@ -17,6 +17,7 @@ fn env_in(dir: &Path, slot: Option<&str>) -> HookEnv {
         agent_slot: slot.map(String::from),
         cwd: Some(r"C:\Users\x\Repos\deck".into()),
         now: 1000.5,
+        wsl: None,
     }
 }
 
@@ -134,4 +135,14 @@ fn without_a_slot_nothing_is_written_and_stdin_is_not_read() {
     let dir = tempfile::tempdir().unwrap();
     let env = env_in(dir.path(), None);
     assert!(run("done", &env, || panic!("stdin darf ohne Slot nicht gelesen werden")).is_none());
+}
+
+#[test]
+fn a_wsl_agent_reports_its_linux_cwd_as_a_windows_path() {
+    let d = tempfile::tempdir().unwrap();
+    let mut env = env_in(d.path(), Some("A1"));
+    env.wsl = Some(deck_core::wsl::Wsl::new("Ubuntu", "", ""));
+    env.cwd = Some(r"\\wsl.localhost\Ubuntu\home\dev".into());
+    let rec = run_with(&env, "thinking", json!({"hook_event_name": "UserPromptSubmit", "cwd": "/home/dev/repos/api", "prompt": "los"})).unwrap();
+    assert_eq!(rec["cwd"], r"\\wsl.localhost\Ubuntu\home\dev\repos\api");
 }

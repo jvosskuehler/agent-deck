@@ -186,11 +186,19 @@ pub struct TokenFiles {
 impl TokenFiles {
     /// Die echten Dateien dieses Kontos.
     pub fn system() -> TokenFiles {
+        TokenFiles::system_in(cli_credentials_path(), super::account::cli_account_path())
+    }
+
+    /// Wie [`TokenFiles::system`], aber die CLI-Dateien an anderer Stelle: bei Agenten in
+    /// WSL liegen `.credentials.json` und `.claude.json` in der Distro
+    /// (`\\wsl.localhost\<Distro>\home\…`). Claude Desktop bleibt das von Windows.
+    pub fn system_in(credentials: PathBuf, account: PathBuf) -> TokenFiles {
+        let (c1, c2) = (credentials.clone(), credentials);
         TokenFiles {
-            cli: Box::new(read_cli_tokens),
+            cli: Box::new(move || read_cli_tokens(&c1)),
             desktop: Box::new(read_desktop_tokens),
-            signature: Box::new(credentials_signature),
-            cli_account: Box::new(super::account::read_cli_account),
+            signature: Box::new(move || credentials_signature(&c2)),
+            cli_account: Box::new(move || super::account::read_cli_account_at(&account)),
         }
     }
 }
@@ -220,6 +228,11 @@ impl DiskTokens {
     /// CLI-Datei und Claude Desktop dieses Kontos; das Konto je Token über `http`.
     pub fn system(http: Arc<dyn UsageHttp>) -> DiskTokens {
         DiskTokens::new(TokenFiles::system(), TokenAccounts::new(http))
+    }
+
+    /// Mit [`TokenFiles::system_in`].
+    pub fn system_in(http: Arc<dyn UsageHttp>, credentials: PathBuf, account: PathBuf) -> DiskTokens {
+        DiskTokens::new(TokenFiles::system_in(credentials, account), TokenAccounts::new(http))
     }
 }
 
@@ -265,8 +278,8 @@ impl TokenSource for DiskTokens {
 }
 
 /// Signatur der echten `.credentials.json`.
-fn credentials_signature() -> Option<CredSig> {
-    let meta = std::fs::metadata(cli_credentials_path()).ok()?;
+fn credentials_signature(path: &Path) -> Option<CredSig> {
+    let meta = std::fs::metadata(path).ok()?;
     let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     Some((mtime, meta.len()))
 }
@@ -274,8 +287,8 @@ fn credentials_signature() -> Option<CredSig> {
 const RETRIES: u32 = 5;
 const PAUSE: Duration = Duration::from_millis(200);
 
-fn read_cli_tokens() -> Result<Vec<String>, String> {
-    let raw = read_shared(&cli_credentials_path(), RETRIES, PAUSE).map_err(|e| format!("{:?}", e.kind()))?;
+fn read_cli_tokens(path: &Path) -> Result<Vec<String>, String> {
+    let raw = read_shared(path, RETRIES, PAUSE).map_err(|e| format!("{:?}", e.kind()))?;
     let data: Value = serde_json::from_slice(&raw).map_err(|_| "kein JSON".to_string())?;
     Ok(tokens_from_credentials(&data, now_unix() * 1000.0))
 }

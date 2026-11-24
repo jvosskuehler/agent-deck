@@ -49,7 +49,7 @@ button:focus-visible{outline:2px solid #ffffff;outline-offset:3px}
 
     <section style="display: flex; flex-direction: column; gap: 8px; margin-top: 18px;">
       <div style="display: flex; align-items: baseline; gap: 8px;">
-        <button style="border: 0; background: transparent; padding: 0; font-size: 12.5px; font-weight: 700; color: #f4f4f5;">orpheus-management-api</button>
+        <button style="border: 0; background: transparent; padding: 0; font-size: 12.5px; font-weight: 700; color: #f4f4f5;">demoprojekt-management-api</button>
         <span style="font-size: 11px; color: #5f5f68;">VS Code</span>
       </div>
       <div style="display: flex; flex-wrap: wrap; gap: 10px; width: 864px;">
@@ -60,7 +60,7 @@ button:focus-visible{outline:2px solid #ffffff;outline-offset:3px}
             <span style="display: flex; gap: 6px; width: 100%; font-size: 11px;"><span style="font-weight: 700; color: {{a.ticketC}};">{{a.ticket}}</span><span style="flex: 1;"></span><span style="color: {{a.modeC}};">{{a.mode}}</span></span>
           </button>
         </sc-for>
-        <button aria-label="Neuer Agent in orpheus-management-api" style="width: 36px; height: 58px; border-radius: 12px; border: 1.5px dashed #26262c; background: transparent; color: #5f5f68; font-size: 18px; text-align: center; padding: 0;">+</button>
+        <button aria-label="Neuer Agent in demoprojekt-management-api" style="width: 36px; height: 58px; border-radius: 12px; border: 1.5px dashed #26262c; background: transparent; color: #5f5f68; font-size: 18px; text-align: center; padding: 0;">+</button>
       </div>
     </section>
 
@@ -78,16 +78,16 @@ button:focus-visible{outline:2px solid #ffffff;outline-offset:3px}
 const S = { waiting: ['Rückfrage', '#ffb454'], thinking: ['denkt', '#5cc8ff'], done: ['ungelesen', '#4ade80'], idle: ['idle', '#8b8b99'], lost: ['getrennt', '#ff6b6b'] };
 const RANK = { waiting: 0, lost: 1, done: 2, thinking: 3, idle: 4 };
 const WT = [
-  { id: 'B1', st: 'waiting', title: 'ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4062', mode: 'auto' },
-  { id: 'B2', st: 'thinking', title: 'ORPH-3773 Rechtekonzept Integrationstests', model: 'Opus 5.5', effort: 'ultracode', ticket: 'ORPH-3773', mode: 'bypass' },
+  { id: 'B1', st: 'waiting', title: 'DEMO-4062 Gratismonat: Testuhr in Stripe vorstellen', model: 'Opus 5.5', effort: 'xhigh', ticket: 'DEMO-4062', mode: 'auto' },
+  { id: 'B2', st: 'thinking', title: 'DEMO-3773 Rechtekonzept Integrationstests', model: 'Opus 5.5', effort: 'ultracode', ticket: 'DEMO-3773', mode: 'bypass' },
   { id: 'B3', st: 'done', title: 'PR 180 Review-Threads schließen', model: 'Fable 5.1', effort: 'high', ticket: '#180', mode: 'auto' },
-  { id: 'B4', st: 'thinking', title: 'ORPH-3192 Mehrfach-RDS auf der Test-VM', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-3192', mode: 'auto' },
+  { id: 'B4', st: 'thinking', title: 'DEMO-3192 Mehrfach-RDS auf der Test-VM', model: 'Opus 5.5', effort: 'xhigh', ticket: 'DEMO-3192', mode: 'auto' },
   { id: 'B5', st: 'idle', title: 'Agent Deck neues Design', model: 'Opus 5.5', effort: 'max', ticket: '', mode: 'auto' }
 ];
 const VS = [
-  { id: 'A1', st: 'thinking', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4107', mode: 'auto' },
+  { id: 'A1', st: 'thinking', model: 'Opus 5.5', effort: 'xhigh', ticket: 'DEMO-4107', mode: 'auto' },
   { id: 'A2', st: 'idle', model: 'Fable 5.1', effort: 'high', ticket: '', mode: 'plan' },
-  { id: 'A3', st: 'lost', model: 'Opus 5.5', effort: 'xhigh', ticket: 'ORPH-4105', mode: 'auto' }
+  { id: 'A3', st: 'lost', model: 'Opus 5.5', effort: 'xhigh', ticket: 'DEMO-4105', mode: 'auto' }
 ];
 
 class Component extends DCLogic {

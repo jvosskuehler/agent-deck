@@ -53,43 +53,66 @@ impl ClaudeRunner for ClaudeCli {
         guard::check("claude aufrufen").ok()?;
         let exe = which("claude")?;
         let _ = std::fs::create_dir_all(cwd);
-        let mut child = Command::new(exe)
-            .args(["-p", "--safe-mode", "--no-session-persistence", "--model", model])
-            .current_dir(cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .ok()?;
-        // Schreiben und Lesen in eigenen Threads: ein voller Puffer auf einer Seite darf
-        // den Prozess nicht festhalten, während hier auf ihn gewartet wird.
-        let mut stdin = child.stdin.take()?;
-        let input = prompt.as_bytes().to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&input);
-        });
-        let mut stdout = child.stdout.take()?;
-        let reader = std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = stdout.read_to_end(&mut buf);
-            buf
-        });
-        let deadline = Instant::now() + timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break Some(s),
-                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break None;
-                }
-            }
-        };
-        let out = reader.join().ok()?;
-        status.filter(|s| s.success()).map(|_| String::from_utf8_lossy(&out).into_owned())
+        let mut cmd = Command::new(exe);
+        cmd.args(["-p", "--safe-mode", "--no-session-persistence", "--model", model]).current_dir(cwd);
+        run_piped(cmd, prompt, timeout)
     }
+}
+
+/// Dasselbe mit dem `claude` der WSL-Distro, in der die Agenten laufen (dort ist es
+/// angemeldet; unter Windows gibt es in der Team-Ausgabe gar keins). Die Login-Shell
+/// (`bash -lic`) findet es wie das Startskript der Agenten, auch über nvm.
+#[derive(Debug, Clone)]
+pub struct WslClaude {
+    pub distro: String,
+}
+
+impl ClaudeRunner for WslClaude {
+    fn run(&self, prompt: &str, model: &str, timeout: Duration, _cwd: &Path) -> Option<String> {
+        guard::check("claude aufrufen").ok()?;
+        let mut cmd = Command::new("wsl.exe");
+        cmd.args(["-d", &self.distro, "--cd", "~", "-e", "bash", "-lic", r#"exec claude "$@""#, "claude"]);
+        cmd.args(["-p", "--safe-mode", "--no-session-persistence", "--model", model]);
+        run_piped(cmd, prompt, timeout)
+    }
+}
+
+/// `cmd` starten, `prompt` auf stdin, stdout als Text; `None` bei Fehler oder Zeitlimit.
+fn run_piped(mut cmd: Command, prompt: &str, timeout: Duration) -> Option<String> {
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .ok()?;
+    // Schreiben und Lesen in eigenen Threads: ein voller Puffer auf einer Seite darf
+    // den Prozess nicht festhalten, während hier auf ihn gewartet wird.
+    let mut stdin = child.stdin.take()?;
+    let input = prompt.as_bytes().to_vec();
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(&input);
+    });
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+        }
+    };
+    let out = reader.join().ok()?;
+    status.filter(|s| s.success()).map(|_| String::from_utf8_lossy(&out).into_owned())
 }
 
 /// Stellschrauben (Modell und Gates aus `deck-core`; 120 s, Sonnet liest bis zu 24 000
@@ -104,7 +127,7 @@ pub struct SummaryConfig {
     pub timeout: Duration,
     pub gates: SummaryGates,
     /// Jira-Projekt für die Ticket-Erkennung zum Start (`config::JIRA_PROJECT_KEY`); die
-    /// App setzt danach das aus den Einstellungen (`SummaryService::set_project_key`).
+    /// App setzt danach das einer Erweiterung, falls es eins gibt (`SummaryService::set_project_key`).
     pub project_key: Option<String>,
     /// Ticket und PR erkennen (`config::TICKET_AUTODETECT`).
     pub detect_refs: bool,
@@ -165,7 +188,7 @@ pub struct SummaryService {
     gate: Arc<Gate>,
     jobs: Arc<Mutex<HashSet<String>>>,
     /// Das wirksame Jira-Projekt. Bis Nov. 2026 galt hier fest `PROJ`, auch wenn in den
-    /// Einstellungen `ORPH` stand: echte Keys bekamen keinen Vorzug, und aus
+    /// Einstellungen `DEMO` stand: echte Keys bekamen keinen Vorzug, und aus
     /// „Ticket 4116“ wurde `PROJ-4116`.
     project_key: Mutex<Option<String>>,
 }
@@ -182,7 +205,7 @@ impl SummaryService {
         }
     }
 
-    /// Jira-Projekt aus den Einstellungen (`jira_prefix`); gilt ab dem nächsten Auftrag.
+    /// Projektkürzel (von einer Erweiterung, sonst leer); gilt ab dem nächsten Auftrag.
     pub fn set_project_key(&self, key: Option<&str>) {
         let key = key.map(str::trim).filter(|k| !k.is_empty()).map(String::from);
         *self.project_key.lock().unwrap_or_else(|e| e.into_inner()) = key;
@@ -195,6 +218,13 @@ impl SummaryService {
     /// Die echte Fassung mit dem `claude` vom PATH.
     pub fn system(state_dir: &Path) -> SummaryService {
         SummaryService::new(SummaryConfig::standard(state_dir), Arc::new(ClaudeCli))
+    }
+
+    /// Für Agenten in WSL: Transcripts aus `projects` (über `\\wsl.localhost`), `claude`
+    /// aus der Distro.
+    pub fn system_wsl(state_dir: &Path, projects: PathBuf, distro: &str) -> SummaryService {
+        let cfg = SummaryConfig { projects, ..SummaryConfig::standard(state_dir) };
+        SummaryService::new(cfg, Arc::new(WslClaude { distro: distro.to_string() }))
     }
 
     /// Nur der Cache, ohne Transcript und ohne Prozess (für den Hover sofort).

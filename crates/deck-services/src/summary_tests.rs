@@ -133,7 +133,7 @@ fn the_project_key_from_the_settings_is_used_for_bare_numbers() {
     let line = serde_json::json!({"type": "user", "message": {"content": "Ticket 4116 bitte"}}).to_string();
     std::fs::write(d.join("s9.jsonl"), line).unwrap();
     let svc = SummaryService::new(r.cfg.clone(), FakeClaude::new(None, Duration::ZERO));
-    svc.set_project_key(Some(" ORPH "));
+    svc.set_project_key(Some(" DEMO "));
     let (tx, rx) = mpsc::channel();
     let tx = Mutex::new(tx);
     assert!(svc.request("s9", Some(CWD), Lang::German, false, Arc::new(move |_, info| {
@@ -141,8 +141,8 @@ fn the_project_key_from_the_settings_is_used_for_bare_numbers() {
             tx.lock().unwrap().send(refs.ticket).unwrap();
         }
     })));
-    assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), "ORPH-4116");
-    assert_eq!(svc.cached_refs("s9").ticket, "ORPH-4116");
+    assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), "DEMO-4116");
+    assert_eq!(svc.cached_refs("s9").ticket, "DEMO-4116");
     svc.set_project_key(Some("ABC"));
     assert_eq!(svc.cached_refs("s9").ticket, "", "für ein anderes Projekt gilt der Cache nicht");
 }

@@ -9,12 +9,15 @@
 //! Gerechnet wird in UTC: der Tag des Jahres ist der des UTC-Datums, Auf- und Untergang
 //! sind Minuten nach Mitternacht UTC. Für Orte in Mitteleuropa liegen beide sicher im
 //! selben UTC-Tag.
+//!
+//! Den Ort liefert `sun_zone.rs` grob aus der Zeitzone von Windows; eine Erweiterung kann
+//! einen genaueren vorgeben (`extension.rs` der App).
 
 use std::f64::consts::{PI, TAU};
 
 use crate::isotime::{civil_from_days, days_from_civil};
 
-/// Ein Ort aus der eingebauten Liste. `id` steht in `deck_settings.json` (`sun_place`).
+/// Ein Ort für die Rechnung: Name zum Anzeigen und Koordinaten in Grad (Osten positiv).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Place {
     pub id: &'static str,
@@ -24,52 +27,9 @@ pub struct Place {
     pub lon: f64,
 }
 
-const fn p(id: &'static str, de: &'static str, en: &'static str, lat: f64, lon: f64) -> Place {
+/// Einen Ort bauen (für Tabellen mit `const`).
+pub const fn p(id: &'static str, de: &'static str, en: &'static str, lat: f64, lon: f64) -> Place {
     Place { id, de, en, lat, lon }
-}
-
-/// Größere Städte in Deutschland, dazu Wien und Zürich. Auf eine Stadt genau reicht: von
-/// Hamburg nach Lübeck verschiebt sich der Sonnenuntergang um gut eine Minute.
-pub const PLACES: &[Place] = &[
-    p("augsburg", "Augsburg", "Augsburg", 48.37, 10.90),
-    p("berlin", "Berlin", "Berlin", 52.52, 13.40),
-    p("bremen", "Bremen", "Bremen", 53.08, 8.80),
-    p("dortmund", "Dortmund", "Dortmund", 51.51, 7.47),
-    p("dresden", "Dresden", "Dresden", 51.05, 13.74),
-    p("duesseldorf", "Düsseldorf", "Düsseldorf", 51.23, 6.78),
-    p("erfurt", "Erfurt", "Erfurt", 50.98, 11.03),
-    p("essen", "Essen", "Essen", 51.46, 7.01),
-    p("frankfurt", "Frankfurt am Main", "Frankfurt", 50.11, 8.68),
-    p("freiburg", "Freiburg", "Freiburg", 47.99, 7.85),
-    p("hamburg", "Hamburg", "Hamburg", 53.55, 10.00),
-    p("hannover", "Hannover", "Hanover", 52.37, 9.73),
-    p("karlsruhe", "Karlsruhe", "Karlsruhe", 49.01, 8.40),
-    p("kiel", "Kiel", "Kiel", 54.32, 10.13),
-    p("koeln", "Köln", "Cologne", 50.94, 6.96),
-    p("leipzig", "Leipzig", "Leipzig", 51.34, 12.37),
-    p("magdeburg", "Magdeburg", "Magdeburg", 52.13, 11.63),
-    p("muenchen", "München", "Munich", 48.14, 11.58),
-    p("muenster", "Münster", "Münster", 51.96, 7.63),
-    p("nuernberg", "Nürnberg", "Nuremberg", 49.45, 11.08),
-    p("rostock", "Rostock", "Rostock", 54.09, 12.10),
-    p("saarbruecken", "Saarbrücken", "Saarbrücken", 49.24, 6.99),
-    p("stuttgart", "Stuttgart", "Stuttgart", 48.78, 9.18),
-    p("wien", "Wien", "Vienna", 48.21, 16.37),
-    p("zuerich", "Zürich", "Zurich", 47.37, 8.54),
-];
-
-/// Vorgabe: Hamburg (53,55 / 10,00), wie im früheren Skript.
-pub const DEFAULT_PLACE: &str = "hamburg";
-
-/// Ort zur Kennung; unbekannt oder leer → `None`.
-pub fn place(id: &str) -> Option<&'static Place> {
-    let id = id.trim();
-    PLACES.iter().find(|p| p.id.eq_ignore_ascii_case(id))
-}
-
-/// Ort zur Kennung, sonst die Vorgabe.
-pub fn place_or_default(id: &str) -> &'static Place {
-    place(id).or_else(|| place(DEFAULT_PLACE)).unwrap_or(&PLACES[0])
 }
 
 /// Wie die Sonne an einem Tag steht.

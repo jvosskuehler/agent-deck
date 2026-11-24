@@ -6,8 +6,10 @@ fn at(y: i64, m: i64, d: i64, h: i64, min: i64) -> f64 {
     (days_from_civil(y, m, d) * 86_400 + h * 3600 + min * 60) as f64
 }
 
+const HAMBURG: Place = p("hamburg", "Hamburg", "Hamburg", 53.55, 10.00);
+
 fn hamburg() -> &'static Place {
-    place("hamburg").unwrap()
+    &HAMBURG
 }
 
 /// Auf- und Untergang eines Datums in Minuten nach Mitternacht UTC.
@@ -79,15 +81,4 @@ fn polar_day_and_night_have_no_change() {
     assert!(is_light(at(2026, 6, 21, 0, 0), &north));
     assert!(!is_light(at(2026, 12, 21, 12, 0), &north));
     assert_eq!(next_change(at(2026, 6, 21, 12, 0), &north), None);
-}
-
-#[test]
-fn an_unknown_place_falls_back_to_hamburg() {
-    assert_eq!(place_or_default("atlantis").id, "hamburg");
-    assert_eq!(place_or_default("").id, "hamburg");
-    assert_eq!(place_or_default(" Muenchen ").id, "muenchen");
-    let mut ids: Vec<&str> = PLACES.iter().map(|p| p.id).collect();
-    ids.dedup();
-    assert_eq!(ids.len(), PLACES.len(), "jede Kennung einmal");
-    assert!(PLACES.iter().any(|p| p.id == "wien") && PLACES.iter().any(|p| p.id == "zuerich"));
 }

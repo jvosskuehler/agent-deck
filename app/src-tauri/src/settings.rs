@@ -4,19 +4,21 @@
 //! - `~/.claude/settings.json` für die Vorgaben neuer Agenten (Modus, Effort, Sprache);
 //!   die Sprache steuert zugleich die Oberfläche des Decks.
 //! - `deck_settings.json` für alles Deck-Eigene: Modell (dort mit `[1m]`, als
-//!   `--model` mitgegeben; leer = ohne), Andockkante, Repos-Ordner, Jira-Projekt und die
-//!   Schalter (`deck_core::deck_settings`). Repos-Ordner und Jira-Projekt waren vom
-//!   09.11. bis 17.11.2026 bewusst nicht im Fenster; seit Kolleginnen und Kollegen das
-//!   Deck installieren, gehören sie wieder hinein (docs/DESIGN.md).
+//!   `--model` mitgegeben; leer = ohne), Andockkante, Repos-Ordner und die Schalter
+//!   (`deck_core::deck_settings`). Der Repos-Ordner war vom 09.11. bis 17.11.2026 bewusst
+//!   nicht im Fenster; seit Kolleginnen und Kollegen das Deck installieren, gehört er
+//!   wieder hinein (docs/DESIGN.md).
+//!
+//! Schlüssel, die der Kern nicht kennt, gehen an die Erweiterungen (`extension.rs`); ihre
+//! Abschnitte stehen in `SettingsView::extras`.
 
 use deck_core::appearance::{self, Appearance};
 use deck_core::auto_compact;
 use deck_core::claude::settings::{WriteValues, effort_label, effort_spec, read_values, write_values};
-use deck_core::dash::reviewers::{self, ReviewerReport};
 use deck_core::deck_settings::{self as ds, Switch};
 use deck_core::dock::Edge;
 use deck_core::i18n::Lang;
-use deck_core::view::{SettingsView, SunPlaceOption};
+use deck_core::view::SettingsView;
 use serde_json::Value;
 
 use crate::deck::Deck;
@@ -29,21 +31,9 @@ pub enum Effect {
     Language,
     /// Andockkante gewechselt.
     Edge(Edge),
-    /// Hell/Dunkel oder der Ort für den Sonnenstand gewechselt: Fenster, Rahmen und
-    /// Sonnenstand neu einstellen (`crate::appearance::apply`).
+    /// Hell/Dunkel (oder bei einer Erweiterung der Ort für den Sonnenstand) gewechselt:
+    /// Fenster, Rahmen und Sonnenstand neu einstellen (`crate::appearance::apply`).
     Appearance,
-}
-
-/// Die Orte für den Sonnenstand in der Sprache des Decks, nach Namen sortiert.
-fn sun_places(lang: Lang) -> Vec<SunPlaceOption> {
-    let mut v: Vec<SunPlaceOption> = deck_core::sun::PLACES
-        .iter()
-        .map(|p| SunPlaceOption { id: p.id.into(), name: lang.l(p.de, p.en).into() })
-        .collect();
-    // Umlaute wie ihr Grundbuchstabe: Düsseldorf zwischen Dresden und Erfurt.
-    let key = |n: &str| n.to_lowercase().replace('ä', "a").replace('ö', "o").replace('ü', "u");
-    v.sort_by_key(|o| key(&o.name));
-    v
 }
 
 impl Deck {
@@ -53,11 +43,16 @@ impl Deck {
         let model = self.chosen_model().unwrap_or_default();
         let s = &self.store.settings;
         let repos = ds::repos_root(s);
+        let local = ds::repos_root_local(s);
         // Ohne Vorgabe in settings.json startet claude im Standardmodus; nur der Schalter
         // `auto_permission_mode` treibt neue Agenten danach in Auto.
         let unset = if ds::on(s, Switch::AutoPermissionMode) { "auto" } else { "default" };
         let mode = cur.mode.as_ref().and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or(unset).to_string();
         let effort = effort_label(cur.effort.as_ref().and_then(Value::as_str), cur.ultracode).to_string();
+        let mut shortcuts = deck_core::shortcuts::rows(s, self.lang);
+        // Kürzel einer Erweiterung vor Alt+V, das immer zuletzt steht (Claude Code selbst).
+        shortcuts.splice(shortcuts.len().saturating_sub(1)..shortcuts.len().saturating_sub(1), self.ext.shortcuts(s, self.lang));
+        let place = crate::appearance::sun_place(self);
         SettingsView {
             model,
             mode,
@@ -65,23 +60,24 @@ impl Deck {
             language: Lang::normalize(cur.language.as_ref()).setting_value().to_string(),
             dock_edge: self.dock_edge().as_str().to_string(),
             auto_compact: auto_compact::enabled(s),
-            dashboard: deck_core::dash::enabled(s),
             repos_root: repos.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
-            repos_state: ds::repos_state(repos.as_deref()),
-            jira_prefix: ds::jira_prefix(s),
+            repos_state: ds::repos_state(local.as_deref()),
+            agent_env: if ds::text(s, ds::AGENT_ENV) == "wsl" { "wsl".into() } else { "windows".into() },
+            wsl_distro: ds::text(s, ds::WSL_DISTRO),
+            wsl_distros: self.wsl_distros(),
             auto_permission_mode: ds::on(s, Switch::AutoPermissionMode),
-            titan: ds::on(s, Switch::Titan),
-            store_update: ds::on(s, Switch::StoreUpdate),
-            speechmike_voice: ds::on(s, Switch::SpeechmikeVoice),
-            pr_automation: ds::on(s, Switch::PrAutomation),
-            pr_reviewer: ds::text(s, ds::PR_REVIEWER),
-            pr_reviewer_label: reviewers::label(&ds::text(s, ds::PR_REVIEWER), s.get(ds::PR_REVIEWER_NAMES)),
-            github_org: ds::text(s, ds::GITHUB_ORG),
-            shortcuts: deck_core::shortcuts::rows(s, self.lang),
+            shortcuts,
             appearance: Appearance::from_settings(s).as_str().to_string(),
-            sun_place: appearance::sun_place(s).id.to_string(),
-            sun_places: sun_places(self.lang),
+            sun_place_name: self.lang.l(place.de, place.en).to_string(),
+            extras: self.ext.iter().filter_map(|e| e.settings_section(self)).collect(),
         }
+    }
+
+    /// Die Distros zur Wahl, einmal je Lauf gefragt (`wsl.exe -l -v` startet keine Distro).
+    fn wsl_distros(&self) -> Vec<String> {
+        self.wsl_distros
+            .get_or_init(|| deck_services::wsl_cli::distros(&deck_services::wsl_cli::WslExe).into_iter().map(|(n, _)| n).collect())
+            .clone()
     }
 
     pub fn dock_edge(&self) -> Edge {
@@ -101,7 +97,16 @@ impl Deck {
                 Effect::None
             }
             "reposRoot" => {
-                self.put_text(ds::REPOS_ROOT, text()?);
+                // Der Ordner-Dialog liefert einen Windows-Pfad; bei Agenten in WSL steht der
+                // Linux-Pfad in der Datei (der Agent arbeitet dort, `wsl.exe --cd`).
+                let picked = text()?;
+                let stored = match deck_core::wsl::AgentEnv::from_settings(&self.store.settings).wsl() {
+                    Some(w) if !picked.is_empty() => w.to_linux(&picked).ok_or_else(|| {
+                        format!("{picked}: {}", self.lang.l("liegt nicht in WSL", "is not inside WSL"))
+                    })?,
+                    _ => picked,
+                };
+                self.put_text(ds::REPOS_ROOT, stored);
                 // Der alte Schlüssel würde sonst als Rückfall weiter gelten.
                 if self.store.settings.remove(ds::LEGACY_HOME).is_some() {
                     self.store.save_settings();
@@ -109,36 +114,29 @@ impl Deck {
                 self.ensure_home_terminal();
                 Effect::None
             }
-            "jiraPrefix" => {
-                let prefix = text()?.to_uppercase();
-                if !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
-                    return Err("jiraPrefix: nur Buchstaben und Ziffern".into());
+            "agentEnv" => {
+                let v = text()?;
+                if v != "wsl" && v != "windows" {
+                    return Err(format!("{key}: windows oder wsl"));
                 }
-                self.put_text(ds::JIRA_PREFIX, prefix);
+                self.put(ds::AGENT_ENV, v.into());
                 Effect::None
             }
-            "prReviewer" => {
-                // Ohne Nachschlagen (das macht `set_reviewers`): was als Login taugt, bleibt,
-                // „Name (login)“ zählt als login, der Rest fällt still weg.
-                let report = ReviewerReport {
-                    org: String::new(),
-                    orgs: Vec::new(),
-                    note: reviewers::ReviewerNote::None,
-                    detail: String::new(),
-                    results: reviewers::resolve_all(None, &text()?),
-                };
-                self.apply_reviewers(&report);
-                Effect::None
-            }
-            "githubOrg" => {
-                self.put_text(ds::GITHUB_ORG, text()?);
+            "wslDistro" => {
+                let d = text()?;
+                self.put_text(ds::WSL_DISTRO, d.clone());
+                // Home und Einhängepunkt gehören zur Distro: neu ermitteln (beim nächsten
+                // Start fragt das Deck sonst selbst, `agent_env::resolve`).
+                self.store.settings.remove(ds::WSL_HOME);
+                self.store.settings.remove(ds::WSL_MOUNT_ROOT);
+                if let Some(w) = (!d.is_empty()).then(|| deck_services::wsl_cli::probe(&deck_services::wsl_cli::WslExe, &d)).flatten() {
+                    self.store.settings.insert(ds::WSL_HOME.into(), w.home.into());
+                    self.store.settings.insert(ds::WSL_MOUNT_ROOT.into(), w.mount_root.into());
+                }
+                self.store.save_settings();
                 Effect::None
             }
             "autoPermissionMode" => self.put_switch(Switch::AutoPermissionMode, flag()?),
-            "titan" => self.put_switch(Switch::Titan, flag()?),
-            "storeUpdate" => self.put_switch(Switch::StoreUpdate, flag()?),
-            "speechmikeVoice" => self.put_switch(Switch::SpeechmikeVoice, flag()?),
-            "prAutomation" => self.put_switch(Switch::PrAutomation, flag()?),
             "mode" => {
                 claude(WriteValues { mode: Some(&text()?), ..Default::default() })?;
                 Effect::None
@@ -162,11 +160,6 @@ impl Deck {
                 self.wt.set_color_scheme(a.wt_scheme());
                 Effect::Appearance
             }
-            "sunPlace" => {
-                let place = deck_core::sun::place(&text()?).ok_or_else(|| format!("{key}: unbekannter Ort"))?;
-                self.put(appearance::PLACE_KEY, place.id.into());
-                Effect::Appearance
-            }
             "dockEdge" => {
                 let edge = Edge::parse(Some(&text()?));
                 self.put("dock_edge", edge.as_str().into());
@@ -174,34 +167,17 @@ impl Deck {
             }
             // Wirkt sofort: `Deck::auto_compact` liest den Schalter in jedem Takt.
             "autoCompact" => self.put_switch(Switch::AutoCompact, flag()?),
-            // Wirkt mit dem nächsten Takt: `Deck::view` fragt den Schalter jedes Mal.
-            "dashboard" => self.put_switch(Switch::Dashboard, flag()?),
-            other => return Err(format!("unbekannte Einstellung: {other}")),
+            other => {
+                // Nicht vom Kern: vielleicht von einer Erweiterung.
+                for e in self.ext.clone().iter() {
+                    if let Some(r) = e.set_setting(self, other, value) {
+                        return r;
+                    }
+                }
+                return Err(format!("unbekannte Einstellung: {other}"));
+            }
         };
         Ok(effect)
-    }
-
-    /// Ergebnis einer Reviewer-Suche speichern: die Logins (`pr_reviewer`), ihre Namen
-    /// (`pr_reviewer_names`) und, falls noch keine eingestellt war, die Organisation, gegen
-    /// die gesucht wurde. Mehrdeutige Einträge warten auf die Wahl im Fenster.
-    pub fn apply_reviewers(&mut self, report: &ReviewerReport) {
-        let s = &mut self.store.settings;
-        let logins = reviewers::logins(&report.results);
-        let names = reviewers::names_after(s.get(ds::PR_REVIEWER_NAMES), &report.results);
-        if logins.is_empty() {
-            s.remove(ds::PR_REVIEWER);
-        } else {
-            s.insert(ds::PR_REVIEWER.into(), Value::String(logins.join(", ")));
-        }
-        if names.is_empty() {
-            s.remove(ds::PR_REVIEWER_NAMES);
-        } else {
-            s.insert(ds::PR_REVIEWER_NAMES.into(), Value::Object(names));
-        }
-        if !report.org.is_empty() && ds::text(s, ds::GITHUB_ORG).is_empty() {
-            s.insert(ds::GITHUB_ORG.into(), Value::String(report.org.clone()));
-        }
-        self.store.save_settings();
     }
 
     /// Einen Wert in `deck_settings.json` setzen und sofort speichern.
@@ -211,7 +187,7 @@ impl Deck {
     }
 
     /// Text setzen; leer nimmt den Schlüssel heraus (dann gilt die Vorgabe).
-    fn put_text(&mut self, key: &str, v: String) {
+    pub fn put_text(&mut self, key: &str, v: String) {
         if v.is_empty() {
             self.store.settings.remove(key);
             self.store.save_settings();
@@ -220,8 +196,7 @@ impl Deck {
         }
     }
 
-    /// Schalter ausdrücklich setzen. Titan, Store-Update und PR-Automatik fragen ihn bei
-    /// jeder Gelegenheit selbst, der SpeechMike-Hook erst beim nächsten Start.
+    /// Schalter ausdrücklich setzen; wer ihn braucht, fragt ihn bei jeder Gelegenheit selbst.
     fn put_switch(&mut self, s: Switch, on: bool) -> Effect {
         self.put(s.key(), on.into());
         Effect::None

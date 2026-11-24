@@ -23,7 +23,7 @@ fn slices_count_characters_not_bytes() {
 fn whitespace_is_squashed_and_the_first_line_is_trimmed() {
     assert_eq!(squash_ws("  a \n\t b  "), "a b");
     assert_eq!(squash_ws(" "), "");
-    assert_eq!(first_line("  ORPH-1 \r\nRest"), "ORPH-1");
+    assert_eq!(first_line("  DEMO-1 \r\nRest"), "DEMO-1");
     assert_eq!(first_line(""), "");
 }
 

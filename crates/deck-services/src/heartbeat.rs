@@ -1,5 +1,7 @@
-//! Der Herzschlag der App: woran der Wächter (`deck-watchdog`) erkennt, ob sie lebt,
-//! hängt oder sauber beendet wurde. Die App schreibt, der Wächter liest.
+//! Der Herzschlag der App: woran ein neuer Start erkennt, ob die laufende Instanz lebt,
+//! hängt oder sauber beendet wurde (`instance_guard.rs` der App). Die App schreibt, der
+//! nächste Start liest. Den früheren Wächter `deck-watchdog`, der ihn ebenfalls las, gibt
+//! es seit 24.11.2026 nicht mehr (er lief nirgends).
 //!
 //! Warum eine Datei und kein Fenster (Python `ops/instance.py`, `BEAT_PATH`): angedockt
 //! und eingeklappt hat das Deck unter Umständen kein sichtbares Fenster; wer daran „lebt
@@ -12,11 +14,9 @@
 //! | Datei | Inhalt | Wer |
 //! |---|---|---|
 //! | `heartbeat.json` | `{"pid": 123, "exe": "C:\\…\\agent-deck.exe", "ts": 1730000000.5, "ended": null}` | App alle [`BEAT_EVERY_S`] s, atomar |
-//! | `watchdog.log` | `YYYY-mm-dd HH:MM:SS Wächter: …` je Zeile | Wächter |
-//! | `watchdog.lock` | PID des Dauerwächters (Text) | Wächter `--loop` |
 //!
 //! `ts` sind Unix-Sekunden als Float. `ended` setzt die App beim geordneten Ende:
-//! `"exit"` (geschlossen, der Wächter lässt sie in Ruhe), `"restart"` (Selbst-Neustart),
+//! `"exit"` (geschlossen), `"restart"` (Selbst-Neustart),
 //! `"panic"` (unbehandelter Fehler, aus dem Panic-Hook). Fehlt `ended` bei totem Prozess,
 //! wurde sie von außen beendet oder ist hart abgestürzt. Die Dateinamen weichen bewusst von
 //! denen der Python-Fassung ab (`panel.heartbeat`, `panel.lock`).
@@ -27,8 +27,6 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const HEARTBEAT_FILE: &str = "heartbeat.json";
-pub const WATCHDOG_LOG_FILE: &str = "watchdog.log";
-pub const WATCHDOG_LOCK_FILE: &str = "watchdog.lock";
 /// So oft schlägt die App.
 pub const BEAT_EVERY_S: f64 = 5.0;
 /// So alt darf der letzte Schlag sein, damit „lebt“ gilt.
@@ -58,7 +56,7 @@ impl EndReason {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Heartbeat {
     pub pid: u32,
-    /// Voller Pfad der App: damit weiß der Wächter, WAS er neu startet.
+    /// Voller Pfad der App: welches Programm der Schlag meint.
     pub exe: String,
     pub ts: f64,
     #[serde(default)]

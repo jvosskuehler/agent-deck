@@ -22,16 +22,16 @@ fn the_ticket_prompt_is_one_line_and_filled() {
 
 #[test]
 fn a_bare_number_becomes_a_key_of_the_configured_project() {
-    let p = ticket_prompt(Path::new("C:/s"), "A1", "2701", "", "ORPH", None);
-    assert_clean(&p, &["ORPH-2701", "ticket/2701", TICKET_TASK_FALLBACK]);
+    let p = ticket_prompt(Path::new("C:/s"), "A1", "2701", "", "DEMO", None);
+    assert_clean(&p, &["DEMO-2701", "ticket/2701", TICKET_TASK_FALLBACK]);
 }
 
 #[test]
 fn the_home_block_gets_the_all_repos_prompt_without_marker_file() {
-    let p = hub_prompt("ORPH-4116", r"C:\Users\x\Repos", "mach was");
-    assert_clean(&p, &["ORPH-4116", "C:/Users/x/Repos/wt/4116-", "mach was", "Jira"]);
+    let p = hub_prompt("DEMO-4116", r"C:\Users\x\Repos", "mach was");
+    assert_clean(&p, &["DEMO-4116", "C:/Users/x/Repos/wt/4116-", "mach was", "Jira"]);
     assert!(!p.contains(".worktree") && !p.contains("git rev-parse"));
-    let via_ticket = ticket_prompt(Path::new("C:/s"), "B1", "ORPH-4116", "mach was", "ORPH", Some(r"C:\Users\x\Repos"));
+    let via_ticket = ticket_prompt(Path::new("C:/s"), "B1", "DEMO-4116", "mach was", "DEMO", Some(r"C:\Users\x\Repos"));
     assert_eq!(via_ticket, p);
 }
 

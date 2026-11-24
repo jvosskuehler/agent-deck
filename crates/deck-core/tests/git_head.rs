@@ -41,7 +41,7 @@ impl GitFs for FakeFs {
 
 #[test]
 fn head_names_the_branch_and_a_detached_head_has_none() {
-    assert_eq!(parse_head("ref: refs/heads/feature/ORPH-4116-x\n").as_deref(), Some("feature/ORPH-4116-x"));
+    assert_eq!(parse_head("ref: refs/heads/feature/DEMO-4116-x\n").as_deref(), Some("feature/DEMO-4116-x"));
     assert_eq!(parse_head("ref: refs/heads/main").as_deref(), Some("main"));
     assert_eq!(parse_head("3f8f23f2a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\n"), None);
     assert_eq!(parse_head(""), None);
@@ -60,17 +60,17 @@ fn the_branch_is_found_upwards_from_a_subfolder_in_a_repo_and_in_a_worktree() {
         .dir("C:/Repos/api/.git")
         .file("C:/Repos/api/.git/HEAD", "ref: refs/heads/main\n")
         .file("C:/Repos/wt/4116-api/.git", "gitdir: C:/Repos/api/.git/worktrees/4116-api\n")
-        .file("C:/Repos/api/.git/worktrees/4116-api/HEAD", "ref: refs/heads/feature/ORPH-4116\n");
+        .file("C:/Repos/api/.git/worktrees/4116-api/HEAD", "ref: refs/heads/feature/DEMO-4116\n");
     assert_eq!(find_branch(Path::new("C:/Repos/api/src/Deep"), &fs).as_deref(), Some("main"));
-    assert_eq!(find_branch(Path::new("C:/Repos/wt/4116-api/src"), &fs).as_deref(), Some("feature/ORPH-4116"));
+    assert_eq!(find_branch(Path::new("C:/Repos/wt/4116-api/src"), &fs).as_deref(), Some("feature/DEMO-4116"));
     assert_eq!(find_branch(Path::new("C:/Elsewhere"), &fs), None);
 }
 
 #[test]
 fn a_folder_is_read_at_most_every_few_seconds() {
-    let fs = FakeFs::default().dir("C:/r/.git").file("C:/r/.git/HEAD", "ref: refs/heads/ORPH-1-a\n");
+    let fs = FakeFs::default().dir("C:/r/.git").file("C:/r/.git/HEAD", "ref: refs/heads/DEMO-1-a\n");
     let mut cache = BranchCache::default();
-    assert_eq!(cache.get("C:/r", 100.0, &fs).as_deref(), Some("ORPH-1-a"));
+    assert_eq!(cache.get("C:/r", 100.0, &fs).as_deref(), Some("DEMO-1-a"));
     let after_first = fs.reads();
     for i in 0..10 {
         cache.get("C:/r", 100.0 + i as f64 * 0.4, &fs);
@@ -80,4 +80,13 @@ fn a_folder_is_read_at_most_every_few_seconds() {
     assert!(fs.reads() > after_first, "nach Ablauf wird neu gelesen");
     assert_eq!(cache.get("", 200.0, &fs), None);
     assert_eq!(NoGit.read_text(Path::new("C:/r/.git/HEAD")), None);
+}
+
+#[test]
+fn a_worktree_made_by_git_in_wsl_finds_its_head_over_the_wsl_share() {
+    let base = r"\\wsl.localhost\Ubuntu\home\dev\repos";
+    let fs = FakeFs::default()
+        .file(&format!(r"{base}\wt\4116-api\.git"), "gitdir: /home/dev/repos/api/.git/worktrees/4116-api\n")
+        .file(&format!(r"{base}\api\.git\worktrees\4116-api\HEAD"), "ref: refs/heads/feature/DEMO-4116\n");
+    assert_eq!(find_branch(Path::new(&format!(r"{base}\wt\4116-api")), &fs).as_deref(), Some("feature/DEMO-4116"));
 }

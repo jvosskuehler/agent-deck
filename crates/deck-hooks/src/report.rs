@@ -85,7 +85,7 @@ pub fn is_real_query(data: &Data) -> bool {
 /// geschriebene Datei, oder `None`, wenn nichts zu melden war.
 pub fn run(status: &str, env: &HookEnv, stdin: impl FnOnce() -> Option<Vec<u8>>) -> Option<PathBuf> {
     let slot = env.resolve_slot()?;
-    let data = &crate::parse_stdin(stdin().as_deref());
+    let data = &env.input(stdin().as_deref());
 
     // Notification meldet stur „waiting“, feuert aber auch für Leerlauf: dann den
     // Zustand nicht anfassen, statt eine fertige Kachel auf „Rückfrage“ zu kippen.
@@ -129,7 +129,10 @@ pub fn run(status: &str, env: &HookEnv, stdin: impl FnOnce() -> Option<Vec<u8>>)
     if let Some(sid) = text(data.get("session_id")).map(Value::from).or_else(|| carried("session_id")) {
         rec.insert("session_id".into(), sid);
     }
-    if let Some(cwd) = env.cwd.clone().map(Value::from).or_else(|| carried("cwd")) {
+    // In WSL ist das cwd des Hook-Prozesses die Übersetzung durch WSL; das cwd aus dem
+    // Eingang ist dasselbe, aber schon von `HookEnv::input` einheitlich umgerechnet.
+    let own_cwd = if env.wsl.is_some() { text(data.get("cwd")).map(String::from).or_else(|| env.cwd.clone()) } else { env.cwd.clone() };
+    if let Some(cwd) = own_cwd.map(Value::from).or_else(|| carried("cwd")) {
         rec.insert("cwd".into(), cwd);
     }
     if let Some(prompt) = prompt_of(data).map(Value::from).or_else(|| carried("prompt")) {

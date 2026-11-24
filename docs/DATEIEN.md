@@ -13,16 +13,27 @@ ein Feld mit falschem Typ gilt als fehlend (`deck_core::field`), kein Hook schei
 daran. Ebenso `<slot>.live.json`, `.ticket`, `.worktree`, `.wtpid`.
 
 Laufzeitdateien der App (Bindungen, Reihenfolge, Einstellungen, Tickets, WT-Hosts,
-`orphans.json`, `ui-alive.json` …) liegen in `%LOCALAPPDATA%\claude-agent-deck\`, nicht
-neben dem Code. Darunter `dash-hidden-reviews.json`: JSON-Liste der PR-Adressen, deren
-Review-Anfrage im Info-Fenster ausgeblendet ist; nur die App schreibt sie, kaputt = leer.
-Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die
-fremde statusLine, die `deck-setup install` ersetzt hat. Solange sie liegt, führt
+`orphans.json`, `ui-alive.json`, `heartbeat.json` …) liegen in
+`%LOCALAPPDATA%\claude-agent-deck\`, nicht neben dem Code. `heartbeat.json` liest nur
+noch der nächste Start (`instance_guard`, Format in `deck_services::heartbeat`).
+`statusline.before.wsl.json`: wie `statusline.before.json` (unten), für die
+Claude-Einstellungen in der WSL-Distro (`deck-setup install --wsl`); `deck-statusline`
+führt sie in der Distro aus (`wsl.exe -d <Distro> -e sh -c`), wenn der Agent dort läuft.
+Dort auch `statusline.before.json` (`{"statusLine": <alter Wert>}`): die fremde statusLine, die `deck-setup install` ersetzt hat. Solange sie liegt, führt
 `deck-statusline` ihr `command` bei jedem Lauf mit demselben stdin aus (Git Bash wie
 Claude Code, sonst `cmd`; höchstens 1 s; Exit ≠ 0, leere Ausgabe oder Zeitüberschreitung
 = nichts) und hängt die Ausgabe ohne abschließenden Zeilenumbruch mit `  ·  ` an die
 letzte eigene Zeile (`deck_hooks::chain`). Ein Kommando, das dem Deck selbst gehört, wird
 nie aufgerufen. `deck-setup uninstall` legt sie zurück und löscht die Datei.
+
+`wt_reserve.json` (`deck_core::reserve`): der versteckt wartende Reserve-Agent
+(`slot`, `recipe` = Block, Ordner, claude-Argumente, Farbschema, bei Agenten in WSL
+`wsl` = Distro; `since`, `ready`). Nur die App schreibt sie; sie überlebt einen Neustart
+des Decks, damit die Reserve danach nicht als Agent ohne Fenster erscheint. Ihre `.wtpid`
+liegt wie bei jedem Agenten im State-Ordner (die Herkunftsmarke gilt also auch für ihre
+Kinder), aber die App zählt den Slot nicht als lebend, bis sie ihn übernimmt. Kaputt oder
+fehlend = keine Reserve. Eine Reserve gibt es nur, wenn eine Erweiterung sie will; ohne
+räumt die App eine gemerkte ab.
 
 `installed.json` (`deck_services::installed`): was die Einrichtung hinzugefügt hat,
 damit `deck-setup uninstall` genau das wieder herausnimmt. Nur `deck-setup` schreibt
@@ -38,6 +49,7 @@ nichts mehr verzeichnet, verschwindet sie.
 | `shortcut`, `wt_fragment` | Pfade | immer (gehören am Namen dem Deck) |
 | `autostart` | geschriebener Wert unter `HKCU\…\Run\AgentDeck` | immer |
 | `apps_entry` | `true`, wenn der Eintrag unter „Apps“ angelegt ist | immer |
+| `wsl` | `{distro, settings, claude_defaults, statusline_backup, linux_bin}` (`linux_bin`: Ordner der Linux-Fassungen der Hooks in der Distro, bei der Deinstallation per `wsl.exe` gelöscht): Hooks und Infozeile in Claudes Einstellungen der WSL-Distro (`settings` als `\\wsl.localhost\…`) | wie `claude_defaults`/`statusline_backup`, in der Distro; ist sie nicht erreichbar, bleibt der Eintrag |
 
 ## `deck_settings.json`: Einstellungen und ihre Version
 
@@ -51,61 +63,30 @@ tolerant, ein Schalter mit falschem Typ gilt als fehlend.
   `settings_version: 1` geschrieben; jeder fehlende Schlüssel hat seine Vorgabe (unten).
 - Datei mit Inhalt, aber ohne `settings_version` (auch unlesbar): **bestehende
   Installation** von vor dem 17.11.2026. Jeder fehlende Schalter wird ausdrücklich mit dem
-  bisherigen Wert eingetragen, dazu `model`, `jira_prefix`, `appearance` und `repos_root` wie bisher;
+  bisherigen Wert eingetragen, dazu `model`, `appearance` und `repos_root` wie bisher;
   vorhandene Werte bleiben. Dann `settings_version: 1`, sofort zurückgeschrieben.
 - Mit `settings_version`: nichts wird ergänzt. So bleiben auch die Antworten des
   Installers, wie sie sind.
 
 | Schlüssel | Art | neue Installation | Migration (alte Datei ohne Wert) | Wirkung |
 |---|---|---|---|---|
-| `repos_root` | Pfad | fehlt | `terminal_home`, sonst `~/Repos`, wenn es ihn gibt | Heimat-Block, worktree-Aufräumen (`<repos_root>\wt`); ohne brauchbaren Ordner (fehlt, kein Unterordner mit `.git`) keins von beiden, das Einstellungsfenster geht beim Start auf |
+| `repos_root` | Pfad | fehlt | `terminal_home`, sonst `~/Repos`, wenn es ihn gibt | Heimat-Block, Ticket-Prompt; ohne brauchbaren Ordner (fehlt, kein Unterordner mit `.git`) kein Heimat-Block, das Einstellungsfenster geht beim Start auf |
 | `terminal_home` | Pfad | – | wird nach `repos_root` kopiert | alter Name, nur noch Rückfall; „Ändern…“ nimmt ihn heraus |
-| `jira_prefix` | Text | leer | `ORPH` | Jira-Projekt; leer = Nummern bleiben Nummern, kein ausgedachter Key |
 | `model` | Text | fehlt | `opus[1m]` | `--model` neuer Agenten; fehlt = Claude Codes eigene Wahl |
-| `titan` | bool | `false` | `true` | Titan-Kachel, ssh alle 60 s |
-| `store_update` | bool | `false` | `true` | winget-Update von PowerShell und Windows Terminal |
-| `speechmike_voice` | bool | `false` | `true` | SpeechMike-Sprechtaste samt Tastatur-Hook (ab Neustart) |
 | `auto_permission_mode` | bool | `false` | `true` | neue Agenten per Shift+Tab in Auto |
 | `auto_compact` | bool | `true` | `true` | `/compact` vor Ablauf des Prompt-Caches |
-| `dashboard` | bool | `true` | `true` | Info-Fenster |
-| `pr_automation` | bool | `false` | `true` | PR-Automatik (`deck_core::dash::automation_enabled`) |
-| `pr_reviewer` | Text | leer | – | Reviewer der PR-Automatik: GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos. Installer und Fenster nehmen Namen oder Mailadressen an und speichern die aufgelösten Logins (`deck_core::dash::reviewers`) |
-| `pr_reviewer_names` | Objekt | – | – | Login → Anzeigename der Reviewer (`{"leo-mxyz": "Leo Müller"}`), nur zum Zeigen als „Name (login)“; geschrieben, wenn Namen aufgelöst wurden |
 | `appearance` | Text | fehlt = `system` | `sun` | Hell/Dunkel (`deck_core::appearance`): `system` Deck und Agenten folgen Windows; `light`/`dark` nur Deck und Agenten fest (Webviews per `AppHandle::set_theme`, Rahmen und Glow per `deck_win::theme::force`, neue Agenten mit `--colorScheme papier-ebenen` bzw. `papier-ebenen-nacht`; offene Agentenfenster wechseln erst beim nächsten Start); `sun` das Deck schaltet Windows selbst bei Sonnenauf- und -untergang (`deck_services::sun_switch`). Unbekannt = `system` |
-| `sun_place` | Text | fehlt = `hamburg` | – | Ort für den Sonnenstand, Kennung aus `deck_core::sun::PLACES` (25 Städte: größere deutsche, Wien, Zürich); unbekannt = Hamburg |
-| `github_org` | Text | leer | – | GitHub-Organisation der PR-Automatik; leer und das Konto in genau einer Organisation: die Reviewer-Suche trägt sie ein |
+| `agent_env` | Text | Installer: `wsl` | fehlt = `windows` | Wo neue Agenten laufen (`deck_core::wsl::AgentEnv`): `windows` (PowerShell, `wt_agent.ps1`) oder `wsl` (`deck-wsl.exe`, `wt_agent.sh`). `repos_root` ist dann ein Linux-Pfad. Ein Wechsel gilt ab dem nächsten Start des Decks |
+| `wsl_distro` | Text | Installer | – | Distro der Agenten; ohne sie gilt `windows` |
+| `wsl_home`, `wsl_mount_root` | Text | Installer | – | `$HOME` und Einhängepunkt der Laufwerke (`/mnt/`) in der Distro; fehlen sie, fragt das Deck beim Start die Distro (`agent_env.rs`) und trägt sie ein |
 
 Dazu wie bisher ohne Version: `dock_edge`, `dock_along`, `panel_pos`, `panel_zoom`, die
 Tastenkürzel (`jump_hotkey` …), `glow`, `group_shadow`, `frame_season`.
 
-## PR-Feed: `state\pr-feed.json`, `feed\runs\`, `feed\drafts\`
-
-Das Gedächtnis des PR-Feeds (`deck_core::dash::feed_state::FeedState`), nur die App
-schreibt es, atomar, kaputt = frisch. Felder (camelCase): `since` (erster Start; ältere
-Kommentare und Funde lösen nichts aus), `automation` (früher der Not-Aus; seit 17.11.2026 gilt allein `pr_automation` in
-`deck_settings.json`, der Not-Aus-Knopf schreibt dorthin), `hold`
-(Halteliste: PR-Schlüssel `owner/repo#12`, nie mergen), `snoozed` und `notified` („Später“
-bzw. vom Kommentar-Fenster gezeigt, je PR der Zeitpunkt des neuesten Kommentars),
-`conflictSince`, `handled` (was die Hintergrund-Agenten und die Mechanik je PR schon
-erledigt haben), `verdicts` (Job-Id → Log erklärt rote CI mit Code Security),
-`activity` (Zeitleiste, 48 Std.), `runs` (Hintergrund-Agenten mit Bericht), `drafts`
-(Antwort-Entwürfe), `jiraChecked` (gemergte PRs, deren Ticket schon nachgezogen ist), `seenAny` (erster
-gelungener Abruf gesehen: Konflikte, die schon dabei bestehen, gelten als alt), `verdictRule`
-(Regelstand der Log-Urteile; ändert sich die Regel, werden `verdicts` neu geholt).
-Ein Lauf, der beim Beenden des Decks noch lief, gilt beim nächsten Start als gescheitert.
-
-`feed\runs\<id>.jsonl` (+ `.err`): Ausgabe von `claude -p --output-format stream-json`;
-der Bericht ist die letzte Zeile vom Typ `result`. `feed\drafts\<key>.md`: Antwort-Entwurf
-als reiner Text; „Ändern“ öffnet die Datei, „Absenden“ liest sie frisch.
-
-Einstellungen dazu in `deck_settings.json` (Einstellungsfenster, Bereich Automatik):
-`pr_automation` (aus = keine Wirkung nach außen, der Feed zeigt nur), `pr_reviewer`
-(GitHub-Logins, mehrere mit Komma, die als Reviewer nachgetragen werden; leer = keiner;
-Namen dazu in `pr_reviewer_names`)
-und `github_org` (Organisation für die Jira-Suche; leer = Jira wird nicht nachgezogen,
-Hinweis im Feed). Hintergrund-Agenten arbeiten in `<repos_root>\<repo>` bzw.
-`<repos_root>\wt\<ordner>`.
-Protokoll: `state\dash-feed.log` (nur PR-Kürzel, Tickets, Ids, Dauern, Fehlercodes).
+Schlüssel, die diese Ausgabe nicht kennt (etwa die einer Erweiterung, `extension.rs`),
+bleiben in der Datei stehen und werden nie angefasst; so verliert niemand Einstellungen,
+der zwischen Ausgaben wechselt. Der Ort für den Sonnenstand ist keine Einstellung, er
+kommt aus der Zeitzone von Windows (`docs/BETRIEB.md`, „Hell/Dunkel“).
 
 ## Chat-Titel: `summaries\<session>.json`, `areas.json`
 
@@ -125,7 +106,37 @@ Eingabefeld.
 `summaries\areas.json`: Bereich → zuletzt benutzt (Unix-Sekunden). Das Modell bekommt die
 Bereiche der letzten 30 Tage, damit derselbe Bereich gleich heißt; es darf neue bilden.
 
+## Agenten in WSL: Pfade und Umgebung
+
+Läuft ein Agent in WSL (`agent_env` = `wsl`), meldet Claude Linux-Pfade. **In die
+Zustandsdateien kommen trotzdem nur Windows-Pfade:** `deck-report` und `deck-statusline`
+rechnen `cwd`, `transcript_path`, `agent_transcript_path` und `workspace.current_dir`/
+`project_dir` des Hook-Eingangs um, bevor sie etwas lesen oder schreiben
+(`deck_core::wsl::Wsl::localize_hook_input`): `/mnt/c/x` → `C:\x`, sonst
+`\\wsl.localhost\<Distro>\…`. Woran sie den WSL-Agenten erkennen und wohin sie schreiben,
+steht in der Umgebung, die `deck-wsl.exe` setzt und per `WSLENV` durch die Distro zurück
+in die Windows-Programme reicht:
+
+| Variable | Inhalt |
+|---|---|
+| `AGENT_SLOT` | Slot (Vertrag 4) |
+| `AGENT_DECK_SHELL` | Herkunftsmarke `<pid>.<created>` von `deck-wsl.exe` |
+| `AGENT_DECK_DISTRO`, `AGENT_DECK_MNT` | Distro und Einhängepunkt: daran rechnen die Hooks Pfade um |
+| `AGENT_DECK_STATE` | Zustandsordner (Windows-Pfad); die Hooks nehmen ihn vor `LOCALAPPDATA` |
+| `AGENT_DECK_CLAUDE_DIR` | setzt `wt_agent.sh` mit `/p` (WSL übersetzt ihn in `\\wsl.localhost\…`): Claudes Ordner in der Distro, für die Sprache der Statuszeile |
+
+Der worktree-Marker `<slot>.worktree` enthält bei WSL-Agenten einen Linux-Pfad; das Deck
+rechnet ihn beim Lesen um (`Deck::read_files`, `WorktreeSweeper`). Der Ticket-Prompt nennt
+dem Agenten den Marker unter `/mnt/c/…` und den Heimat-Block mit seinem Linux-Pfad.
+Ein `gitdir:` mit Linux-Pfad (worktree von git in WSL) liest `git_head` über
+`deck_core::wsl::beside`.
+
 ## `<slot>.wtpid` und die Herkunftsmarke
+
+Bei Agenten in WSL schreibt `deck-wsl.exe` die Datei mit seiner eigenen PID und Startzeit
+(gleiches Format, `deck_core::wsl_launch::plan`): Windows sieht den Linux-Prozess nicht,
+`deck-wsl.exe` lebt aber genau so lange wie `wsl.exe` im Fenster. Beenden des
+Prozessbaums nimmt `wsl.exe` mit.
 
 `wt_agent.ps1` schreibt vor claude atomar `{"pid", "created", "slot"}` (die Shell im Pane;
 `created` als FILETIME, über DateTime nur auf etwa eine Sekunde genau) und setzt neben
@@ -151,7 +162,7 @@ wie die Kachel sie zeigt (`deck_core::tile_refs`):
 dürfen `null` sein, Quellen wie `RefSource` (`assigned`, `branch` …).
 
 `deck-statusline` liest nur diese Datei für das Ticket (kein `tickets.json`, kein
-`.ticket` mehr, keine eigene Erkennung) und zeigt die Kopfzeile „B3 · ORPH-4116 · PR #347
+`.ticket` mehr, keine eigene Erkennung) und zeigt die Kopfzeile „B3 · ABC-4116 · PR #347
 freigegeben · Titel“; nur Geratenes gedimmt, der PR aus dem stdin vor dem des Decks, der
 Titel wird um Ticket und PR gekürzt (`TITLE_MAX`). Fehlt die Datei: kein Ticket.
 
@@ -163,6 +174,13 @@ aus den Werkzeugaufrufen im Transcript (`claude::worktree_use`: Edit/Write-Pfade
 `git -C wt/…`, `cd`; Schreiben zählt achtfach, Altes klingt ab), PR aus der Statuszeile,
 Sessiontitel, zuletzt der Chat. Einen PR aus dem Chat zu raten ist verboten; nur Claude
 Codes Meldung oder der Sessiontitel zählen.
+
+Ein Ticket ist in dieser Ausgabe ein ausgeschriebener Key `ABC-123`: Kürzel groß
+geschrieben, nicht in der Stoppliste (`KEY_STOP`: UTF, SHA, ISO …), mindestens zwei
+Ziffern; in einem `ticket/`-Branch zählt er auch klein. Ein Projektkürzel, mit dem eine
+reine Nummer (`4116-ui`) zum Ticket wird, gibt es nur über eine Erweiterung
+(`ticket_prefix`); es steht in `DeckInput::ticket_prefix` (`Deck::ticket_prefix()`).
+Ohne Kürzel bleibt eine Nummer eine Nummer, ein Key wird nie ausgedacht.
 
 Probelauf gegen die echten Transcripts (nur lesend):
 `cargo test -p deck-core --test worktree_use_real -- --ignored --nocapture`.

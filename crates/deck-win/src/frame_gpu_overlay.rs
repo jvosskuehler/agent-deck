@@ -58,6 +58,7 @@ use crate::dpi;
 use crate::frame_fx::Design;
 use crate::frame_gpu::GpuPipeline;
 use crate::frame_layout::FrameLayout;
+use crate::frame_still::{Still, needs_paint};
 use crate::guard;
 use crate::monitor::monitor_of_window;
 use crate::frame_window::{clip_to_work_areas, create_click_through};
@@ -109,6 +110,10 @@ pub struct GpuFocusFrame {
     stale: [Option<Rect>; 2],
     /// Seit wann es keinen Rahmen gibt.
     idle_since: Option<Instant>,
+    /// Was das zuletzt präsentierte Bild zeigt ([`crate::frame_still`]).
+    painted: Option<Still>,
+    /// Das letzte [`GpuFocusFrame::draw`] hat nichts Neues gezeigt (stiller Glow).
+    skipped: bool,
     _not_send: PhantomData<*const ()>,
 }
 
@@ -176,6 +181,8 @@ impl GpuFocusFrame {
             last_area: None,
             stale: [None; 2],
             idle_since: None,
+            painted: None,
+            skipped: false,
             _not_send: PhantomData,
         })
     }
@@ -187,6 +194,7 @@ impl GpuFocusFrame {
     /// `glow` sind die Werte des eigenen Glows (nur für [`Design::Eigen`] gelesen).
     pub fn draw(&mut self, target: Hwnd, design: Design, seed: i32, t: f64, night: bool, glow: &[[f32; 4]; 4]) -> Result<bool> {
         guard::check("frame_gpu_overlay")?;
+        self.skipped = false;
         let dt = self.step();
         self.look = Some(Look { design, seed, t, night, glow: *glow });
         self.advance(Some(target), dt)
@@ -203,6 +211,12 @@ impl GpuFocusFrame {
             look.t += dt;
         }
         self.advance(None, dt).unwrap_or(false)
+    }
+
+    /// Hat das letzte [`Self::draw`] das stehende Bild gelassen (nichts gezeichnet, nicht
+    /// auf den Bildwechsel gewartet)? Dann wartet der Aufrufer selbst ein Bild lang.
+    pub fn skipped(&self) -> bool {
+        self.skipped
     }
 
     /// Sekunden seit dem letzten Bild, gedeckelt auf [`MAX_STEP`].
@@ -275,6 +289,11 @@ impl GpuFocusFrame {
         let origin = (stage.left, stage.top);
         let area = layout.frame.offset(-origin.0, -origin.1);
         let rtv = self.target_view(stage.width() as u32, stage.height() as u32)?;
+        let key = Still { design: look.design, window: lit.window, stage, scale: lit.scale, night: look.night, glow: look.glow };
+        if !self.fresh && !needs_paint(self.painted.as_ref(), &key, lit.level) {
+            self.skipped = true;
+            return Ok(true);
+        }
         let params = layout
             .params_from(origin, look.design, look.seed, look.t)
             .with_night(look.night)
@@ -283,6 +302,7 @@ impl GpuFocusFrame {
         let clear = self.clear_rects();
         self.gpu.draw_at(&rtv, (area.left, area.top, area.width() as u32, area.height() as u32), clear.as_deref(), &params);
         self.present(Some(area))?;
+        self.painted = Some(key);
         Ok(true)
     }
 
@@ -301,6 +321,7 @@ impl GpuFocusFrame {
 
     /// Ein leeres Bild: was eben noch zu sehen war, verschwindet.
     fn present_blank(&mut self) -> Result<()> {
+        self.painted = None;
         let Some(size) = self.surface.as_ref().map(|s| s.size) else {
             self.last_area = None;
             return Ok(());
@@ -360,6 +381,7 @@ impl GpuFocusFrame {
         self.last_area = None;
         self.stale = [None; 2];
         self.fresh = true;
+        self.painted = None;
         // SAFETY: eigenes Fenster; zieht es nur um, zeigt es nicht.
         unsafe {
             SetWindowPos(

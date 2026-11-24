@@ -74,6 +74,14 @@ export function appearanceOptions(lang: Lang): Option[] {
 }
 
 /** Ein Schalter als zwei Segmente (Schalter selbst gibt es im Fenster nicht mehr). */
+/** Wo neue Agenten laufen: Windows (PowerShell) oder WSL. */
+export function agentEnvOptions(): Option[] {
+  return [
+    { value: "windows", label: "Windows" },
+    { value: "wsl", label: "WSL" },
+  ];
+}
+
 export function onOffOptions(lang: Lang): Option[] {
   const de = lang !== "en";
   return [

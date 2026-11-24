@@ -176,8 +176,12 @@ pub fn remove(p: &LookPaths, sys: &dyn UserSystem, m: &mut Installed) -> Report 
     for f in std::mem::take(&mut m.fonts) {
         remove_font(&f, sys, &mut r);
     }
+    let mut themes_dirs = Vec::new();
     for f in std::mem::take(&mut m.files) {
         let path = PathBuf::from(&f.path);
+        if let Some(dir) = path.parent().filter(|d| d.file_name().is_some_and(|n| n == "themes")) {
+            themes_dirs.push(dir.to_path_buf());
+        }
         match std::fs::read(&path) {
             Err(_) => {}
             Ok(have) if hash(&have) != f.hash => r.push(Grade::Info, format!("{} wurde geändert und bleibt", path.display())),
@@ -190,8 +194,12 @@ pub fn remove(p: &LookPaths, sys: &dyn UserSystem, m: &mut Installed) -> Report 
             },
         }
     }
-    // Der Themes-Ordner geht mit, wenn er dadurch leer ist.
+    // Der Themes-Ordner geht mit, wenn er dadurch leer ist (auch der in einer WSL-Distro,
+    // `deck-setup look --wsl`: dessen Pfad steht nur in den entfernten Dateien).
     let _ = std::fs::remove_dir(p.theme().parent().unwrap_or(Path::new("")));
+    for d in &themes_dirs {
+        let _ = std::fs::remove_dir(d);
+    }
     r
 }
 

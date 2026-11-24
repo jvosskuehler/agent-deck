@@ -8,9 +8,11 @@ authors.workspace = true
 
 [lib]
 # Eigener Name für die Bibliothek: unter Windows kollidieren lib und bin sonst
-# (https://github.com/rust-lang/cargo/issues/8519).
+# (https://github.com/rust-lang/cargo/issues/8519). Nur rlib: das Deck läuft nur auf
+# Windows (keine Mobil-Ziele), und eine andere Ausgabe bindet die Bibliothek als
+# Abhängigkeit ein (`extension.rs`).
 name = "agent_deck_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

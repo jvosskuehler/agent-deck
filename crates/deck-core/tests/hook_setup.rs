@@ -113,7 +113,7 @@ fn a_foreign_statusline_stays_with_a_warning_unless_forced() {
     let (out, notes) = merged(before.clone());
     assert_eq!(out["statusLine"], before["statusLine"]);
     assert_eq!(notes.iter().filter(|(g, _)| *g == "warn").count(), 1);
-    let (forced, _) = merge(&obj(before), BIN, MergeOptions { force_statusline: true });
+    let (forced, _) = merge(&obj(before), BIN, MergeOptions { force_statusline: true, ..Default::default() });
     assert_eq!(forced["statusLine"]["command"], statusline_command(BIN));
 }
 

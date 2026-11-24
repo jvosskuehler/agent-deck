@@ -87,7 +87,7 @@ fn an_unversioned_settings_file_is_migrated_once_and_written_back() {
     let file = dir.path().join(paths::SETTINGS_FILE);
     save_json(&file, &json!({"dock_edge": "left"})).unwrap();
     let s = BindStore::load_with_home(dir.path(), home.path());
-    assert_eq!(s.settings["titan"], true);
+    assert_eq!(s.settings["auto_permission_mode"], true);
     let back = load_json(&file).unwrap();
     assert_eq!(back["settings_version"], 1);
     assert_eq!(back["model"], "opus[1m]");
@@ -136,12 +136,12 @@ fn read_all_skips_live_files_and_broken_files() {
 fn marker_files_yield_their_first_line_trimmed_and_capped() {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
-    std::fs::write(d.join("A1.ticket"), "  ORPH-1  \r\nzweite\n").unwrap();
+    std::fs::write(d.join("A1.ticket"), "  DEMO-1  \r\nzweite\n").unwrap();
     std::fs::write(d.join("A2.ticket"), "   \n").unwrap();
     std::fs::write(d.join("A3.ticket"), "x".repeat(80)).unwrap();
     std::fs::write(d.join("A1.worktree"), "C:/Repos/wt 1\n").unwrap();
     let t = read_found_tickets(d);
-    assert_eq!(t["A1"], "ORPH-1");
+    assert_eq!(t["A1"], "DEMO-1");
     assert!(!t.contains_key("A2"));
     assert_eq!(t["A3"].len(), 60);
     assert_eq!(read_found_worktrees(d)["A1"], "C:/Repos/wt 1");

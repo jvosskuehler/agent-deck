@@ -16,7 +16,7 @@ und zwar in einer Windows-VM auf dem Titan (`titan vm`), nie auf Jorrits Laptop.
 | Datei | Lesen, wenn … |
 |---|---|
 | `docs/DESIGN.md` | du etwas an der Oberfläche änderst (verbindlich, mit Vorlagen in `docs/design-refs/`) |
-| `docs/IPC.md` | du Fenster, Ereignisse oder `invoke`-Befehle zwischen Oberfläche und Rust änderst |
+| `docs/IPC.md` | du Fenster, Ereignisse oder `invoke`-Befehle zwischen Oberfläche und Rust änderst oder an der Erweiterungsschnittstelle arbeitest |
 | `docs/DATEIEN.md` | du Zustandsdateien, `.wtpid`/Herkunftsmarke, `refs.json` oder die Ticket/PR-Erkennung anfasst |
 | `docs/BETRIEB.md` | du baust, installierst, einen Fehler im Betrieb suchst (Log, Hänger, Absturz) oder offene Punkte suchst |
 
@@ -28,11 +28,19 @@ crates/deck-core/       Fachkern: Zustände, Konfiguration, Reihenfolge, WT-Rech
 crates/deck-win/        Win32: Fenster, Monitore, DPI, Prozesse, Tasten an Konsolen,
                         Fokus-Rahmen (GPU), globale Tastenkürzel.
 crates/deck-hooks/      Claude-Code-Hooks: deck-report, deck-statusline.
-crates/deck-services/   Hintergrunddienste: Usage-Poller, Zusammenfassung, Worktrees,
-                        deck-setup, deck-watchdog, Store-Update. Wirkung nach außen hinter Traits.
-app/src-tauri/          Die App: Fenster, Andocken, WT-Host, Poll-Schleife, Befehle.
+crates/deck-services/   Hintergrunddienste: Usage-Poller, Zusammenfassung, Hell/Dunkel,
+                        deck-setup. Wirkung nach außen hinter Traits.
+app/src-tauri/          Die App: Fenster, Andocken, WT-Host, Poll-Schleife, Befehle,
+                        Erweiterungsschnittstelle (extension.rs).
 app/src/                React-Oberfläche. app/src/bindings/ ist aus Rust erzeugt, nie von Hand.
 ```
+
+Dieses Repo ist die schlanke Ausgabe fürs Team. Persönliche Teile (Info-Fenster,
+PR-Automatik, Diktiermikrofon, Store-Update, worktree-Aufräumen, Jira-Kürzel) liegen in
+einer eigenen Ausgabe, die eine eigene Binärdatei gegen `agent_deck_lib::run_with` baut
+und über `extension.rs` bzw. `app/src/extensions.ts` anbaut (`docs/IPC.md`,
+„Erweiterungen“). Hier kommt davon nichts hinein, auch kein Schalter:
+`crates/deck-core/tests/lean_edition.rs` sucht im Quellbaum nach Spuren.
 
 Abhängigkeiten zeigen nur nach unten: `app` → `deck-services` → `deck-win` → `deck-core`;
 `deck-hooks` → `deck-core`; `deck-core` → nichts aus dem Projekt. **Rechnen gehört nach
@@ -70,9 +78,24 @@ Einzelheiten in `docs/DATEIEN.md`.
    Eintrag in `settings.json` endet zusätzlich auf `|| exit 0`. **Kein `cmd /c` davor**
    (MSYS macht aus `/c` den Pfad `C:\`, `cmd` liest dann das Hook-JSON als Befehl).
 3. **Hook-stdin ist UTF-8**, roh lesen und selbst dekodieren.
-4. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`** (gesetzt von `wt_agent.ps1`).
-   Ohne ihn meldet kein Hook etwas: eine selbst gestartete Session gehört nicht zum Deck.
-5. **Ein Worktree mit nicht committeter Arbeit wird nie automatisch gelöscht.**
+4. **Der Slot eines Agenten kommt nur aus `AGENT_SLOT`** (gesetzt von `wt_agent.ps1`, bei
+   Agenten in WSL von `deck-wsl.exe` über `WSLENV`). Ohne ihn meldet kein Hook etwas: eine
+   selbst gestartete Session gehört nicht zum Deck.
+5. **Ein Worktree mit nicht committeter Arbeit wird nie automatisch gelöscht.** Diese
+   Ausgabe löscht gar keinen; ein frei gewordener Slot meldet sich nur bei Erweiterungen
+   (`on_slot_released`), und wer dort aufräumt, hält sich daran.
+
+## Agenten in WSL
+
+Die Team-Ausgabe lässt Claude Code ganz in einer WSL-Distro laufen (`agent_env` = `wsl`,
+`deck_core::wsl`); der Windows-Weg (PowerShell, `wt_agent.ps1`) bleibt. Im Fenster steht
+`deck-wsl.exe` (Herkunftsmarke, Umgebung), das `wsl.exe … bash -li wt_agent.sh` startet.
+**Zustandsdateien enthalten nur Windows-Pfade:** die Hooks rechnen Linux-Pfade aus dem
+Hook-Eingang um (`\\wsl.localhost\<Distro>\…`, `/mnt/c` → `C:\`), das Deck rechnet
+zurück, wo es dem Agenten oder `wsl.exe` einen Pfad gibt (`AgentEnv::for_agent`).
+`deck-hooks` baut darum auch für Linux (`x86_64-unknown-linux-musl`): Windows-Eigenes
+steht dort hinter `#[cfg(windows)]`, die Linux-Fassungen laufen in der Distro.
+Einzelheiten: `docs/BETRIEB.md` („Agenten in WSL“), `docs/DATEIEN.md`.
 
 ## Fallen, die schon einmal wehgetan haben
 
@@ -91,16 +114,28 @@ Einzelheiten in `docs/DATEIEN.md`.
 - **Der „gesehen“-Merker hält über den Poll hinaus** (in der Datei steht weiter `done`).
 - **Ein Deck, das lebt, aber nichts zeigt, blockiert jeden Neustart.** Dagegen `ui_watch`
   und `instance_guard`; nicht entfernen (`docs/BETRIEB.md`).
-- **Ein Store-Update von PowerShell beendet jeden Agenten.** PowerShell und Windows
-  Terminal nur aktualisieren, solange kein Agent lebt (`store_update`, `crash_resume`,
-  `docs/BETRIEB.md`).
+- **Ein Store-Update von PowerShell beendet jeden Agenten.** Diese Ausgabe zieht
+  PowerShell und Windows Terminal nicht selbst nach; stirbt die Shell eines Agenten, setzt
+  `crash_resume` die Session fort (`docs/BETRIEB.md`).
 - **Ein Overlay, das bei jedem Wechsel umzieht, zuckt.** Fensterlage und Swapchain-Bild
   kommen nicht im selben DWM-Bild an. Der Fokus-Rahmen ist darum eine feste Bühne über dem
   ganzen Monitor, nur der Inhalt bewegt sich (`frame_gpu_overlay`).
-- **Fenster umlegen, das man nicht sehen soll: unter den Vorhang.** Öffnen, Schließen und
-  Umsortieren der Agenten laufen unter einem Standbild (`Desktop::curtain`, `veil`); vor
-  dem Lüften `FrameHold` lösen und kurz warten, sonst stehen die Statusringe noch an alten
-  Plätzen.
+- **Fenster umlegen, das man nicht sehen soll: unter den Vorhang.** Öffnen und Schließen
+  der Agenten und jedes Umlegen mit neuer Kachelgröße laufen unter einem Standbild
+  (`Desktop::curtain`, `veil`). Umsortieren gleich großer Kacheln nicht: das sind nur
+  Orte, die Fenster springen im selben Bild, ein Vorhang kostete nur Zeit. Vor
+  dem Lüften `FrameHold` lösen und warten, bis Ringe und Schatten nachgezogen haben
+  (`group_shadow::catch_up`), sonst stehen die Statusringe noch an alten Plätzen. Auch das
+  Nachlegen nach einem Wechsel (`settle_due`) und nach neuer Auflösung geht darunter.
+- **Ob ein Ablauf ruhig ist, wird gemessen, nicht geschätzt:** `tools/probe` (Test-VM,
+  Ereignisprotokoll und Video, Kennzahlen je Ablauf). Vor und nach jeder Änderung an
+  Kacheln, Vorhang, Ringen oder Glow laufen lassen.
+- **Reihenfolge beim Nachkacheln nur über `arrange::keep_order`.** `Vec::dedup` entfernt
+  nur benachbarte Doppelte; so lagen nach dem Schließen die übrigen Fenster als 2 × 2 in
+  der unteren Hälfte.
+- **Ein stiller Glow wird nicht neu gezeichnet** (`frame_still`): 60 Bilder je Sekunde
+  für ein unverändertes Bild kosteten in der VM drei Kerne. Wer dem Shader etwas
+  Zeitabhängiges gibt, muss es in `Still::animated` eintragen.
 
 ## Konventionen
 

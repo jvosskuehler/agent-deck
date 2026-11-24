@@ -1,6 +1,6 @@
 //! Die Hintergrunddienste aus `crates/deck-services`, so verdrahtet, wie das Deck sie
 //! braucht: Usage, KI-Zusammenfassung samt Ticket/PR-Erkennung, git-Branches der
-//! Agenten-Ordner (gecacht), worktrees (Aufräumen beim Schließen, Sweep im Takt).
+//! Agenten-Ordner (gecacht), „Läuft noch ohne Fenster“.
 //!
 //! Jeder Dienst ist optional: Tests bauen [`Services::inert`] ohne einen davon (nichts
 //! läuft an, nichts geht nach außen), die App [`Services::system`] mit allen.
@@ -16,7 +16,6 @@ use deck_core::view::{OrphanView, UsageView};
 use deck_services::orphans::{OrphanWatch, Win32Source};
 use deck_services::summary::{ChatInfo, InfoCallback, SummaryService};
 use deck_services::usage::UsageService;
-use deck_services::worktree_sweep::{SweepView, WorktreeSweeper};
 
 use crate::app_paths::Paths;
 
@@ -31,7 +30,6 @@ pub type Wake = Arc<dyn Fn() + Send + Sync>;
 pub struct Services {
     usage: Option<UsageService>,
     summary: Option<Arc<SummaryService>>,
-    sweeper: Option<WorktreeSweeper>,
     /// „Läuft noch ohne Fenster“ (eigener Scan-Thread, `crate::orphans`).
     orphans: Option<Arc<OrphanWatch>>,
     refs: Arc<Mutex<HashMap<String, Refs>>>,
@@ -51,7 +49,6 @@ impl Services {
         Services {
             usage: None,
             summary: None,
-            sweeper: None,
             orphans: None,
             refs: Arc::default(),
             wake: Arc::new(|| {}),
@@ -63,10 +60,19 @@ impl Services {
     }
 
     /// Alle Dienste, echt.
-    pub fn system(paths: &Paths, lang: Lang, wake: Wake) -> Services {
-        let summary = Arc::new(SummaryService::system(&paths.state_dir));
+    /// Bei Agenten in WSL (`env`): Zusammenfassung mit dem `claude` der Distro, Usage mit
+    /// deren Anmeldung.
+    pub fn system(paths: &Paths, lang: Lang, wake: Wake, env: &deck_core::wsl::AgentEnv) -> Services {
+        let wsl = env.wsl();
+        let summary = Arc::new(match wsl {
+            Some(w) => SummaryService::system_wsl(&paths.state_dir, paths.projects_dir.clone(), &w.distro),
+            None => SummaryService::system(&paths.state_dir),
+        });
         summary.prune(SUMMARY_KEEP_DAYS);
-        let usage = UsageService::system(lang);
+        let cli_files = wsl.and_then(|w| {
+            Some((std::path::PathBuf::from(w.claude_dir()?).join(".credentials.json"), std::path::PathBuf::from(w.claude_json()?)))
+        });
+        let usage = UsageService::system_in(lang, cli_files);
         let w = wake.clone();
         usage.start(Box::new(move |_| w()));
         let orphans = Arc::new(OrphanWatch::new(Arc::new(Win32Source), &paths.app_dir, &paths.state_dir));
@@ -74,7 +80,6 @@ impl Services {
         Services {
             usage: Some(usage),
             summary: Some(summary),
-            sweeper: Some(WorktreeSweeper::system(&paths.state_dir)),
             orphans: Some(orphans),
             refs: Arc::default(),
             wake,
@@ -85,8 +90,9 @@ impl Services {
         }
     }
 
-    /// Ab sofort mit diesem Jira-Projekt im Chat suchen (`jira_prefix`).
-    pub fn set_jira_prefix(&self, prefix: &str) {
+    /// Ab sofort mit diesem Projektkürzel im Chat suchen (`Deck::ticket_prefix`; leer =
+    /// allgemein).
+    pub fn set_ticket_prefix(&self, prefix: &str) {
         if let Some(s) = &self.summary {
             s.set_project_key(Some(prefix));
         }
@@ -112,21 +118,6 @@ impl Services {
         if let Some(u) = &self.usage {
             u.set_lang(lang);
         }
-    }
-
-    // ── worktrees ────────────────────────────────────────────────────────────────
-
-    /// Beim Schließen eines Agenten seinen worktree entfernen (im Hintergrund; einer
-    /// mit nicht committeter Arbeit bleibt stehen).
-    pub fn cleanup_slot(&self, slot: &str, ticket: Option<&str>) {
-        if let Some(s) = &self.sweeper {
-            s.cleanup_slot(slot, ticket);
-        }
-    }
-
-    /// Verwaiste worktrees fegen. Rückgabe: Slots, deren Ticket die App vergisst.
-    pub fn sweep(&mut self, view: &SweepView) -> Vec<String> {
-        self.sweeper.as_mut().map(|s| s.tick(view)).unwrap_or_default()
     }
 
     // ── Läuft noch ohne Fenster ─────────────────────────────────────────────────
@@ -217,12 +208,11 @@ mod tests {
     fn without_services_nothing_runs_and_nothing_breaks() {
         let mut s = Services::inert();
         assert!(s.usage_view(Lang::German).is_none());
-        assert!(s.sweep(&SweepView::default()).is_empty());
         assert_eq!(s.summary("abc"), None);
         s.prefetch(100.0, &[("abc".into(), String::new())], &["abc".into()], Lang::German);
         assert!(s.detected_refs(&[]).is_empty());
         assert!(s.branches(&["C:/Repos/agent-deck".into()], 100.0).is_empty(), "ohne Dateisystem kein Branch");
-        s.set_jira_prefix("ORPH");
+        s.set_ticket_prefix("ABC");
         assert!(s.orphan_rows(100.0, Lang::German).is_empty() && s.orphan_watch().is_none());
     }
 }

@@ -66,7 +66,12 @@ pub fn cli_account_from(data: &Value) -> Option<String> {
 /// antwortet: die CLI schreibt diese Datei getrennt von `.credentials.json`, direkt
 /// nach einem Login kann hier noch das alte Konto stehen.
 pub fn read_cli_account() -> Option<String> {
-    let raw = read_shared(&cli_account_path(), 5, Duration::from_millis(200)).ok()?;
+    read_cli_account_at(&cli_account_path())
+}
+
+/// [`read_cli_account`] mit anderer Datei (Agenten in WSL: `~/.claude.json` der Distro).
+pub fn read_cli_account_at(path: &Path) -> Option<String> {
+    let raw = read_shared(path, 5, Duration::from_millis(200)).ok()?;
     cli_account_from(&serde_json::from_slice(&raw).ok()?)
 }
 

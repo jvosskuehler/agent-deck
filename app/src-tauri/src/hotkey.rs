@@ -14,9 +14,6 @@
 //! - Vollbild (`config::FULLSCREEN_HOTKEY`, heute Strg+Alt+F): der Agent vorn füllt seinen
 //!   Monitor, nochmal = zurück an seinen Platz (`Deck::toggle_fullscreen`). Überschreibbar
 //!   über `fullscreen_hotkey`.
-//! - Info-Fenster (`config::DASH_HOTKEY`, heute Strg+Alt+D): zeigt die Info-Karten mitten
-//!   auf dem Monitor, auch ohne freie Kachel, nochmal = weg (`crate::dash_window::toggle`).
-//!   Überschreibbar über `dash_hotkey`.
 //!
 //! Leer schaltet eine Taste ab. Ist eine Kombination belegt (etwa vom noch laufenden
 //! Python-Deck), versucht es ihr Thread eine Weile und gibt dann auf; das Deck läuft ohne
@@ -59,12 +56,9 @@ pub fn start_fullscreen(app: &AppHandle, combo: String) {
     listen(app, combo, "Vollbild-Taste", |app| lock(&shared(app).deck).toggle_fullscreen());
 }
 
-/// Info-Fenster aufklappen und wieder weg.
-pub fn start_dash(app: &AppHandle, combo: String) {
-    listen(app, combo, "Info-Fenster-Taste", crate::dash_window::toggle);
-}
-
-fn listen(app: &AppHandle, combo: String, label: &'static str, press: fn(&AppHandle)) {
+/// Eine globale Taste: `press` bei jedem Druck, danach ein sofortiger Takt. Öffentlich für
+/// Erweiterungen (`extension.rs`), die eigene Tasten brauchen.
+pub fn listen(app: &AppHandle, combo: String, label: &'static str, press: fn(&AppHandle)) {
     if combo.trim().is_empty() {
         return;
     }

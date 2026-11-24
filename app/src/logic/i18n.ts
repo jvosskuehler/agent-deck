@@ -58,50 +58,28 @@ const TEXTS = {
     "Schaltet Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel ({place}).",
     "Switches Windows to light at sunrise and to dark at sunset ({place}).",
   ],
-  sunPlace: ["Ort für Sonnenstand", "Place for sunrise and sunset"],
   autoCompact: [
     "Automatisch /compact (5 min bevor der Cache abläuft)",
     "Auto /compact (5 min before the cache expires)",
   ],
-  dashboard: ["Info-Fenster in der freien Fensterkachel (PRs, Kontingent, Heute …)", "Info window in the free window tile (PRs, quota, today …)"],
   account: ["Konto und Ordner", "Account and folders"],
   accountHint: ["gilt für dieses Konto", "applies to this account"],
   reposRoot: ["Repos-Ordner", "Repos folder"],
+  agentEnv: ["Agenten laufen in", "Agents run in"],
+  agentEnvHint: ["Wechsel gilt nach „Panel neu starten“", "Change applies after “Restart panel”"],
+  wslDistro: ["WSL-Distro", "WSL distro"],
+  wslNone: ["WSL ist nicht installiert", "WSL is not installed"],
   reposRootEmpty: ["nicht gewählt", "not chosen"],
   reposRootChange: ["Ändern…", "Change…"],
   reposUnset: ["Repos-Ordner fehlt. Wähle den Ordner, in dem deine Repos liegen.", "Repos folder missing. Choose the folder that holds your repos."],
   reposMissing: ["Repos-Ordner nicht gefunden. Wähle ihn neu.", "Repos folder not found. Choose it again."],
   reposNoRepos: ["Im Repos-Ordner liegt kein git-Repo. Wähle den Ordner darüber.", "No git repo in the repos folder. Choose the folder above them."],
-  jiraPrefix: ["Jira-Projekt (z. B. ABC, leer = ohne Jira)", "Jira project (e.g. ABC, empty = no Jira)"],
   modelDefault: ["Standard", "Default"],
   autoPermissionMode: ["Neue Agenten in Auto schalten", "Switch new agents to auto"],
   autoPermissionModeHint: ["tippt Shift+Tab, bis der Modus auf Auto steht", "types Shift+Tab until the mode reads auto"],
-  automation: ["Automatik", "Automation"],
-  automationHint: ["läuft nur, was du einschaltest", "only what you switch on runs"],
   autoCompactHint: ["schickt Prompts, verbraucht Kontingent", "sends prompts, uses your quota"],
-  titan: ["Titan-Kachel im Info-Fenster", "Titan tile in the info window"],
-  titanHint: ["fragt alle 60 s per ssh den Testserver ab", "asks the test server over ssh every 60 s"],
-  storeUpdate: ["PowerShell und Terminal aktualisieren", "Update PowerShell and Terminal"],
-  storeUpdateHint: ["winget, nur wenn kein Agent läuft", "winget, only while no agent runs"],
-  speechmikeVoice: ["SpeechMike-Record als Sprechtaste", "SpeechMike record as push to talk"],
-  speechmikeVoiceHint: ["globaler Tastatur-Hook, gilt nach Panel-Neustart", "global keyboard hook, applies after a panel restart"],
-  prAutomation: ["PR-Automatik", "PR automation"],
-  prAutomationHint: ["mergt, setzt Reviewer und Assignee, startet Hintergrund-Agenten", "merges, sets reviewer and assignee, starts background agents"],
-  prReviewer: ["Wer soll deine PRs reviewen? (Namen oder GitHub-Logins, mehrere mit Komma; leer = Vorgabe des Repos)", "Who should review your PRs? (names or GitHub logins, comma separated; empty = repo default)"],
-  reviewerBusy: ["sucht in GitHub …", "looking up GitHub …"],
-  reviewerPick: ["„{input}“: wen meinst du?", "“{input}”: whom do you mean?"],
-  reviewerOrgPick: ["In welcher GitHub-Organisation suchen?", "Which GitHub organization to search?"],
-  reviewerKept: ["„{input}“ nicht in {org} gefunden, als Login übernommen", "“{input}” not found in {org}, kept as login"],
-  reviewerSkipped: ["„{input}“ nicht in {org} gefunden und kein GitHub-Login, übersprungen", "“{input}” not found in {org} and not a GitHub login, skipped"],
-  reviewerNotLogin: ["„{input}“ ist kein GitHub-Login, übersprungen", "“{input}” is not a GitHub login, skipped"],
-  reviewerNoLookup: ["Namen nicht nachgeschlagen ({why}): Logins ungeprüft übernommen", "Names not looked up ({why}): logins kept unchecked"],
-  reviewerWhyGh: ["gh fehlt oder ist nicht angemeldet", "gh missing or not logged in"],
-  reviewerWhyNoOrg: ["keine GitHub-Organisation", "no GitHub organization"],
-  reviewerWhyMembers: ["Mitglieder von {org} nicht lesbar", "members of {org} not readable"],
-  reviewerNoOrg: ["deiner Organisation", "your organization"],
   more: ["Erweitert", "Advanced"],
   less: ["Weniger", "Less"],
-  githubOrg: ["GitHub-Organisation", "GitHub organization"],
   shortcuts: ["Tastenkürzel", "Shortcuts"],
   shortcutsHint: ["Alt+V im Agenten, die übrigen überall", "Alt+V in the agent, the rest everywhere"],
   openGlow: ["Glow einstellen", "Adjust glow"],
@@ -144,10 +122,18 @@ const TEXTS = {
   cancel: ["Abbrechen", "Cancel"],
 } as const satisfies Record<string, readonly [string, string]>;
 
-type TextKey = keyof typeof TEXTS;
+export type TextKey = keyof typeof TEXTS;
+
+/**
+ * Eine Übersetzungsfunktion für eine eigene Tabelle (Erweiterungen bringen ihre Texte
+ * mit, `extensions.ts`). Gleiche Regeln: Platzhalter `{name}`, keine Gedankenstriche.
+ */
+export function translator<K extends string>(texts: Record<K, readonly [string, string]>) {
+  return (lang: Lang, key: K, vars: Record<string, string> = {}): string => {
+    const raw: string = texts[key][lang === "en" ? 1 : 0];
+    return raw.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
+  };
+}
 
 /** Text in der gewählten Sprache; `{name}`-Platzhalter werden ersetzt. */
-export function t(lang: Lang, key: TextKey, vars: Record<string, string> = {}): string {
-  const raw: string = TEXTS[key][lang === "en" ? 1 : 0];
-  return raw.replace(/\{(\w+)\}/g, (_, k: string) => vars[k] ?? "");
-}
+export const t: (lang: Lang, key: TextKey, vars?: Record<string, string>) => string = translator(TEXTS);

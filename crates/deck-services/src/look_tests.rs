@@ -148,3 +148,17 @@ fn the_real_targets_are_locked_in_tests() {
     assert_eq!(install(&g.src, &LookPaths::real(), &g.sys, &mut m).fails(), 1);
     assert_eq!(remove(&LookPaths::real(), &g.sys, &mut m).fails(), 1);
 }
+
+#[test]
+fn removing_takes_the_emptied_themes_folder_in_the_distro_along() {
+    let mut r = Rig::new();
+    // Wie `look --wsl`: Claudes Ordner liegt woanders als der von Windows.
+    let windows = r.p.clone();
+    r.p.claude_dir = r._d.path().join("distro").join(".claude");
+    assert!(r.install().is_ok());
+    let wsl_themes = r.p.theme().parent().unwrap().to_path_buf();
+    assert!(wsl_themes.is_dir());
+    let mut m = std::mem::take(&mut r.m);
+    assert!(remove(&windows, &r.sys, &mut m).is_ok());
+    assert!(!wsl_themes.exists(), "der leere themes-Ordner in der Distro geht mit");
+}

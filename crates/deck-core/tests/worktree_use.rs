@@ -119,7 +119,7 @@ fn overview_and_cleanup_commands_do_not_count() {
     let round = "for d in x; do :; done; git -C wt/4062-api status; git -C wt/4116-ui status; git -C wt/3773-api status; git -C wt/4105-docs status";
     let r = vec![bash(round), bash(round), bash(round), bash(round)];
     assert_eq!(worktree_uses(&r), vec![], "Statusrunde über alle worktrees");
-    let rm = [bash("git -C orpheus-management-ui worktree remove ../wt/4116-ui"), bash("rm -rf wt/4116-ui")];
+    let rm = [bash("git -C demoprojekt-management-ui worktree remove ../wt/4116-ui"), bash("rm -rf wt/4116-ui")];
     assert_eq!(worktree_uses(&rm), vec![]);
 }
 
@@ -137,10 +137,10 @@ fn tool_results_text_and_lookalikes_do_not_count() {
 
 #[test]
 fn the_worktree_source_ranks_after_the_cwd_folder_and_before_the_title() {
-    let chat = Refs { ticket: "ORPH-1212".into(), worktree: format!(r"{REPOS}\wt\4116-ui"), worktree_writes: true, ..Refs::default() };
-    let ev = RefEvidence { title: Some("ORPH-3192 Test-VM"), chat: Some(&chat), prefix: "ORPH", ..RefEvidence::default() };
+    let chat = Refs { ticket: "DEMO-1212".into(), worktree: format!(r"{REPOS}\wt\4116-ui"), worktree_writes: true, ..Refs::default() };
+    let ev = RefEvidence { title: Some("DEMO-3192 Test-VM"), chat: Some(&chat), prefix: "DEMO", ..RefEvidence::default() };
     let t = pick_ticket(&ev, Lang::German).unwrap();
-    assert_eq!((t.text.as_str(), t.source, t.detected, t.origin.as_str()), ("ORPH-4116", RefSource::Worktree, false, "Worktree"));
+    assert_eq!((t.text.as_str(), t.source, t.detected, t.origin.as_str()), ("DEMO-4116", RefSource::Worktree, false, "Worktree"));
     let dirs = vec![format!(r"{REPOS}\wt\4062-api")];
     assert_eq!(pick_ticket(&RefEvidence { dirs: &dirs, ..ev }, Lang::German).unwrap().source, RefSource::Folder);
     let reads = Refs { worktree_writes: false, ..chat.clone() };
@@ -150,8 +150,8 @@ fn the_worktree_source_ranks_after_the_cwd_folder_and_before_the_title() {
 #[test]
 fn a_worktree_without_number_takes_the_ticket_from_its_branch() {
     let chat = Refs { worktree: format!(r"{REPOS}\wt-deck-tauri"), worktree_writes: true, ..Refs::default() };
-    let ev = RefEvidence { chat: Some(&chat), worktree_branch: Some("feature/ORPH-4116-tauri"), prefix: "ORPH", ..RefEvidence::default() };
-    assert_eq!(pick_ticket(&ev, Lang::German).map(|t| (t.text, t.source)), Some(("ORPH-4116".into(), RefSource::Worktree)));
+    let ev = RefEvidence { chat: Some(&chat), worktree_branch: Some("feature/DEMO-4116-tauri"), prefix: "DEMO", ..RefEvidence::default() };
+    assert_eq!(pick_ticket(&ev, Lang::German).map(|t| (t.text, t.source)), Some(("DEMO-4116".into(), RefSource::Worktree)));
     let ev = RefEvidence { worktree_branch: Some("main"), ..ev };
     assert_eq!(pick_ticket(&ev, Lang::German), None);
 }
@@ -166,7 +166,7 @@ fn the_scan_caches_the_worktree_next_to_the_chat_refs() {
     let lines = [user, edit(&format!(r"{REPOS}\wt\4116-ui\src\a.ts"))];
     let body: String = lines.iter().map(|l| l.to_string() + "\n").collect();
     std::fs::write(dir.join("s1.jsonl"), body).unwrap();
-    let r = ensure_refs(projects.path(), cache.path(), "s1", Some(REPOS), Some("ORPH"));
+    let r = ensure_refs(projects.path(), cache.path(), "s1", Some(REPOS), Some("DEMO"));
     assert_eq!((r.worktree.as_str(), r.worktree_writes), (format!(r"{REPOS}\wt\4116-ui").as_str(), true));
-    assert_eq!(cached_refs(cache.path(), "s1", Some("ORPH")), r);
+    assert_eq!(cached_refs(cache.path(), "s1", Some("DEMO")), r);
 }

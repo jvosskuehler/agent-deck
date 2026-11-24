@@ -1,6 +1,6 @@
 //! Kleine Protokolldateien: eine Zeile je Ereignis, Ortszeit vorn, grob rotiert.
 //!
-//! Die Dienste laufen unsichtbar im Hintergrund (worktrees löschen, Wächter, Usage).
+//! Die Dienste laufen unsichtbar im Hintergrund (Usage, Zusammenfassung).
 //! Ohne Protokoll ist hinterher nicht nachzuvollziehen, was passiert ist. Schreiben ist
 //! best effort: ein Protokollfehler darf nie den Dienst stören.
 

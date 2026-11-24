@@ -7,3 +7,9 @@ TS_RS_EXPORT_DIR = { value = "app/src/bindings", relative = true }
 # noch ein Hook. Mit crt-static braucht das Paket kein VC++-Redistributable.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# Die Hooks auch als Linux-Programme für Agenten in WSL (tools/package.ps1): statisch gegen
+# musl, gelinkt mit dem lld, den Rust mitbringt. So baut auch ein Windows-Rechner ohne
+# WSL, gcc oder zig (rustup target add x86_64-unknown-linux-musl genügt).
+[target.x86_64-unknown-linux-musl]
+linker = "rust-lld"

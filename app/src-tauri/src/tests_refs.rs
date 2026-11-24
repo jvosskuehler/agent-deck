@@ -15,13 +15,13 @@ fn every_tile_gets_its_ticket_and_pr_file_and_only_a_change_rewrites_it() {
     let mut r = rig();
     r.wt_block("B", "repo");
     r.wt_agent("B1", 11);
-    r.deck.store.tickets.insert("B1".into(), "ORPH-4116".into());
+    r.deck.store.tickets.insert("B1".into(), "DEMO-4116".into());
     r.deck.tick(100.0);
     let path = refs_path(&r.deck.paths.state_dir, "B1");
     let written = load_json(&path).expect("refs.json geschrieben");
     assert_eq!(
         written,
-        json!({"ticket": "ORPH-4116", "ticket_source": "assigned", "ticket_detected": false,
+        json!({"ticket": "DEMO-4116", "ticket_source": "assigned", "ticket_detected": false,
             "pr": null, "pr_source": null, "pr_detected": false})
     );
 
@@ -31,10 +31,10 @@ fn every_tile_gets_its_ticket_and_pr_file_and_only_a_change_rewrites_it() {
     assert!(!path.exists(), "ohne Änderung wird nicht geschrieben");
 
     // Geändert: sofort neu.
-    r.deck.store.tickets.insert("B1".into(), "ORPH-4062".into());
+    r.deck.store.tickets.insert("B1".into(), "DEMO-4062".into());
     r.deck.tick(100.8);
     let refs = TileRefs::parse(&load_json(&path).unwrap());
-    assert_eq!(refs.ticket.map(|t| t.text).as_deref(), Some("ORPH-4062"));
+    assert_eq!(refs.ticket.map(|t| t.text).as_deref(), Some("DEMO-4062"));
 }
 
 #[test]

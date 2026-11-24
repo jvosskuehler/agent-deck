@@ -149,7 +149,9 @@ export function PathField({ label, value, empty, button, alert, onPick }: PathFi
       <span className="set-label">{label}</span>
       <div className="set-path">
         <span className="set-path-value" data-empty={!value || undefined} title={value || undefined}>
-          {value || empty}
+          {/* Das Feld läuft rechts-nach-links (lange Pfade kürzen vorn); <bdi> hält den Pfad
+              selbst links-nach-rechts, sonst wandert ein führendes `/` (WSL) ans Ende. */}
+          {value ? <bdi>{value}</bdi> : empty}
         </span>
         <button type="button" className="tool-btn" onClick={onPick}>
           {button}

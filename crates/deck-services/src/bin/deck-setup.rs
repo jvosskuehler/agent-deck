@@ -8,8 +8,17 @@
 //!                         eintragen. Fremde Hooks bleiben. Eine fremde Infozeile wird nach
 //!                         %LOCALAPPDATA%\claude-agent-deck\statusline.before.json gesichert und
 //!                         läuft hinter der des Decks weiter; `keep` lässt sie allein stehen.
-//! deck-setup check     --bin <ordner>   Befunde: fehlende Einträge, cmd /c, Pfade ins Leere …
-//! deck-setup look      --from <papier> [--remove]
+//! deck-setup install   --bin <ordner> --wsl <distro> [--statusline replace|keep]
+//!                         Dasselbe in Claudes settings.json IN DER WSL-DISTRO (Agenten in WSL):
+//!                         Programme über ihren Linux-Pfad (/mnt/c/…), Sicherung einer fremden
+//!                         Infozeile in statusline.before.wsl.json.
+//! deck-setup check     --bin <ordner> [--wsl <distro>]
+//!                                       Befunde: fehlende Einträge, cmd /c, Pfade ins Leere …
+//! deck-setup wsl-distros                Distros als JSON: [{"name", "default"}]
+//! deck-setup wsl-probe --wsl <distro>   JSON {"distro", "home", "mount", "claude"} (claude = Pfad
+//!                                       in einer Login-Shell oder null); Exit 1, wenn die Distro
+//!                                       nicht antwortet.
+//! deck-setup look      --from <papier> [--wsl <distro>] [--remove]
 //!                                       Papier-Look: Schrift IBM Plex Mono (pro Benutzer),
 //!                                       Claude-Theme, Einstellungen der Deck-Agenten, Shader.
 //! deck-setup shortcut  [--bin <ordner>] [--remove]
@@ -23,17 +32,6 @@
 //! deck-setup uninstall                  Alles heraus, was die Einrichtung hinzugefügt hat
 //!                                       (laut installed.json und am Namen), gesicherte
 //!                                       Infozeile zurück. Programme und Daten bleiben.
-//! deck-setup migrate-darkmode           Die alte geplante Aufgabe „DarkModeZeitplan“ löschen,
-//!                                       wenn es sie gibt und Hell/Dunkel auf Sonnenstand
-//!                                       steht (dann schaltet das Deck). Sonst keine Zeile.
-//! deck-setup remove-vscode-extension    Eintrag in ~/.vscode/extensions/extensions.json und
-//!                                       Ordner agent-deck-bridge entfernen (mehrfach harmlos).
-//! deck-setup resolve-reviewers --names "<text>" [--org <org>]
-//!                                       Reviewer-Namen, Mailadressen oder Logins gegen die
-//!                                       Mitglieder der GitHub-Organisation auflösen (nur
-//!                                       lesend, über gh). Druckt eine JSON-Zeile
-//!                                       (`deck_core::dash::reviewers::ReviewerReport`) für den
-//!                                       Installer; scheitert nie an gh, `note` sagt warum.
 //! ```
 //!
 //! Was eingerichtet wurde, verzeichnet jeder Befehl in
@@ -41,8 +39,7 @@
 //! Claudes settings.json liegt in `CLAUDE_CONFIG_DIR`, sonst in `~/.claude`.
 //! Ausgabe: eine Zeile je Befund (`ok|info|warn|fail: …`), dann je Merker für den
 //! Installer `## <merker>`, am Ende `## fails=N warns=N`. Exit-Code 1, wenn es einen
-//! Fehler gab, 2 bei falschem Aufruf. `resolve-reviewers` druckt nur das JSON und endet
-//! mit 0.
+//! Fehler gab, 2 bei falschem Aufruf.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -52,12 +49,14 @@ use deck_services::installed::{self, Installed};
 use deck_services::look::{self, LookPaths};
 use deck_services::report::{Grade, Report};
 use deck_services::user_system::RealSystem;
-use deck_services::{apps_entry, autostart, darkmode_task, shortcut, statusline_backup, teardown, vscode_cleanup, wt_fragment, wt_theme};
+use deck_services::install_wsl::{self, WslTarget};
+use deck_services::wsl_cli;
+use deck_services::{apps_entry, autostart, shortcut, statusline_backup, teardown, wt_fragment, wt_theme};
 
-const USAGE: &str = "deck-setup install --bin <ordner> [--statusline replace|keep] | check --bin <ordner> | uninstall \
+const USAGE: &str = "deck-setup install --bin <ordner> [--wsl <distro>] [--statusline replace|keep] | check --bin <ordner> [--wsl <distro>] \
+                     | wsl-distros | wsl-probe --wsl <distro> | uninstall \
                      | look --from <ordner> [--remove] | shortcut [--bin <ordner>] [--remove] | wt-profile [--remove] \
-                     | autostart [--bin <ordner>] [--remove] | apps-entry --bin <ordner> --version <v> [--remove] \
-                     | migrate-darkmode | remove-vscode-extension | resolve-reviewers --names <text> [--org <org>]";
+                     | autostart [--bin <ordner>] [--remove] | apps-entry --bin <ordner> --version <v> [--remove]";
 
 fn arg_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
@@ -91,6 +90,12 @@ fn claude_icon() -> Option<String> {
         .map(|p| p.to_string_lossy().into_owned())
 }
 
+fn no_wsl_target() -> Report {
+    let mut r = Report::default();
+    r.push(Grade::Fail, "Claudes Ordner in WSL oder der Programmordner ist von WSL aus nicht erreichbar.");
+    r
+}
+
 fn default_bin() -> PathBuf {
     deck_core::paths::app_dir().join("bin")
 }
@@ -101,22 +106,41 @@ fn main() -> ExitCode {
     let cmd = args.first().map(String::as_str);
     let bin = arg_value(&args, "--bin").map(PathBuf::from);
     let remove = args.iter().any(|a| a == "--remove");
-    if cmd == Some("resolve-reviewers") {
-        let Some(names) = arg_value(&args, "--names") else {
-            eprintln!("--names fehlt\n{USAGE}");
-            return ExitCode::from(2);
-        };
-        let org = arg_value(&args, "--org").unwrap_or("");
-        let report = deck_services::reviewers::ReviewerResolver::system().resolve(org, names);
-        match serde_json::to_string(&report) {
-            Ok(json) => println!("{json}"),
-            Err(e) => {
-                eprintln!("JSON: {e}");
-                return ExitCode::from(1);
-            }
-        }
+    let wsl_name = arg_value(&args, "--wsl").map(str::to_string);
+    if cmd == Some("wsl-distros") {
+        let list: Vec<serde_json::Value> = wsl_cli::distros(&wsl_cli::WslExe)
+            .into_iter()
+            .map(|(name, default)| serde_json::json!({"name": name, "default": default}))
+            .collect();
+        println!("{}", serde_json::Value::Array(list));
         return ExitCode::SUCCESS;
     }
+    // Home und Einhängepunkt der Distro: ohne sie gibt es keinen Claude-Ordner dort.
+    let probed = match wsl_name.as_deref() {
+        Some(d) => match wsl_cli::probe(&wsl_cli::WslExe, d) {
+            Some(w) => Some(w),
+            None => {
+                println!("fail: Die WSL-Distro {d} antwortet nicht.\n## fails=1 warns=0");
+                return ExitCode::from(1);
+            }
+        },
+        None => None,
+    };
+    if cmd == Some("wsl-probe") {
+        let Some(w) = probed else {
+            eprintln!("--wsl fehlt\n{USAGE}");
+            return ExitCode::from(2);
+        };
+        let claude = wsl_cli::claude_path(&wsl_cli::WslExe, &w.distro);
+        println!("{}", serde_json::json!({"distro": w.distro, "home": w.home, "mount": w.mount_root, "claude": claude}));
+        return ExitCode::SUCCESS;
+    }
+    let wsl_target = |bin: &Path| probed.clone().and_then(|w| WslTarget::new(w, bin, &deck_core::paths::app_dir()));
+    // Die Linux-Fassungen der Hooks liegen in `bin\linux`; fehlen sie, bleibt es bei den .exe.
+    let place_linux = |t: &mut WslTarget, bin: &Path| match t.place_linux_hooks(&wsl_cli::WslExe, &bin.join("linux")) {
+        Ok(()) => println!("info: Hooks als Linux-Programme in der Distro: {}", t.linux_bin.as_deref().unwrap_or("")),
+        Err(e) => println!("warn: {e}; die Hooks laufen über die .exe (langsamer)."),
+    };
     let manifest_file = installed::path();
     let mut m = Installed::load(&manifest_file);
     let sys = RealSystem;
@@ -126,9 +150,20 @@ fn main() -> ExitCode {
                 eprintln!("--statusline: replace oder keep\n{USAGE}");
                 return ExitCode::from(2);
             };
-            install::install(&settings_file, &bin, mode, &statusline_backup::path(), &mut m)
+            match (probed.is_some(), wsl_target(&bin)) {
+                (true, Some(mut t)) => {
+                    place_linux(&mut t, &bin);
+                    install_wsl::install(&t, mode, &mut m)
+                }
+                (true, None) => no_wsl_target(),
+                _ => install::install(&settings_file, &bin, mode, &statusline_backup::path(), &mut m),
+            }
         }
-        (Some("check"), Some(bin)) => install::check(&settings_file, &bin),
+        (Some("check"), Some(bin)) => match (probed.is_some(), wsl_target(&bin)) {
+            (true, Some(t)) => install_wsl::check(&t),
+            (true, None) => no_wsl_target(),
+            _ => install::check(&settings_file, &bin),
+        },
         (Some("uninstall"), _) => teardown::uninstall_all(&teardown::Targets::real(), &sys, &mut m),
         (Some("look"), _) if remove => look::remove(&LookPaths::real(), &sys, &mut m),
         (Some("look"), _) => {
@@ -136,7 +171,12 @@ fn main() -> ExitCode {
                 eprintln!("--from fehlt\n{USAGE}");
                 return ExitCode::from(2);
             };
-            look::install(Path::new(from), &LookPaths::real(), &sys, &mut m)
+            let mut paths = LookPaths::real();
+            // Agenten in WSL lesen Theme und Agenten-Einstellungen aus Claudes Ordner dort.
+            if let Some(dir) = probed.as_ref().and_then(|w| w.claude_dir()) {
+                paths.claude_dir = PathBuf::from(dir);
+            }
+            look::install(Path::new(from), &paths, &sys, &mut m)
         }
         (Some("shortcut"), _) if remove => {
             m.shortcut = None;
@@ -171,14 +211,6 @@ fn main() -> ExitCode {
             let version = arg_value(&args, "--version").unwrap_or("unbekannt");
             apps_entry::set(&bin, version, &sys, &mut m)
         }
-        (Some("migrate-darkmode"), _) => {
-            let appearance = darkmode_task::effective_appearance(
-                &deck_core::paths::app_dir().join(deck_core::paths::SETTINGS_FILE),
-                &deck_core::paths::home_dir(),
-            );
-            darkmode_task::migrate(appearance, &darkmode_task::Schtasks)
-        }
-        (Some("remove-vscode-extension"), _) => vscode_cleanup::remove_extension(&vscode_cleanup::extensions_dir()),
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);

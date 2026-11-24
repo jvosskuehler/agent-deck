@@ -129,7 +129,7 @@ fn ref_part(e: Option<&RefEntry>, prefix: &str) -> (String, String) {
     })
 }
 
-/// Kopfzeile des Chats, fett: „B2 · ORPH-4116 · PR #347 freigegeben · Überschrift“.
+/// Kopfzeile des Chats, fett: „B2 · DEMO-4116 · PR #347 freigegeben · Überschrift“.
 /// Claude Code hat oben keinen Platz für eigene Zeilen, die Statuszeile steht dagegen in
 /// JEDEM Pane. Ticket und PR stehen vor der Überschrift und kürzen sie: die Zeile soll
 /// nicht länger werden als mit Slot und Überschrift allein, sonst bricht sie im schmalen
@@ -198,7 +198,7 @@ fn deck_title(env: &HookEnv, data: &Map<String, Value>) -> Option<String> {
 
 /// Ein Lauf: Live-Datei schreiben (wenn ein Slot feststeht) und die Zeile liefern.
 pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
-    let data = crate::parse_stdin(stdin);
+    let data = env.input(stdin);
     let mut rec = extract(&data, env.now);
     // Deck-Zustand ist Beiwerk: ein Fehler hier macht nie die Statuszeile kaputt.
     let (mut shown_slot, mut refs) = (String::new(), TileRefs::default());
@@ -228,6 +228,6 @@ pub fn run(env: &HookEnv, stdin: Option<&[u8]>) -> String {
     let lang = if shows_cache || shows_pr { Lang::from_settings(&env.claude_settings) } else { Lang::German };
     let own = line(&rec, &shown_slot, &refs, lang);
     // Die Infozeile, die vor dem Deck da war, steht dahinter (`chain`).
-    let previous = crate::chain::previous_line(&env.app_dir, stdin.unwrap_or_default());
+    let previous = crate::chain::previous_line(&env.app_dir, stdin.unwrap_or_default(), env.wsl.as_ref().map(|w| w.distro.as_str()));
     crate::chain::append(&own, previous.as_deref())
 }

@@ -22,6 +22,8 @@ impl Worker {
         let name = name.to_string();
         let label = name.clone();
         let started = std::thread::Builder::new().name(name).spawn(move || {
+            // Fenster legen und Vorhang ziehen soll auch unter Last sofort geschehen.
+            deck_win::thread_priority::raise_current();
             for job in rx {
                 if std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).is_err() {
                     note(format!("Arbeiter {label}: Auftrag abgestürzt"));

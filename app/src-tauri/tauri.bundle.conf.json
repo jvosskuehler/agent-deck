@@ -2,6 +2,6 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "active": true,
-    "externalBin": ["binaries/deck-console", "binaries/deck-report", "binaries/deck-statusline", "binaries/deck-watchdog"]
+    "externalBin": ["binaries/deck-console", "binaries/deck-report", "binaries/deck-statusline"]
   }
 }

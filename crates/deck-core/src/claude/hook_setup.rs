@@ -74,6 +74,30 @@ pub fn statusline_command(bin_dir: &str) -> String {
     format!("\"{}/{STATUSLINE_EXE}\" {TAIL}", with_slashes(bin_dir))
 }
 
+/// Agenten in WSL: erst das Linux-Programm in der Distro (`linux_bin`, ohne `.exe`; ein
+/// Windows-Programm über Interop kostet je Aufruf rund 40 ms mehr), und nur wenn es dort
+/// fehlt (Exit 127, `sh` hat stdin dann nicht angerührt), die `.exe` aus `bin_dir`.
+/// `args` ist das Status-Argument oder leer.
+fn with_linux_first(linux_bin: &str, leaf: &str, bin_dir: &str, args: &str) -> String {
+    let exe = format!("\"{}/{leaf}\"{args}", with_slashes(bin_dir));
+    let linux = format!("\"{}/{}\"{args}", with_slashes(linux_bin), leaf.trim_end_matches(".exe"));
+    format!("{linux} 2>/dev/null || {exe} {TAIL}")
+}
+
+fn status_hook(bin_dir: &str, linux_bin: Option<&str>, status: &str) -> String {
+    match linux_bin {
+        Some(l) => with_linux_first(l, REPORT_EXE, bin_dir, &format!(" {status}")),
+        None => hook_command(bin_dir, status),
+    }
+}
+
+fn statusline_for(bin_dir: &str, linux_bin: Option<&str>) -> String {
+    match linux_bin {
+        Some(l) => with_linux_first(l, STATUSLINE_EXE, bin_dir, ""),
+        None => statusline_command(bin_dir),
+    }
+}
+
 static QUOTED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#""([^"]+\.(?:exe|py))""#).expect("QUOTED"));
 static BARE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\S+\.(?:exe|py))").expect("BARE"));
 
@@ -145,10 +169,12 @@ fn strip_where(groups: &[Value], strip: impl Fn(Owner) -> bool) -> (Vec<Value>, 
 }
 
 /// Optionen für `merge`.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MergeOptions {
     /// Auch eine FREMDE statusLine ersetzen.
     pub force_statusline: bool,
+    /// Agenten in WSL: Ordner der Linux-Programme in der Distro; sie laufen vor den `.exe`.
+    pub linux_bin: Option<String>,
 }
 
 /// Eine Meldung: (Grad, Text). Grad `info` = getan, `warn` = bewusst ausgelassen.
@@ -172,7 +198,7 @@ pub fn merge(settings: &Map<String, Value>, bin_dir: &str, opts: MergeOptions) -
         if let Some(m) = matcher {
             entry.insert("matcher".into(), m.into());
         }
-        entry.insert("hooks".into(), json!([{"type": "command", "command": hook_command(bin_dir, status)}]));
+        entry.insert("hooks".into(), json!([{"type": "command", "command": status_hook(bin_dir, opts.linux_bin.as_deref(), status)}]));
         after.push(Value::Object(entry));
         if after != before {
             hooks.insert(event.into(), Value::Array(after));
@@ -192,8 +218,8 @@ pub fn merge(settings: &Map<String, Value>, bin_dir: &str, opts: MergeOptions) -
     if cur_owner == Some(Owner::Foreign) && !opts.force_statusline {
         notes.push(("warn", "statusLine gehoert einem anderen Werkzeug und bleibt stehen — Modell, Effort und \
                             Kontext-% bleiben auf den Kacheln leer (mit --force ersetzen)".into()));
-    } else if !points_here(cur, bin_dir, STATUSLINE_EXE) {
-        let sl = json!({"type": "command", "command": statusline_command(bin_dir), "refreshInterval": STATUSLINE_REFRESH_S});
+    } else if !points_here(cur, bin_dir, STATUSLINE_EXE) || cur != Some(statusline_for(bin_dir, opts.linux_bin.as_deref()).as_str()) && opts.linux_bin.is_some() {
+        let sl = json!({"type": "command", "command": statusline_for(bin_dir, opts.linux_bin.as_deref()), "refreshInterval": STATUSLINE_REFRESH_S});
         out.insert("statusLine".into(), sl);
         notes.push(("info", format!("statusLine -> {STATUSLINE_EXE}")));
     } else if let Some(sl) = settings.get("statusLine").and_then(Value::as_object)

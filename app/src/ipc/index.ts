@@ -6,7 +6,7 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type { GlowSettings } from "../bindings/GlowSettings";
 import type { SettingsView } from "../bindings/SettingsView";
-import type { Backend, PanelDragMode, SettingKey } from "./contract";
+import type { Backend, PanelDragMode, SettingKey, Unlisten } from "./contract";
 import { createMockBackend } from "./mock/mockBackend";
 import { createTauriBackend } from "./tauriBackend";
 
@@ -24,7 +24,6 @@ function fire(promise: Promise<unknown>, what: string): void {
 
 export const commands = {
   getView: () => getBackend().invoke("get_view", {}),
-  getDash: () => getBackend().invoke("get_dash", {}),
   getDock: () => getBackend().invoke("get_dock", {}),
   getSettings: () => getBackend().invoke("get_settings", {}),
   panelContentSize: (width: number, height: number) =>
@@ -42,11 +41,10 @@ export const commands = {
     fire(b.invoke("hover_tile", { slot, rect }), "hover_tile");
   },
   openUsagePage: () => fire(getBackend().invoke("open_usage_page", {}), "open_usage_page"),
-  openDashUrl: (url: string) => fire(getBackend().invoke("open_dash_url", { url }), "open_dash_url"),
-  dashAction: (command: string) => fire(getBackend().invoke("dash_action", { command }), "dash_action"),
   openSettings: () => fire(getBackend().invoke("open_settings", {}), "open_settings"),
   setSetting: <K extends SettingKey>(key: K, value: SettingsView[K]) => getBackend().invoke("set_setting", { key, value }),
-  setReviewers: (text: string) => getBackend().invoke("set_reviewers", { text }),
+  /** Einstellung einer Erweiterung (Schlüssel, die SettingsView nicht kennt). */
+  setExtraSetting: (key: string, value: unknown) => getBackend().invoke("set_setting", { key, value }),
   restartPanel: () => getBackend().invoke("restart_panel", {}),
   pickFolder: (start: string) => getBackend().invoke("pick_folder", { start }),
   focusBlock: (letter: string) => fire(getBackend().invoke("focus_block", { letter }), "focus_block"),
@@ -69,6 +67,14 @@ export const commands = {
   killOrphan: (id: string) => fire(getBackend().invoke("kill_orphan", { id }), "kill_orphan"),
   killAllOrphans: () => fire(getBackend().invoke("kill_all_orphans", {}), "kill_all_orphans"),
   uiPong: () => fire(getBackend().invoke("ui_pong", {}), "ui_pong"),
+};
+
+/** Befehle und Ereignisse einer Erweiterung (`extensions.ts`), ohne Typen im Vertrag. */
+export const extra = {
+  invoke: <T>(cmd: string, args: Record<string, unknown> = {}) => getBackend().invokeAny<T>(cmd, args),
+  /** Wie `invoke`, aber der Ausgang interessiert nicht: Fehler nur ins Log. */
+  fire: (cmd: string, args: Record<string, unknown> = {}) => fire(getBackend().invokeAny(cmd, args), cmd),
+  listen: <T>(event: string, handler: (payload: T) => void): Unlisten => getBackend().listenAny<T>(event, handler),
 };
 
 export function isNative(): boolean {

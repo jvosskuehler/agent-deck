@@ -9,6 +9,20 @@ export function createTauriBackend(): Backend {
   // Zoom der Webview (Rust setzt ihn, wenn das Panel zu groß wäre oder an der Ecke
   // gezogen wurde): eine CSS-Einheit ist dann scaleFactor × zoom Bildschirmpixel.
   let zoom = 1;
+  const listenAny = <T,>(event: string, handler: (payload: T) => void): Unlisten => {
+    // Tauri meldet das Abmelden erst asynchron zurück. Wer vorher abmeldet (React
+    // räumt im StrictMode sofort wieder ab), darf trotzdem keinen Hörer übrig lassen.
+    let off: (() => void) | null = null;
+    let cancelled = false;
+    tauriListen<T>(event, (e) => handler(e.payload)).then((fn) => {
+      if (cancelled) fn();
+      else off = fn;
+    });
+    return () => {
+      cancelled = true;
+      off?.();
+    };
+  };
   return {
     native: true,
 
@@ -17,19 +31,14 @@ export function createTauriBackend(): Backend {
     },
 
     listen<E extends EventName>(event: E, handler: (payload: EventPayloads[E]) => void): Unlisten {
-      // Tauri meldet das Abmelden erst asynchron zurück. Wer vorher abmeldet (React
-      // räumt im StrictMode sofort wieder ab), darf trotzdem keinen Hörer übrig lassen.
-      let off: (() => void) | null = null;
-      let cancelled = false;
-      tauriListen<EventPayloads[E]>(event, (e) => handler(e.payload)).then((fn) => {
-        if (cancelled) fn();
-        else off = fn;
-      });
-      return () => {
-        cancelled = true;
-        off?.();
-      };
+      return listenAny<EventPayloads[E]>(event, handler);
     },
+
+    invokeAny<T>(cmd: string, args: Record<string, unknown>) {
+      return tauriInvoke<T>(cmd, args);
+    },
+
+    listenAny,
 
     async screenRect(el: Element): Promise<ScreenRect> {
       // Physische Bildschirm-Pixel: Innenecke des Fensters (physisch) plus die CSS-Lage

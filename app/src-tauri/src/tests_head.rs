@@ -38,8 +38,8 @@ fn the_tooltip_says_where_the_agent_works() {
     let mut r = rig();
     r.deck.store.bindings.insert("A".into(), "agent-deck".into());
     assert_eq!(origin_lines(&r.deck, "A2"), ["agent-deck · Fenster A · A2"]);
-    r.deck.worktrees.insert("A2".into(), "C:\\Repos\\agent-deck.wt\\orph-4062\\".into());
-    assert_eq!(origin_lines(&r.deck, "A2"), ["agent-deck · Fenster A · A2", "↳ wt/orph-4062"]);
+    r.deck.worktrees.insert("A2".into(), "C:\\Repos\\agent-deck.wt\\demo-4062\\".into());
+    assert_eq!(origin_lines(&r.deck, "A2"), ["agent-deck · Fenster A · A2", "↳ wt/demo-4062"]);
     assert_eq!(origin_lines(&r.deck, "C1"), ["Fenster C · C1"], "ohne Bindung bleibt der Buchstabe");
     assert_eq!(content(&r.deck, "A2").origin.len(), 2);
 }

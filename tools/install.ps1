@@ -13,8 +13,10 @@ Woher die Programme kommen:
                                das Skript in tools\ eines Checkouts liegt
   -SkipBuild                   wie -FromSource, aber das schon gebaute target\release nehmen
 
-Beim ersten Mal fragt der Installer nach dem Repos-Ordner, dem Jira-Kürzel, den
-Reviewern und dem Autostart. Ein zweiter Lauf ist ein Update und fragt nichts.
+Beim ersten Mal fragt der Installer nach der WSL-Distro, in der die Agenten laufen,
+dem Repos-Ordner darin und dem Autostart. Ein zweiter Lauf ist ein Update und fragt
+nichts. (-AgentEnv windows: Agenten mit PowerShell und Windows-claude, Repos-Ordner
+unter Windows; ein Update behält, was eingestellt ist.)
 Was er am Rechner ändert, steht in README.md; Einzelheiten in docs\BETRIEB.md.
 -Verbose zeigt jeden Schritt.
 
@@ -24,7 +26,7 @@ Entfernen: Windows-Einstellungen > Apps > Agent Deck.
 powershell -ExecutionPolicy Bypass -File install.ps1
 
 .EXAMPLE
-powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -JiraPrefix ABC -PrReviewer "Leo, Anna Schmidt" -Autostart
+powershell -ExecutionPolicy Bypass -File install.ps1 -NonInteractive -ReposRoot C:\Code -Autostart
 #>
 [CmdletBinding()]
 param(
@@ -34,13 +36,14 @@ param(
     [switch]$Download,
     [switch]$NonInteractive,
     [string]$ReposRoot,
-    [string]$JiraPrefix,
-    [string]$PrReviewer,
     # Nur für Fachleute: keep lässt eine fremde Infozeile allein stehen (dann fehlen
     # Modell, Effort und Kontext auf den Kacheln). Vorgabe: die des Decks, die alte dahinter.
     [ValidateSet('keep', 'replace')][string]$StatusLine = 'replace',
     [switch]$Autostart,
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    # Wo die Agenten laufen. Ohne Angabe: neue Installation in WSL, ein Update wie bisher.
+    [ValidateSet('wsl', 'windows')][string]$AgentEnv,
+    [string]$WslDistro
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,7 +54,9 @@ $AppDir = Join-Path $env:LOCALAPPDATA 'claude-agent-deck'
 $Bin = Join-Path $AppDir 'bin'
 $SettingsFile = Join-Path $AppDir 'deck_settings.json'
 $Setup = Join-Path $Bin 'deck-setup.exe'
-$Exes = @('agent-deck.exe', 'deck-report.exe', 'deck-statusline.exe', 'deck-console.exe', 'deck-watchdog.exe', 'deck-setup.exe')
+$Exes = @('agent-deck.exe', 'deck-report.exe', 'deck-statusline.exe', 'deck-console.exe', 'deck-setup.exe', 'deck-wsl.exe')
+# Programme früherer Fassungen, die ein Update aus bin\ entfernt.
+$ObsoleteExes = @('deck-watchdog.exe')
 $Winget = 'winget install --source winget -e --id'
 
 # Fehler enden in Fail. Aus einer Datei gestartet beendet das den Prozess mit Exit 1; aus
@@ -208,147 +213,26 @@ function Resolve-ReposRoot([bool]$Ask) {
     }
 }
 
-function Resolve-JiraPrefix([bool]$Ask) {
-    if ($script:JiraGiven) {
-        $v = "$JiraPrefix".Trim().ToUpper()
-        if ($v -and $v -notmatch '^[A-Z][A-Z0-9_]*$') { Fail "Jira-Kürzel '$v' geht nicht: nur Buchstaben, Ziffern und _." }
-        return $v
+# Beim Windows-Start mitstarten? Angegeben (-Autostart) gilt, sonst fragt der Installer
+# (Vorgabe ja); ohne Rückfrage bleibt es aus.
+function Resolve-Autostart([bool]$Ask) {
+    if ($script:AutostartGiven) { return [bool]$Autostart }
+    if ($Ask) { return (Read-YesNo 'Deck beim Windows-Start mitstarten?' $true) }
+    return $false
+}
+
+# Die Fragen beim ersten Lauf, je eine Funktion. Wer eine Frage dazubaut, hängt sie hier
+# an und gibt ihre Antwort mit zurück. Bei Agenten in WSL ($Wsl aus install-wsl.ps1) ist
+# der Repos-Ordner schon beantwortet, als Linux-Pfad.
+function Get-FirstRunAnswers([bool]$Ask, $Wsl) {
+    if ($Ask) { Write-Host '' }
+    if ($Wsl) { $repos = $Wsl.Repos } else { $repos = Resolve-ReposRoot $Ask }
+    $answers = @{
+        Repos = $repos
+        Autostart = (Resolve-Autostart $Ask)
     }
-    if (-not $Ask) { return '' }
-    while ($true) {
-        $v = "$(Read-Answer 'Jira-Projektkürzel für Ticketnummern (z. B. ORPH, leer = keins)' '')".Trim().ToUpper()
-        if (-not $v -or $v -match '^[A-Z][A-Z0-9_]*$') { return $v }
-        Hint 'Nur Buchstaben, Ziffern und _, zum Beispiel ORPH.'
-    }
-}
-
-# ── Reviewer der PR-Automatik ─────────────────────────────────────────────
-
-# Getippt werden Namen, Mailadressen oder Logins; `deck-setup resolve-reviewers` gleicht
-# sie mit den Mitgliedern der GitHub-Organisation ab (über gh, nur lesend) und druckt
-# JSON. $null, wenn das nicht ging (Programm fehlt, Ausgabe unlesbar).
-function Invoke-ReviewerLookup([string]$Exe, [string]$Text, [string]$Org) {
-    if (-not (Test-Path -LiteralPath $Exe)) { return $null }
-    # 5.1 reicht Anführungszeichen in Argumenten nicht sauber weiter.
-    $a = @('resolve-reviewers', '--names', ($Text -replace '"', ''))
-    if ($Org) { $a += @('--org', $Org) }
-    $old = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try { $out = & $Exe @a 2>$null } catch { $out = $null } finally { $ErrorActionPreference = $old }
-    if ($LASTEXITCODE -ne 0 -or -not $out) { return $null }
-    try { return ((@($out) -join "`n") | ConvertFrom-Json) } catch { return $null }
-}
-
-function Test-GitHubLogin([string]$Text) {
-    return ($Text -match '^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$')
-}
-
-# Nummerierte Wahl; -1 = übersprungen.
-function Read-Choice([string]$Prompt, [string[]]$Items) {
-    for ($i = 0; $i -lt $Items.Count; $i++) { Say "$($i + 1)  $($Items[$i])" }
-    while ($true) {
-        $a = Read-Host "$Prompt (1-$($Items.Count), leer = überspringen)"
-        if ([string]::IsNullOrWhiteSpace($a)) { return -1 }
-        $n = 0
-        if ([int]::TryParse($a.Trim(), [ref]$n) -and $n -ge 1 -and $n -le $Items.Count) { return ($n - 1) }
-    }
-}
-
-function Format-Person($Login, $Name) {
-    if ($Name) { return "$Name ($Login)" }
-    return "$Login"
-}
-
-# Wer die eigenen PRs reviewt. Ein Eintrag, der nicht passt oder kein Login ist, bricht
-# nie ab: interaktiv wird nachgefragt, sonst gewarnt und übersprungen. Mehrere Treffer:
-# interaktiv eine Wahl, sonst übersprungen. Ohne gh (oder ohne Organisation) bleibt ein
-# Eintrag, der als Login taugt, ungeprüft stehen. Die Automatik selbst bleibt aus, bis
-# sie in den Einstellungen eingeschaltet wird.
-# Gibt @{ Logins = 'a, b'; Org = '...'; Names = @{ login = Name } } zurück.
-function Resolve-PrReviewer([bool]$Ask, [string]$Exe) {
-    $logins = @()
-    $names = [ordered]@{}
-    $orgOut = ''
-    if ($script:ReviewerGiven) { $text = $PrReviewer }
-    elseif ($Ask) { $text = Read-Answer 'Wer soll deine PRs reviewen? Namen, mehrere mit Komma (leer = keiner)' '' }
-    else { $text = '' }
-    $org = ''
-    $warned = $false
-    while ("$text".Trim()) {
-        $r = Invoke-ReviewerLookup $Exe $text $org
-        if ($r -and $r.note -eq 'chooseOrg' -and $Ask) {
-            $orgs = @($r.orgs)
-            Say 'Dein GitHub-Konto gehört zu mehreren Organisationen.'
-            $i = Read-Choice 'In welcher sollen die Namen gesucht werden?' $orgs
-            if ($i -ge 0) { $org = $orgs[$i]; continue }
-        }
-        $looked = [bool]($r -and $r.note -eq 'none')
-        if (-not $looked -and -not $warned) {
-            $why = 'GitHub CLI fehlt oder ist nicht angemeldet'
-            if ($r -and $r.note -eq 'chooseOrg') { $why = 'keine Organisation gewählt' }
-            elseif ($r -and $r.note -eq 'noOrg') { $why = 'keine GitHub-Organisation gefunden' }
-            elseif ($r -and $r.note -eq 'membersFailed') { $why = "Mitglieder von $($r.org) nicht lesbar" }
-            Hint "Namen nicht geprüft ($why), übernommen wie getippt."
-            $warned = $true
-        }
-        if ($r) { $results = @($r.results) }
-        else {
-            $results = @()
-            foreach ($t in ("$text" -split '[,;]+')) {
-                $t = $t.Trim().TrimStart('@')
-                if (-not $t) { continue }
-                $l = ''
-                if (Test-GitHubLogin $t) { $l = $t }
-                $results += [pscustomobject]@{ input = $t; status = 'none'; login = $l; name = ''; candidates = @() }
-            }
-        }
-        if ($r -and $r.org -and -not $orgOut) { $orgOut = "$($r.org)" }
-        $where = $orgOut
-        if (-not $where) { $where = 'deiner Organisation' }
-        $retry = @()
-        foreach ($x in $results) {
-            $pick = ''
-            $pickName = ''
-            switch ("$($x.status)") {
-                'unique' {
-                    $pick = "$($x.login)"; $pickName = "$($x.name)"
-                    Ok "Reviewer: $(Format-Person $pick $pickName)"
-                }
-                'ambiguous' {
-                    $cands = @($x.candidates)
-                    $labels = @($cands | ForEach-Object { Format-Person $_.login $_.name })
-                    if ($Ask) {
-                        Say "'$($x.input)' passt auf mehrere:"
-                        $i = Read-Choice 'Wen meinst du?' $labels
-                        if ($i -ge 0) {
-                            $pick = "$($cands[$i].login)"; $pickName = "$($cands[$i].name)"
-                            Ok "Reviewer: $(Format-Person $pick $pickName)"
-                        }
-                    } else {
-                        Hint "'$($x.input)' passt auf mehrere ($($labels -join ', ')), übersprungen."
-                    }
-                }
-                default {
-                    if ($x.login) {
-                        $pick = "$($x.login)"
-                        if ($looked) { Hint "'$($x.input)' nicht in $where gefunden, als GitHub-Login übernommen." }
-                    } else {
-                        Hint "'$($x.input)' nicht gefunden, übersprungen."
-                        $retry += "$($x.input)"
-                    }
-                }
-            }
-            if ($pick -and -not ($logins | Where-Object { $_ -ieq $pick })) {
-                $logins += $pick
-                if ($pickName) { $names[$pick] = $pickName }
-            }
-        }
-        $text = ''
-        if ($Ask -and $retry.Count -gt 0) {
-            $text = Read-Answer "Wen meintest du mit $($retry -join ', ')? Name oder GitHub-Login (leer = überspringen)" ''
-        }
-    }
-    return @{ Logins = ($logins -join ', '); Org = $orgOut; Names = $names }
+    if ($Ask) { Write-Host '' }
+    return $answers
 }
 
 # ── Quelle der Programme ──────────────────────────────────────────────────
@@ -389,7 +273,7 @@ function Build-FromSource([string]$Repo) {
     } finally { Pop-Location }
 }
 
-# Ordner mit den sechs Programmen in einem entpackten Paket (flach oder eine Ebene tiefer).
+# Ordner mit den Programmen in einem entpackten Paket (flach oder eine Ebene tiefer).
 function Find-PackageRoot([string]$Dir) {
     if (Test-Path -LiteralPath (Join-Path $Dir 'agent-deck.exe')) { return $Dir }
     $sub = Get-ChildItem -LiteralPath $Dir -Directory | Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'agent-deck.exe') } | Select-Object -First 1
@@ -486,15 +370,6 @@ function Find-Claude {
     return $null
 }
 
-# Angemeldet bei GitHub? Über cmd mit umgeleiteter Ausgabe: so sieht PowerShell 5.1 kein
-# stderr von gh und schreibt keinen roten NativeCommandError (auch nicht ins Transcript).
-function Test-GhLogin {
-    $old = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try { & cmd.exe /d /c 'gh auth status >nul 2>&1' } finally { $ErrorActionPreference = $old }
-    return ($LASTEXITCODE -eq 0)
-}
-
 function Test-Prerequisites {
     $bad = 0
     $wt = Find-Command 'wt.exe'
@@ -507,20 +382,17 @@ function Test-Prerequisites {
     else { Write-Host "  ✗ Windows Terminal fehlt. Installieren: $Winget Microsoft.WindowsTerminal" -ForegroundColor Red; $bad++ }
     if (Test-WebView2) { Ok 'WebView2' }
     else { Write-Host "  ✗ WebView2 fehlt. Installieren: $Winget Microsoft.EdgeWebView2Runtime" -ForegroundColor Red; $bad++ }
-    if (Find-Claude) { Ok 'Claude Code' }
+    # Agenten in WSL brauchen claude in der Distro, nicht unter Windows (install-wsl.ps1).
+    if ($script:AgentEnvChoice -eq 'wsl') { }
+    elseif (Find-Claude) { Ok 'Claude Code' }
     else { Write-Host '  ✗ Claude Code fehlt. Installieren: irm https://claude.ai/install.ps1 | iex (danach ein neues Fenster öffnen)' -ForegroundColor Red; $bad++ }
     if ($bad -gt 0) { Fail 'Bitte das Fehlende installieren und den Installer noch einmal starten.' }
-
-    # Kann, muss nicht.
-    if (-not (Find-Command 'gh')) { Hint "GitHub CLI fehlt, dann zeigt das Deck keine PRs. Installieren: $Winget GitHub.cli" }
-    elseif (Test-GhLogin) { Ok 'GitHub CLI' }
-    else { Hint 'GitHub CLI ist nicht angemeldet, dann zeigt das Deck keine PRs. Anmelden: gh auth login' }
 }
 
 # ── Ablauf ────────────────────────────────────────────────────────────────
 
 function Stop-Deck {
-    # Der Wächter zuerst, sonst startet er die App gleich wieder.
+    # deck-watchdog gab es bis 24.11.2026; ein alter, noch laufender startete die App sonst neu.
     $any = $false
     foreach ($name in 'deck-watchdog', 'agent-deck') {
         foreach ($p in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
@@ -537,14 +409,29 @@ function Copy-Programs($Source) {
         if (-not (Test-Path -LiteralPath (Join-Path $Source.Dir $exe))) { Fail "$exe fehlt in $($Source.Dir)" }
     }
     New-Item -ItemType Directory -Force -Path $Bin | Out-Null
+    # Reste früherer Updates (siehe unten), soweit nicht mehr in Benutzung.
+    Get-ChildItem -LiteralPath $Bin -Filter '*.exe.old*' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     foreach ($exe in $Exes) {
+        $dst = Join-Path $Bin $exe
         # Ein eben beendeter Prozess gibt seine Exe manchmal erst Augenblicke später frei.
         for ($i = 1; ; $i++) {
-            try { Copy-Item -LiteralPath (Join-Path $Source.Dir $exe) -Destination (Join-Path $Bin $exe) -Force; break }
+            try { Copy-Item -LiteralPath (Join-Path $Source.Dir $exe) -Destination $dst -Force; break }
             catch {
+                # Läuft die Exe weiter (deck-wsl.exe steht im Fenster jedes WSL-Agenten), darf
+                # sie umbenannt werden; der Agent läuft mit der alten weiter, neue nehmen die neue.
+                if ($i -ge 4 -and (Test-Path -LiteralPath $dst)) {
+                    try { Move-Item -LiteralPath $dst -Destination "$dst.old-$([DateTime]::Now.Ticks)" -Force -ErrorAction Stop; continue } catch { }
+                }
                 if ($i -ge 10) { Fail "$exe ließ sich nicht kopieren: $($_.Exception.Message)" }
                 Start-Sleep -Milliseconds 500
             }
+        }
+    }
+    foreach ($old in $ObsoleteExes) {
+        $path = Join-Path $Bin $old
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+            Write-Verbose "$old entfernt (gibt es nicht mehr)"
         }
     }
     $un = Join-Path $Source.Scripts 'uninstall.ps1'
@@ -556,15 +443,11 @@ function Copy-Programs($Source) {
     Ok "Programme (Version $($Source.Version))"
 }
 
-function Write-DeckSettings([string]$Repos, [string]$Jira, $Reviewers) {
+function Write-DeckSettings([string]$Repos) {
     $s = [ordered]@{ settings_version = 1; repos_root = $Repos }
-    if ($Jira) { $s.jira_prefix = $Jira }
-    if ($Reviewers -and $Reviewers.Logins) { $s.pr_reviewer = $Reviewers.Logins }
-    if ($Reviewers -and $Reviewers.Names.Count -gt 0) { $s.pr_reviewer_names = $Reviewers.Names }
-    if ($Reviewers -and $Reviewers.Org) { $s.github_org = $Reviewers.Org }
     # Alles mit Wirkung nach außen ist aus, bis es jemand in den Einstellungen anschaltet.
     # Auto-Compact ist an: es schreibt nur in den eigenen wartenden Agenten.
-    foreach ($k in 'titan', 'store_update', 'speechmike_voice', 'auto_permission_mode', 'pr_automation') { $s[$k] = $false }
+    $s.auto_permission_mode = $false
     $s.auto_compact = $true
     New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
     Write-Utf8 $SettingsFile ($s | ConvertTo-Json -Depth 4)
@@ -603,50 +486,60 @@ function Write-Summary([bool]$FirstRun, [string]$Version, [bool]$InStartMenu) {
     Write-Host 'Deinstallieren: Windows-Einstellungen › Apps › Agent Deck'
 }
 
+# Wo die Agenten laufen: ausdrücklich angegeben, sonst wie eingestellt (ein Update ohne
+# Eintrag läuft wie bisher unter Windows), sonst bei einer neuen Installation WSL.
+function Get-AgentEnvChoice {
+    if ($AgentEnv) { return $AgentEnv }
+    if (Test-Path -LiteralPath $SettingsFile) {
+        try { if ((Get-Content -LiteralPath $SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json).agent_env -eq 'wsl') { return 'wsl' } } catch { }
+        return 'windows'
+    }
+    return 'wsl'
+}
+
 function Invoke-Main {
     Write-Host 'Agent Deck wird installiert.' -ForegroundColor Cyan
     Write-Host ''
+    $script:AgentEnvChoice = Get-AgentEnvChoice
     Test-Prerequisites
     $source = Resolve-Source
     $firstRun = -not (Test-Path -LiteralPath $SettingsFile)
     $ask = Test-Interactive
+    $wsl = $null
+    if ($script:AgentEnvChoice -eq 'wsl') {
+        . (Join-Path $source.Scripts 'install-wsl.ps1')
+        if (-not $firstRun) { $wsl = Get-WslFromSettings $SettingsFile }
+        if (-not $wsl) { $wsl = Initialize-WslAgents $ask (Join-Path $source.Dir 'deck-setup.exe') }
+    }
 
-    $repos = $null; $jira = ''; $reviewers = $null
+    $answers = $null
     $autostartOn = $null
     if ($firstRun) {
-        if ($ask) { Write-Host '' }
-        $repos = Resolve-ReposRoot $ask
-        $jira = Resolve-JiraPrefix $ask
-        # deck-setup aus der Quelle: nach bin kopiert wird erst nach den Fragen.
-        $reviewers = Resolve-PrReviewer $ask (Join-Path $source.Dir 'deck-setup.exe')
-        if ($script:AutostartGiven) { $autostartOn = [bool]$Autostart }
-        elseif ($ask) { $autostartOn = Read-YesNo 'Deck beim Windows-Start mitstarten?' $true }
-        else { $autostartOn = $false }
-        if ($ask) { Write-Host '' }
+        $answers = Get-FirstRunAnswers $ask $wsl
+        $autostartOn = $answers.Autostart
     } elseif ($script:AutostartGiven) {
         $autostartOn = [bool]$Autostart
     }
 
     Stop-Deck
     Copy-Programs $source
+    if ($wsl) { Copy-LinuxHooks $source }
 
-    # Die frühere VS-Code-Extension (bis 09.11.2026) nur anfassen, wenn sie da ist.
-    if (Test-Path (Join-Path $env:USERPROFILE '.vscode\extensions\agent-deck-bridge*')) {
-        Invoke-Setup @('remove-vscode-extension')
+    if ($wsl) { Install-WslHooks $wsl.Distro }
+    else {
+        Invoke-Setup @('install', '--bin', $Bin, '--statusline', $StatusLine)
+        Invoke-Setup @('check', '--bin', $Bin)
     }
-
-    Invoke-Setup @('install', '--bin', $Bin, '--statusline', $StatusLine)
-    Invoke-Setup @('check', '--bin', $Bin)
     # Erst nach den Hooks: scheitert ein erster Lauf vorher, fragt der nächste wieder.
-    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) { Write-DeckSettings $repos $jira $reviewers }
+    if ($firstRun -and -not (Test-Path -LiteralPath $SettingsFile)) {
+        Write-DeckSettings $answers.Repos
+        if ($wsl) { Set-WslDeckSettings $SettingsFile $wsl }
+    }
     Ok 'Claude-Einstellungen'
-    # Bisher schaltete eine geplante Aufgabe Windows hell und dunkel; steht das Deck auf
-    # Sonnenstand, tut es das jetzt selbst, und die Aufgabe geht. Sonst kein Wort.
-    Invoke-Setup @('migrate-darkmode')
-    if ($script:Tags -contains 'darkmode-task-removed') { Ok 'Alte Aufgabe „DarkModeZeitplan“ entfernt: hell und dunkel schaltet jetzt das Deck' }
 
     # Erst Schrift und Shader, dann das Terminal-Profil, das beide nennt.
-    Invoke-Setup @('look', '--from', $source.Papier)
+    if ($wsl) { Invoke-Setup @('look', '--from', $source.Papier, '--wsl', $wsl.Distro) }
+    else { Invoke-Setup @('look', '--from', $source.Papier) }
     Invoke-Setup @('wt-profile')
     if (Test-Path -LiteralPath $source.Papier) { Ok 'Schrift und Farben' }
 
@@ -669,8 +562,6 @@ function Invoke-Main {
 # Ob ein Parameter angegeben wurde, sehen die Funktionen in ihrem eigenen
 # $PSBoundParameters nicht: einmal hier oben festhalten.
 $script:Tags = @()
-$script:JiraGiven = $PSBoundParameters.ContainsKey('JiraPrefix')
-$script:ReviewerGiven = $PSBoundParameters.ContainsKey('PrReviewer')
 $script:AutostartGiven = $PSBoundParameters.ContainsKey('Autostart')
 
 # deck-setup schreibt UTF-8; ohne das zeigt 5.1 die Umlaute als Zeichensalat.

@@ -5,7 +5,7 @@
 //! steht woanders. Darum feste Reihenfolge, stärkste zuerst:
 //!
 //! Ticket: 1. von Hand zugewiesen (Kontextmenü) bzw. danach vom Agenten gemeldet
-//! (`.ticket`), 2. git-Branch im Ordner des Agenten (`feature/ORPH-4116`, `4116-ui`),
+//! (`.ticket`), 2. git-Branch im Ordner des Agenten (`feature/DEMO-4116`, `4116-ui`),
 //! 3. worktree-Ordner des cwd (`Repos/wt/4116-ui`), 4. der worktree, in dem der Agent
 //! laut seinen Werkzeugaufrufen arbeitet (`claude::worktree_use`; Ordnername, sonst
 //! dessen Branch), 5. Sessiontitel, 6. Chat.
@@ -28,7 +28,7 @@ use crate::i18n::Lang;
 use crate::text::take_chars;
 use crate::view::{RefSource, RefView};
 
-/// So viele Zeichen hat das Ticket auf der Karte höchstens („ORPH-4116“ = 9).
+/// So viele Zeichen hat das Ticket auf der Karte höchstens („DEMO-4116“ = 9).
 pub const TICKET_MAX_CHARS: usize = 14;
 
 /// Was über eine Kachel bekannt ist, in der Reihenfolge der Quellen.
@@ -48,7 +48,8 @@ pub struct RefEvidence<'a> {
     pub chat: Option<&'a Refs>,
     /// Branch des worktree aus den Werkzeugaufrufen (für Namen ohne Nummer).
     pub worktree_branch: Option<&'a str>,
-    /// Jira-Projekt (`deck_settings.json` `jira_prefix`): macht aus `4116` `ORPH-4116`.
+    /// Projektkürzel (von einer Erweiterung, sonst leer): macht aus `4116` `ABC-4116`. Leer
+    /// zählt nur ein ausgeschriebener Key wie `ABC-123`.
     pub prefix: &'a str,
 }
 
@@ -69,7 +70,7 @@ static NAME_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([A-Za-z][A-Za-
 static LEADING_NUM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\d{2,6})(?:[-_][A-Za-z].*)?$").expect("LEADING_NUM"));
 
 /// Ein Jira-Key in einem Branch- oder Ordnernamen. Das konfigurierte Projekt gilt in
-/// jeder Schreibweise (`ticket/orph-4116`, so baut das Deck selbst Branches); fremde
+/// jeder Schreibweise (`ticket/demo-4116`, so baut das Deck selbst Branches); fremde
 /// Projekte nur groß geschrieben (`feature/CS-231`) oder mit `lenient`, damit
 /// `hotfix/login-2` oder `node-18` kein Ticket wird.
 fn key_in_name(name: &str, prefix: &str, lenient: bool) -> Option<String> {
@@ -98,7 +99,7 @@ fn number_in_name(name: &str, prefix: &str) -> Option<String> {
     Some(format!("{prefix}-{}", &c[1]))
 }
 
-/// Ticket aus einem Branch: `feature/ORPH-4116-x`, `ticket/orph-4116`, `4116-taskbar`.
+/// Ticket aus einem Branch: `feature/DEMO-4116-x`, `ticket/demo-4116`, `4116-taskbar`.
 pub fn ticket_from_branch(branch: &str, prefix: &str) -> Option<String> {
     let prefix = prefix.trim().to_uppercase();
     let lenient = branch.starts_with(crate::config::TICKET_BRANCH_PREFIX);
@@ -106,7 +107,7 @@ pub fn ticket_from_branch(branch: &str, prefix: &str) -> Option<String> {
 }
 
 /// Ticket aus dem Ordner: der Teil unter `wt` (`Repos/wt/4116-ui`), ein Ordner
-/// `wt-4116-ui` oder ein worktree von Claude Code (`.claude/worktrees/orph-4116`). Der
+/// `wt-4116-ui` oder ein worktree von Claude Code (`.claude/worktrees/demo-4116`). Der
 /// tiefste passende Teil gewinnt.
 pub fn ticket_from_folder(dir: &str, prefix: &str) -> Option<String> {
     let prefix = prefix.trim().to_uppercase();

@@ -49,6 +49,7 @@ pub(crate) fn rig() -> Rig {
         wt_exe: "wt.exe".into(),
         shell: "pwsh.exe".into(),
         profile: Some("Agent Deck".into()),
+        wsl: None,
     };
     let fx = WtEffects { desktop: desk.clone(), procs: procs.clone(), console: console.clone(), launcher: launcher.clone() };
     let wt = WtHost::new(setup, fx, Worker::inline(), clock);
@@ -272,7 +273,7 @@ fn the_jump_key_goes_to_the_longest_waiting_and_then_round_robin() {
 #[test]
 fn assigning_a_ticket_sends_one_submitted_line_and_shows_it_at_once() {
     let mut r = rig();
-    r.deck.put("jira_prefix", json!("PROJ"));
+    crate::tests_extension::with_prefix(&mut r, "PROJ");
     r.wt_block("A", "repo");
     r.wt_agent("A1", 81);
     r.deck.assign_ticket("A1", "2701");
@@ -489,14 +490,8 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     assert_eq!(r.deck.set_setting("effort", &json!("Ultracode")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("model", &json!("fable")), Ok(Effect::None));
     assert_eq!(r.deck.set_setting("language", &json!("english")), Ok(Effect::Language));
-    r.deck.set_setting("jiraPrefix", &json!(" orph ")).unwrap();
-    assert_eq!(r.deck.jira_prefix(), "ORPH");
-    assert!(r.deck.set_setting("jiraPrefix", &json!("OR PH")).is_err(), "nur Buchstaben und Ziffern");
-    for key in ["titan", "storeUpdate", "speechmikeVoice", "autoPermissionMode", "prAutomation"] {
-        r.deck.set_setting(key, &json!(true)).unwrap();
-    }
-    r.deck.set_setting("prReviewer", &json!("octocat")).unwrap();
-    assert!(r.deck.set_setting("titan", &json!("ja")).is_err());
+    r.deck.set_setting("autoPermissionMode", &json!(true)).unwrap();
+    assert!(r.deck.set_setting("autoCompact", &json!("ja")).is_err());
     let edge = r.deck.set_setting("dockEdge", &json!("bottom")).unwrap();
     assert_eq!(edge, Effect::Edge(deck_core::dock::Edge::Bottom));
     assert!(r.deck.set_setting("nonsense", &json!(1)).is_err());
@@ -507,37 +502,8 @@ fn settings_go_to_the_right_file_and_take_effect_at_once() {
     let v = r.deck.settings_view();
     assert_eq!((v.model.as_str(), v.effort.as_str(), v.language.as_str()), ("fable", "Ultracode", "english"));
     assert_eq!(v.dock_edge.as_str(), "bottom");
-    assert!(v.titan && v.store_update && v.speechmike_voice && v.auto_permission_mode && v.pr_automation);
-    assert_eq!((v.pr_reviewer.as_str(), v.github_org.as_str(), v.jira_prefix.as_str()), ("octocat", "", "ORPH"));
+    assert!(v.auto_permission_mode);
     let file = deck_core::paths::load_json(&r.deck.paths.app_dir.join(deck_core::paths::SETTINGS_FILE)).unwrap();
-    assert_eq!((file["titan"].clone(), file["pr_reviewer"].clone()), (json!(true), json!("octocat")));
+    assert_eq!(file["auto_permission_mode"], json!(true));
     assert!(r.deck.lang.is_english());
-}
-
-#[test]
-fn resolved_reviewers_are_saved_as_logins_with_names_and_their_org() {
-    use deck_core::dash::reviewers::{ReviewerNote, ReviewerReport, ReviewerStatus, resolve_all};
-    use deck_core::dash::reviewer_match::Member;
-    let mut r = rig();
-    let members = [
-        Member { login: "leo-mxyz".into(), name: "Leo Müller".into(), emails: vec![] },
-        Member { login: "anna-s".into(), name: "Anna Schmidt".into(), emails: vec![] },
-        Member { login: "aberger".into(), name: "Anna Berger".into(), emails: vec![] },
-    ];
-    let results = resolve_all(Some(&members), "Leo, Anna, bob, name@firma.de");
-    assert_eq!(results[1].status, ReviewerStatus::Ambiguous);
-    let report = ReviewerReport { org: "acme".into(), orgs: vec![], note: ReviewerNote::None, detail: String::new(), results };
-    r.deck.apply_reviewers(&report);
-    let v = r.deck.settings_view();
-    // Mehrdeutig wartet auf die Wahl, die Mailadresse ohne Treffer fällt weg.
-    assert_eq!((v.pr_reviewer.as_str(), v.github_org.as_str()), ("leo-mxyz, bob", "acme"));
-    assert_eq!(v.pr_reviewer_label, "Leo Müller (leo-mxyz), bob");
-    // Das Feld schickt die gezeigte Form zurück: der Login in der Klammer zählt, der Name bleibt.
-    r.deck.set_setting("prReviewer", &json!("Leo Müller (leo-mxyz), x@y.de")).unwrap();
-    let v = r.deck.settings_view();
-    assert_eq!((v.pr_reviewer.as_str(), v.pr_reviewer_label.as_str()), ("leo-mxyz", "Leo Müller (leo-mxyz)"));
-    // Eine eingestellte Organisation überschreibt die Suche nicht.
-    r.deck.set_setting("githubOrg", &json!("mine")).unwrap();
-    r.deck.apply_reviewers(&report);
-    assert_eq!(r.deck.settings_view().github_org, "mine");
 }

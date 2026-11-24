@@ -1,17 +1,16 @@
 [package]
 name = "deck-services"
-description = "Hintergrunddienste des Agent Deck: Usage, Zusammenfassung, worktrees, Einrichtung, Wächter"
+description = "Hintergrunddienste des Agent Deck: Usage, Zusammenfassung, Einrichtung"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
-# Der Wächter: ein kleines eigenes Programm, das die App neu startet, wenn sie
-# verschwunden ist (aus `deck/ops/watchdog.py`). Er muss neben der App ausgeliefert
-# werden; Herzschlag und Protokoll siehe src/heartbeat.rs.
+# Steht im Terminal-Fenster eines WSL-Agenten an der Stelle von PowerShell: Herkunftsmarke,
+# Umgebung für die Hooks, dann `wsl.exe` (src/bin/deck-wsl.rs, deck_core::wsl_launch).
 [[bin]]
-name = "deck-watchdog"
-path = "src/bin/deck-watchdog.rs"
+name = "deck-wsl"
+path = "src/bin/deck-wsl.rs"
 
 [dependencies]
 deck-core = { version = "0.2.0", path = "../deck-core" }

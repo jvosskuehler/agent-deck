@@ -40,8 +40,8 @@ mod tests {
         std::fs::create_dir_all(&wt).unwrap();
         std::fs::create_dir_all(&meta).unwrap();
         std::fs::write(wt.join(".git"), format!("gitdir: {}\n", meta.display())).unwrap();
-        std::fs::write(meta.join("HEAD"), "ref: refs/heads/feature/ORPH-4116\n").unwrap();
-        assert_eq!(find_branch(&wt.join("src"), &StdGitFs).as_deref(), Some("feature/ORPH-4116"));
+        std::fs::write(meta.join("HEAD"), "ref: refs/heads/feature/DEMO-4116\n").unwrap();
+        assert_eq!(find_branch(&wt.join("src"), &StdGitFs).as_deref(), Some("feature/DEMO-4116"));
         assert_eq!(StdGitFs.read_text(&d.path().join("fehlt")), None);
     }
 }

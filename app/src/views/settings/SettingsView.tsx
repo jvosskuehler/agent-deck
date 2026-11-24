@@ -3,11 +3,13 @@
 // Fenster wächst mit dem Inhalt (useDialogFit).
 //
 // Kompakt (Vorgabe, eine Spalte, 480 breit) steht nur, was man öfter anfasst: Neue Agenten
-// (Modell, Modus, Effort) und Deck (samt Hell/Dunkel; den Ort für den Sonnenstand gibt es
-// erst unter „Erweitert“). „Erweitert“ klappt auf zwei Spalten (960) den Rest auf:
-// Konto und Ordner, Auto-Modus neuer Agenten, Automatik samt Reviewern. Taugt der
-// Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt da; Rust öffnet das
-// Fenster dann beim Start selbst. Auf- oder zugeklappt merkt sich die Oberfläche.
+// (Modell, Modus, Effort) und Deck (samt Hell/Dunkel). „Erweitert“ klappt auf zwei Spalten
+// (960) den Rest auf: Konto und Ordner, Auto-Modus neuer Agenten. Taugt der Repos-Ordner
+// nicht, stehen Hinweis und Ordnerzeile auch kompakt da; Rust öffnet das Fenster dann beim
+// Start selbst. Auf- oder zugeklappt merkt sich die Oberfläche.
+//
+// Abschnitte von Erweiterungen (`extensions.ts`) stehen in der rechten Spalte unter
+// „Deck“, kompakt nur die ohne `advancedOnly`. Welche es gibt, sagt Rust (`extras`).
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SettingsView as Settings } from "../../bindings/SettingsView";
@@ -25,9 +27,10 @@ import {
   modeOptions,
   onOffOptions,
 } from "../../logic/settingsOptions";
+import { settingsSection } from "../../extensions";
 import { useDialogFit } from "../useDialogFit";
-import { PathField, Segmented, SelectField, SwitchRow, TextField } from "./controls";
-import { ReviewerField } from "./ReviewerField";
+import { AgentEnvFields } from "./AgentEnvFields";
+import { PathField, Segmented, SwitchRow } from "./controls";
 import "../../styles/settings.css";
 
 /** So lange steht „Gespeichert“ nach einer Änderung (ms). */
@@ -86,7 +89,7 @@ export function SettingsView() {
       done();
       return;
     }
-    commands.resizeDialog(Math.ceil(el.offsetHeight), pending ? WIDTH_WIDE : WIDTH_COMPACT).then(done, done);
+    commands.resizeDialog(Math.ceil(el.getBoundingClientRect().height), pending ? WIDTH_WIDE : WIDTH_COMPACT).then(done, done);
   }, [pending]);
 
   useEffect(
@@ -122,6 +125,16 @@ export function SettingsView() {
       });
   };
 
+  const saveExtra = (key: string, value: unknown) => {
+    commands
+      .setExtraSetting(key, value)
+      .then((next) => {
+        setSettings(next);
+        confirmSaved();
+      })
+      .catch((err: unknown) => setError(String(err)));
+  };
+
   const toggleExpanded = () => {
     if (pending === null) setPending(!expanded);
   };
@@ -141,12 +154,11 @@ export function SettingsView() {
 
   const renderBody = (expanded: boolean, measuring: boolean) => {
     const onOff = onOffOptions(lang);
-    const placeName = settings.sunPlaces.find((p) => p.id === settings.sunPlace)?.name ?? settings.sunPlace;
     // Was die Wahl über das Deck hinaus tut: fest gilt nur für Deck und Agenten, Sonnenstand
     // schaltet Windows selbst. „System“ braucht keinen Satz.
     const appearanceHint =
       settings.appearance === "sun"
-        ? t(lang, "appearanceSunHint", { place: placeName })
+        ? t(lang, "appearanceSunHint", { place: settings.sunPlaceName })
         : settings.appearance === "light" || settings.appearance === "dark"
           ? t(lang, "appearanceFixedHint")
           : undefined;
@@ -233,20 +245,6 @@ export function SettingsView() {
           hint={appearanceHint}
           onChange={(v) => save("appearance", v)}
         />
-        {expanded && settings.appearance === "sun" && (
-          <SelectField
-            label={t(lang, "sunPlace")}
-            options={settings.sunPlaces.map((p) => ({ value: p.id, label: p.name }))}
-            value={settings.sunPlace}
-            onChange={(v) => save("sunPlace", v)}
-          />
-        )}
-        <SwitchRow
-          label={t(lang, "dashboard")}
-          options={onOff}
-          on={settings.dashboard}
-          onChange={(v) => save("dashboard", v)}
-        />
         <SwitchRow
           label={t(lang, "autoCompact")}
           hint={t(lang, "autoCompactHint")}
@@ -263,70 +261,32 @@ export function SettingsView() {
           <h2 className="set-h2">{t(lang, "account")}</h2>
           <span className="set-hint">{t(lang, "accountHint")}</span>
         </div>
+        <AgentEnvFields lang={lang} settings={settings} save={save} />
         {reposField}
-        <TextField
-          label={t(lang, "jiraPrefix")}
-          value={settings.jiraPrefix}
-          placeholder="ABC"
-          onCommit={(v) => save("jiraPrefix", v)}
-        />
       </section>
     );
 
-    const automation = (
-      <section className="set-section">
-        <div className="set-section-head">
-          <h2 className="set-h2">{t(lang, "automation")}</h2>
-          <span className="set-hint">{t(lang, "automationHint")}</span>
-        </div>
-        <SwitchRow
-          label={t(lang, "storeUpdate")}
-          hint={t(lang, "storeUpdateHint")}
-          options={onOff}
-          on={settings.storeUpdate}
-          onChange={(v) => save("storeUpdate", v)}
-        />
-        <SwitchRow
-          label={t(lang, "speechmikeVoice")}
-          hint={t(lang, "speechmikeVoiceHint")}
-          options={onOff}
-          on={settings.speechmikeVoice}
-          onChange={(v) => save("speechmikeVoice", v)}
-        />
-        <SwitchRow
-          label={t(lang, "titan")}
-          hint={t(lang, "titanHint")}
-          options={onOff}
-          on={settings.titan}
-          onChange={(v) => save("titan", v)}
-        />
-        <SwitchRow
-          label={t(lang, "prAutomation")}
-          hint={t(lang, "prAutomationHint")}
-          options={onOff}
-          on={settings.prAutomation}
-          onChange={(v) => save("prAutomation", v)}
-        />
-        {/* Immer sichtbar: wer die eigenen PRs reviewt, ist eine Frage an jeden, auch
-            bevor die Automatik an ist (der Installer fragt es ebenfalls). */}
-        <ReviewerField
-          lang={lang}
-          settings={settings}
-          onSaved={(next) => {
-            setSettings(next);
-            confirmSaved();
-          }}
-          onError={setError}
-        />
-        {settings.prAutomation && (
-          <TextField
-            label={t(lang, "githubOrg")}
-            value={settings.githubOrg}
-            onCommit={(v) => save("githubOrg", v)}
-          />
-        )}
-      </section>
-    );
+    // Abschnitte der Erweiterungen, in der Reihenfolge, in der Rust sie meldet.
+    const extras = settings.extras.flatMap((x) => {
+      const entry = settingsSection(x.id);
+      if (!entry || (entry.advancedOnly && !expanded)) return [];
+      return [
+        <div key={x.id}>
+          <div className="set-divider" aria-hidden="true" />
+          {entry.render({
+            lang,
+            values: x.values,
+            expanded,
+            save: saveExtra,
+            onSaved: (next) => {
+              setSettings(next);
+              confirmSaved();
+            },
+            onError: setError,
+          })}
+        </div>,
+      ];
+    });
 
     const divider = <div className="set-divider" aria-hidden="true" />;
 
@@ -359,8 +319,7 @@ export function SettingsView() {
             </div>
             <div className="set-col">
               {deck}
-              {divider}
-              {automation}
+              {extras}
             </div>
           </div>
         ) : (
@@ -369,6 +328,7 @@ export function SettingsView() {
             {agents}
             {divider}
             {deck}
+            {extras}
           </>
         )}
 
@@ -379,7 +339,7 @@ export function SettingsView() {
         </footer>
       </div>
     );
-      return body;
+    return body;
   };
 
   const body = (

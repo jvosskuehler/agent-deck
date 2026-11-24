@@ -15,7 +15,9 @@ export function useDialogFit(ref: RefObject<HTMLElement | null>, ready: boolean,
     let frame = 0;
     const report = () => {
       frame = 0;
-      const height = Math.ceil(el.offsetHeight);
+      // Nicht offsetHeight: das rundet 612,4 auf 612, und schon fehlt ein Bruchteil Pixel
+      // für einen Rollbalken (18.11.2026).
+      const height = Math.ceil(el.getBoundingClientRect().height);
       if (height === last) return;
       last = height;
       commands.dialogContentSize(height, width);

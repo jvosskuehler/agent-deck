@@ -7,7 +7,7 @@
 //!
 //! * **Muster `Bereich: Thema`.** Der Bereich ist der Teil des Produkts, so wie der
 //!   Entwickler ihn nennt („Kundenservice“, „Feature-Flags“), nicht das Repo. Ticket und
-//!   PR stehen nicht im Titel: die Kopfzeile „B3 · ORPH-4264 · Titel“ zeigt sie schon.
+//!   PR stehen nicht im Titel: die Kopfzeile „B3 · DEMO-4264 · Titel“ zeigt sie schon.
 //! * **Bremse.** Geprüft wird nur alle [`TitleRules::every`] getippten Nachrichten, das
 //!   erste Mal ab [`TitleRules::first_at`]. Ein neuer Titel gilt erst, wenn
 //!   [`TitleRules::confirm`] Prüfungen hintereinander ihn vorschlagen: eine Nebenfrage

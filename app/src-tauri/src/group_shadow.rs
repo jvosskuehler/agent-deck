@@ -92,6 +92,14 @@ impl Plan {
     fn moves_to(&self, next: &Plan) -> bool {
         self.colors == next.colors && self.look == next.look && shifted(&self.rects, &next.rects).is_some()
     }
+
+    /// Muss der alte Schatten weg, bevor der neue gemalt ist? Nur wenn er woanders stünde:
+    /// bleibt die Fläche der Gruppe dieselbe (Fenster tauschen nur die Plätze), malt das
+    /// neue Bild über das alte, ohne Lücke. Vorher blinzelte der Schatten bei jedem
+    /// Umsortieren einmal (gemessen 24.11.2026, tools/probe, `reorder`).
+    fn stale_in(&self, next: &Plan) -> bool {
+        next.rects != self.rects && !self.moves_to(next) && bounds(&next.rects, &next.look) != bounds(&self.rects, &self.look)
+    }
 }
 
 /// Der Ring eines Agentenfensters: wo es liegt, wie breit und in welcher Farbe.
@@ -134,7 +142,7 @@ impl ShadowWatch {
 
     /// Einmal hinschauen. `true`, wenn sich die geplanten Schatten oder Ringe geändert haben.
     pub fn step(&mut self) -> bool {
-        let found: Vec<(Hwnd, Area, String)> = self
+        let mut found: Vec<(Hwnd, Area, String)> = self
             .desktop
             .class_windows(WINDOW_CLASS)
             .into_iter()
@@ -142,6 +150,10 @@ impl ShadowWatch {
             .filter_map(|w| Some((w.hwnd, WtHost::slot_of_title(&self.hosts, &w.title)?)))
             .filter_map(|(h, slot)| self.desktop.frame_rect(h).map(|r| (h, area(r), slot)))
             .collect();
+        // Feste Reihenfolge: Windows zählt die Fenster von vorn nach hinten auf. Sonst hieß
+        // jeder Fokuswechsel „andere Gruppe“, der Schatten wurde weggenommen und neu gemalt
+        // und fehlte dabei einen Augenblick (gemessen 24.11.2026, tools/probe, `focus`).
+        found.sort_by(|a, b| a.2.cmp(&b.2));
         let wins: Vec<(Hwnd, Area)> = found.iter().map(|(h, r, _)| (*h, *r)).collect();
         let rects: Vec<Area> = wins.iter().map(|(_, r)| *r).collect();
         let scale = |h: Hwnd| self.desktop.scale_of(h);
@@ -254,7 +266,7 @@ impl ShadowLayer {
     /// sonst noch dort, wo die Fenster eben waren (etwa auf dem alten Monitor).
     pub fn hide_stale(&mut self, plans: &[Plan]) {
         for (i, (window, old)) in self.windows.iter_mut().zip(&self.shown).enumerate() {
-            if plans.get(i).is_some_and(|p| p.rects != old.rects && !old.moves_to(p)) {
+            if plans.get(i).is_some_and(|p| old.stale_in(p)) {
                 window.hide();
             }
         }
@@ -433,6 +445,39 @@ mod tests {
         assert!(w.step());
         assert!(w.plans.is_empty());
         assert_eq!(d.shadows()[2..], [(Hwnd(11), true), (Hwnd(12), true)]);
+    }
+
+    #[test]
+    fn bringing_another_agent_to_the_front_only_restacks_the_shadow() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 799, 600), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(800, 0, 1600, 600), false);
+        let mut w = watch(&d);
+        w.step();
+        let before = w.plans[0].clone();
+        // Windows zählt die Fenster von vorn nach hinten auf: A1 vorn heißt A1 zuerst.
+        d.remove_wt(Hwnd(12));
+        d.add_wt(Hwnd(12), "A2", Rect::new(800, 0, 1600, 600), false);
+        w.step();
+        let after = &w.plans[0];
+        assert_eq!((&after.rects, &after.colors), (&before.rects, &before.colors), "dieselbe Gruppe, nur anders gestapelt");
+    }
+
+    #[test]
+    fn a_shadow_whose_group_keeps_its_area_is_painted_over_not_hidden() {
+        let d = Arc::new(FakeDesktop::default());
+        d.add_wt(Hwnd(11), "A1", Rect::new(0, 0, 799, 600), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(800, 0, 1600, 600), false);
+        let mut w = watch(&d);
+        w.step();
+        let before = w.plans[0].clone();
+        d.move_wt(Hwnd(11), Rect::new(801, 0, 1600, 600));
+        d.move_wt(Hwnd(12), Rect::new(0, 0, 800, 600));
+        w.step();
+        assert!(!before.stale_in(&w.plans[0]), "Plätze getauscht: dieselbe Fläche");
+        d.move_wt(Hwnd(12), Rect::new(0, 300, 800, 900));
+        w.step();
+        assert!(before.stale_in(&w.plans[0]), "Gruppe liegt anders: erst weg");
     }
 
     #[test]

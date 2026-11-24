@@ -7,7 +7,9 @@ wer etwas ändert, ändert es hier zuerst.
 
 ## Fenster
 
-Alle Fenster laden dieselbe Seite (`index.html`) und wählen ihre Ansicht über den Hash.
+Alle Fenster laden dieselbe Seite (`index.html`) und wählen ihre Ansicht über den Hash
+(`app/src/start.tsx`). Ein Hash, den der Kern nicht kennt, gehört zu einer Erweiterung
+(unten), sonst zeigt die Seite das Panel.
 
 | Label | Hash | Inhalt | Eigenschaften |
 |---|---|---|---|
@@ -16,8 +18,6 @@ Alle Fenster laden dieselbe Seite (`index.html`) und wählen ihre Ansicht über 
 | `tooltip` | `#/tooltip` | Hover-Tooltip einer Karte | rahmenlos, transparent, immer oben, nie aktiv |
 | `settings` | `#/settings` | Einstellungen | normales Fenster mit dunkler Titelleiste |
 | `ticket` | `#/ticket` | Dialog „Ticket zuweisen“ (Kontextmenü einer Karte) | normales Fenster, klein, immer oben |
-| `dash` | `#/dash` | Info-Fenster (`DashView`, Ereignis `deck://dash`) in der freien Kachel neben den Agentenfenstern | rahmenlos, transparent, nie aktiv, nicht in der Taskleiste, **nicht** immer oben: Rust legt es auf die Lücke (`wt_gap.rs`) direkt hinter das vorderste Agentenfenster (`dash_window.rs`), ohne Lücke versteckt. Die Info-Taste (Strg+Alt+D, `dash_hotkey`) klappt es mitten auf dem Monitor auf, immer oben; nochmal oder × = zu |
-| `comment` | `#/comment` | Kommentar-Fenster (`DashView.popup`, Ereignis `deck://dash`): neuer Kommentar eines Menschen auf einem eigenen PR | rahmenlos, transparent, nie aktiv, nicht in der Taskleiste, **nicht** immer oben: unten rechts auf dem Monitor des vordersten Agentenfensters, in der Z-Ordnung direkt darüber (`comment_window.rs`, `native::show_above`); ohne `popup` versteckt |
 
 Das Panel misst seinen natürlichen Inhalt und meldet ihn mit `panel_content_size`; Rust
 setzt daraufhin die Fenstergröße. Ein- und Ausklappen entscheidet Rust (Zeigerposition),
@@ -34,8 +34,6 @@ die Oberfläche animiert das Gleiten im Fenster (`deck://dock`).
 | `deck://settings` | `SettingsView` | Einstellungen haben sich geändert (auch von außen) |
 | `deck://ticket` | `TicketView` | Ticket-Dialog für einen Slot geöffnet |
 | `deck://glow` | `GlowView` | Fenster „Glow einstellen“ geöffnet oder Glow geändert |
-| `deck://dash` | `DashView \| null` | Ansicht des Info-Fensters hat sich geändert (Kosten, PRs, Reviews, Titan, Aufräumen, PR-Feed `feed`, Kommentar-Fenster `popup`); `null` = abgeschaltet. Info- und Kommentar-Fenster hören beide darauf |
-| `deck://dash-popup` | `boolean` | Info-Fenster per Info-Taste auf- (`true`) oder zugeklappt (`false`); aufgeklappt zeigt es oben ein × |
 | `deck://ping` | `null` | alle 5 s an Panel und Griff; die Seite antwortet mit `ui_pong` (`ui_watch.rs`) |
 
 Beim Start ruft jede Ansicht zusätzlich einmal den passenden `get_*`-Befehl, damit sie
@@ -50,7 +48,7 @@ nicht auf das erste Ereignis warten muss.
 | `get_settings` | – | `SettingsView` | aktuelle Einstellungen |
 | `panel_content_size` | `width`, `height` (CSS-Pixel) | – | Fenstergröße anpassen |
 | `focus_slot` | `slot` | – | Agent nach vorn holen (sein Windows-Terminal-Fenster), Auswahl setzen |
-| `close_slot` | `slot` | – | Agent schließen (inkl. Worktree aufräumen wie heute) |
+| `close_slot` | `slot` | – | Agent schließen; Erweiterungen hören davon (`on_slot_released`), diese Ausgabe löscht keinen worktree |
 | `create_agent` | `letter` | – | neuen Agenten im Block anlegen |
 | `show_tile_menu` | `slot` | – | natives Kontextmenü an der Zeigerposition |
 | `reorder_tiles` | `letter`, `slots: string[]` | – | neue Kartenreihenfolge im Block |
@@ -58,8 +56,7 @@ nicht auf das erste Ereignis warten muss.
 | `hover_tile` | `slot` oder `null`, `rect` (Bildschirm-Pixel der Karte) | – | Tooltip anfordern bzw. verbergen |
 | `open_usage_page` | – | – | claude.ai/settings/usage im Browser |
 | `open_settings` | – | – | Einstellungsfenster zeigen |
-| `set_setting` | `key` (Feldname aus `SettingsView`), `value` | `SettingsView` | sofort speichern |
-| `set_reviewers` | `text` (Namen, Mailadressen oder Logins, mit Komma; „Name (login)“ zählt als login) | `ReviewerSave` (`settings`, `report`) | Reviewer-Feld: Rust löst die Einträge gegen die Mitglieder der GitHub-Organisation auf (`deck_services::reviewers`, gh im Hintergrund, Liste 10 min gemerkt), speichert die Logins samt Namen und, falls leer, `github_org`; sendet `deck://settings`. Mehrdeutige Einträge und mehrere Organisationen zeigt das Fenster als Wahl unter dem Feld; solange die Organisation zur Wahl steht, wird nichts gespeichert |
+| `set_setting` | `key` (Feldname aus `SettingsView` oder Schlüssel einer Erweiterung), `value` | `SettingsView` | sofort speichern; einen Schlüssel, den der Kern nicht kennt, bekommt die Erweiterung (`DeckExtension::set_setting`) |
 | `pick_folder` | `start` (Ordner, in dem der Dialog aufgeht) | Pfad oder `null` (abgebrochen) | „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows (`deck_win::folder_pick`), modal zum fragenden Fenster; gespeichert wird danach per `set_setting` |
 | `restart_panel` | – | – | „Panel neu starten“: frische Instanz mit denselben Argumenten, diese endet |
 | `show_block_menu` | `letter` | – | Rechtsklick auf den Kopf eines Blocks: natives Menü (vergessen) |
@@ -76,9 +73,6 @@ nicht auf das erste Ereignis warten muss.
 | `open_keys` | – | – | Fenster „Tastenkürzel“ öffnen (Inhalt aus `SettingsView.shortcuts`) |
 | `kill_orphan` | `id` (`OrphanView.id`) | – | „Läuft noch ohne Fenster“: diese Zeile beenden. Kehrt sofort zurück; die Zeile steht bis zum Ende auf `busy`, ein Fehler danach in `error` |
 | `kill_all_orphans` | – | – | „Alle beenden“: jede Zeile wie `kill_orphan` |
-| `get_dash` | – | `DashView \| null` | Startwert des Info-Fensters |
-| `open_dash_url` | `url` | – | Klick auf eine Zeile oder Kachel im Info-Fenster: Adresse im Browser öffnen. Rust öffnet nur `https://` auf bekannten Hosts (GitHub, Jira, claude.ai) |
-| `dash_action` | `command` | – | Knopf im Info-Fenster: `approve:<url>` (nur Adressen aus den Review-Anfragen), `hideReview:<url>` und `showReview:<url>` (Review-Anfrage aus- bzw. einblenden, `DashView.hiddenReviews`), `titanKill:<name>` und `titanKillAll` (nur verwaiste Läufe), `cleanupWorktrees`, `closePopup` (das ×). PR-Feed und Kommentar-Fenster (`pr_feed.rs`, `feed_actions.rs`; `<key>` = `owner/repo#12`): `hold:<key>` / `release:<key>` (Halteliste), `automation:on` / `automation:off` (Not-Aus), `later:<key>` („Später“), `popupClose:<key>` (× bzw. nach „Öffnen“ im Kommentar-Fenster), `delegate:<key>` („Claude soll umsetzen“: Hintergrund-Agent mit Antwort-Entwurf), `agentAbort:<id>`, `draftSend:<key>` (Antwort senden, Thread auflösen), `draftEdit:<key>` (Entwurf im Editor öffnen). gh, git und claude laufen ohne Deck-Sperre; das Ergebnis steht kurz in `DashView.notice` |
 | `ui_pong` | – | – | Antwort auf `deck://ping`; schweigt die Seite des sichtbaren Fensters oder der Hauptthread 60 s, startet das Deck neu (`deck_core::liveness`) |
 
 ### Was die Oberfläche bereits so umsetzt (Stand 06.11.)
@@ -100,7 +94,7 @@ nicht auf das erste Ereignis warten muss.
   1,5 s, bis sie im View bestätigt ist.
 - `set_setting` gibt den vollen `SettingsView` zurück und sendet `deck://settings`; bei
   `language` zusätzlich ein neues `deck://view`, bei `dockEdge` ein `deck://dock`; bei
-  `appearance` und `sunPlace` stellt Rust Thema und Sonnenstand neu ein (`appearance.rs`).
+  `appearance` stellt Rust Thema und Sonnenstand neu ein (`appearance.rs`).
 
 ### Blockkopf, Neustart, Zoom (Stand 07.11., Lückenschluss zur Python-Fassung)
 
@@ -110,8 +104,9 @@ nicht auf das erste Ereignis warten muss.
 - `TooltipView.origin`: Herkunftszeilen über Ticket und Zusammenfassung („Repo · Fenster
   A · A2“, bei worktree „↳ wt/<Ordner>“), wie `hover.py: _origin_lines`.
 - „Panel neu starten“ (`restart_panel`) startet die Exe mit denselben Argumenten und
-  derselben Umgebung neu (Tauri `request_restart`); im Herzschlag steht dann kein normales
-  Ende, damit der Wächter einspringt, falls das Kind nicht hochkommt.
+  derselben Umgebung neu (Tauri `request_restart`); im Herzschlag steht dann `restart`
+  statt eines normalen Endes. Einen Wächter, der bei einem Kind ohne Start einspringt,
+  gibt es nicht mehr (`deck-watchdog` ist entfallen).
 - Zoom (`layout.py`): Rust rechnet `DockView.zoom` = gezogener Zoom (`panel_zoom`, 0,5 bis
   2), höchstens so groß, dass das Panel auf die Arbeitsfläche passt, und setzt ihn als
   Zoom der Panel-Webview. Die Oberfläche misst weiter ihre natürliche Größe;
@@ -151,3 +146,38 @@ nicht auf das erste Ereignis warten muss.
 
 Ohne Tauri (`pnpm dev` im Browser) bedient ein Mock dieselben Befehle und Ereignisse mit
 Beispieldaten, damit die Oberfläche allein entwickelt und angeschaut werden kann.
+
+## Erweiterungen
+
+Diese Ausgabe startet ohne Erweiterung (`main.rs` ruft
+`agent_deck_lib::run_with(tauri::generate_context!(), Vec::new())`). Eine andere Ausgabe
+baut eine eigene Binärdatei gegen dieselbe Bibliothek und übergibt ihre Erweiterungen;
+Schalter oder Einstellungen, die hier etwas freischalten, gibt es bewusst nicht.
+
+- **Rust** (`app/src-tauri/src/extension.rs`, Trait `DeckExtension`, jeder Haken mit
+  leerer Vorgabe): `setup` (beim Start, nach den Fenstern des Kerns), `commands` +
+  `invoke_handler` (eigene Befehle), `on_tick` (je Takt unter der Sperre des Decks),
+  `after_tick` (danach ohne Sperre), `ticket_prefix`, `sun_place`, `settings_section`,
+  `set_setting`, `shortcuts` (Zeilen im Fenster „Tastenkürzel“), `on_slot_released`
+  (Agent zu oder neues Ticket), `reserve_agent` (einen Agenten versteckt vorwärmen,
+  `deck_core::reserve`; der Kern kann es, schaltet es aber nie selbst ein). Unter der Sperre des Decks darf eine Erweiterung ihre
+  eigenen Mutexe nehmen, nie umgekehrt.
+- **Befehle:** Ein `invoke`, dessen Name eine Erweiterung in `commands` führt, geht zuerst
+  an deren Handler, alle anderen an den Kern. Die Oberfläche ruft sie über `extra.invoke`
+  / `extra.fire` und hört mit `extra.listen` bzw. `useExtraLive` (`ipc/hooks.ts`) auf
+  eigene Ereignisse; dahinter stehen `Backend.invokeAny`/`listenAny`, ohne Typen im
+  Vertrag oben.
+- **Fenster:** Eine Erweiterung legt ihre Fenster in `setup` mit
+  `ui_windows::companion(app, label, title, size)` an (rahmenlos, nie aktiv, nicht immer
+  oben, Seite `index.html#/<label>`) und registriert vorn die Ansicht dazu
+  (`registerView(label, View)` in `app/src/extensions.ts`). Die freie Kachel neben den
+  Agentenfenstern (`wt_gap.rs`, `WtHost::gap`) lässt der Kern leer; eine Erweiterung kann
+  sie füllen. `Gap.rect` ist die ganze Kachel samt dem Streifen, in dem bei den Agenten
+  der Statusring liegt: wer sie füllt, malt dort selbst einen Rand. Eigene Tasten über `hotkey::listen`.
+- **Einstellungen:** `settings_section` liefert einen Abschnitt (`SettingsSection`: `id`,
+  `values`), der in `SettingsView.extras` ankommt; die Oberfläche zeichnet ihn nur, wenn
+  `registerSettingsSection(id, …)` eine Ansicht dafür hat. Gespeichert wird mit
+  `commands.setExtraSetting(key, value)` über `set_setting`.
+- **Einstieg vorn:** `app/src/main.tsx` ruft nur `startDeck()` (`start.tsx`). Eine andere
+  Ausgabe hat einen eigenen Einstieg, registriert Ansichten, Abschnitte und für
+  `pnpm dev` Mock-Befehle (`registerMockCommands`) und ruft dann `startDeck()`.

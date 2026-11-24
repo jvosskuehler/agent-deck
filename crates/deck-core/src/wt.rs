@@ -229,8 +229,12 @@ fn b64_decode(s: &str) -> Option<Vec<u8>> {
 /// claude-Argumente. Base64, weil die Zeile durch zwei Parser muss (wt.exe, dann
 /// PowerShell) und weder `;` noch Anführungszeichen beide unbeschadet überstehen.
 pub fn launch_spec(slot: &str, state_dir: &str, argv: &[String]) -> String {
-    let raw = json!({"slot": slot, "state": state_dir, "args": argv}).to_string();
-    b64_encode(raw.as_bytes())
+    encode_spec(&json!({"slot": slot, "state": state_dir, "args": argv}))
+}
+
+/// JSON als Base64 für eine Kommandozeile durch wt.exe (auch `wsl_launch::WslSpec`).
+pub fn encode_spec(v: &Value) -> String {
+    b64_encode(v.to_string().as_bytes())
 }
 
 /// Umkehrung von `launch_spec` (Tests und Diagnose).
@@ -295,6 +299,13 @@ pub fn wt_argv(
     scheme: Option<&str>,
     spot: Option<&Spot>,
 ) -> Vec<String> {
+    let cmd: Vec<String> =
+        [shell, "-NoLogo", "-NoExit", "-ExecutionPolicy", "Bypass", "-File", script, "-Spec", spec].iter().map(|s| s.to_string()).collect();
+    wt_argv_cmd(wt_exe, slot, cwd, &cmd, profile, scheme, spot)
+}
+
+/// Wie [`wt_argv`] mit beliebiger Kommandozeile (WSL-Agenten: `deck-wsl.exe <spec>`).
+pub fn wt_argv_cmd(wt_exe: &str, slot: &str, cwd: &str, cmdline: &[String], profile: Option<&str>, scheme: Option<&str>, spot: Option<&Spot>) -> Vec<String> {
     // Fokus-Modus: ohne Tab-Zeile und Titelleiste, sie kosten zwei Textzeilen. Schließen,
     // Anordnen und Nach-vorn-Holen macht das Deck; den Slot nennt die Statuszeile.
     let mut argv: Vec<String> = vec![wt_exe.into(), "-w".into(), window_name(slot), "--focus".into()];
@@ -313,11 +324,10 @@ pub fn wt_argv(
     if let Some(s) = scheme.filter(|s| !s.is_empty()) {
         argv.extend(["--colorScheme".into(), s.into()]);
     }
-    for a in ["--title", slot, "--suppressApplicationTitle", "-d", cwd, shell, "-NoLogo", "-NoExit",
-        "-ExecutionPolicy", "Bypass", "-File", script, "-Spec", spec]
-    {
+    for a in ["--title", slot, "--suppressApplicationTitle", "-d", cwd] {
         argv.push(a.into());
     }
+    argv.extend(cmdline.iter().cloned());
     argv
 }
 

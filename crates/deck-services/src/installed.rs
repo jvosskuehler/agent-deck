@@ -68,6 +68,24 @@ pub struct Installed {
     pub apps_entry: bool,
     /// `"theme": "system"` in die settings.json von Windows Terminal eingetragen.
     pub wt_theme_added: bool,
+    /// Hooks und Infozeile in den Claude-Einstellungen einer WSL-Distro
+    /// (`deck-setup install --wsl`, [`crate::install_wsl`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wsl: Option<WslInstalled>,
+}
+
+/// Was `install --wsl` in der Distro eingetragen hat.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WslInstalled {
+    pub distro: String,
+    /// Claudes `settings.json` in der Distro, als Windows-Pfad (`\\wsl.localhost\…`).
+    pub settings: String,
+    pub claude_defaults: Vec<ClaudeDefault>,
+    pub statusline_backup: Option<String>,
+    /// Ordner der Linux-Fassungen von deck-report und deck-statusline in der Distro.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linux_bin: Option<String>,
 }
 
 /// Fingerabdruck eines Inhalts (FNV-1a, 64 Bit). Kein Schutz gegen Absicht, nur die Frage

@@ -3,12 +3,10 @@
 // Wer hier etwas ändert, ändert zuerst IPC.md. Die Nutzlasten sind die aus Rust
 // erzeugten Bindings; nichts davon wird hier nachgebaut.
 
-import type { DashView } from "../bindings/DashView";
 import type { DeckView } from "../bindings/DeckView";
 import type { DockView } from "../bindings/DockView";
 import type { GlowSettings } from "../bindings/GlowSettings";
 import type { GlowView } from "../bindings/GlowView";
-import type { ReviewerSave } from "../bindings/ReviewerSave";
 import type { SettingsView } from "../bindings/SettingsView";
 import type { TicketView } from "../bindings/TicketView";
 import type { TooltipView } from "../bindings/TooltipView";
@@ -25,10 +23,6 @@ export interface EventPayloads {
   "deck://glow": GlowView;
   /** Lebenszeichen-Frage an Panel und Griff; Antwort `ui_pong`. */
   "deck://ping": null;
-  /** Info-Fenster per Info-Taste auf- (true) oder zugeklappt (false). */
-  "deck://dash-popup": boolean;
-  /** Neue Ansicht des Info-Fensters (null = abgeschaltet). */
-  "deck://dash": DashView | null;
 }
 
 export type EventName = keyof EventPayloads;
@@ -49,8 +43,6 @@ export type SettingKey = keyof SettingsView;
 /** Befehle Oberfläche → Rust (`invoke`), je mit Argumenten und Rückgabe. */
 export interface Commands {
   get_view: { args: Record<string, never>; ret: DeckView };
-  /** Startwert des Info-Fensters (danach `deck://dash`). */
-  get_dash: { args: Record<string, never>; ret: DashView | null };
   get_dock: { args: Record<string, never>; ret: DockView };
   get_settings: { args: Record<string, never>; ret: SettingsView };
   panel_content_size: { args: { width: number; height: number }; ret: void };
@@ -62,14 +54,9 @@ export interface Commands {
   reorder_blocks: { args: { letters: string[] }; ret: void };
   hover_tile: { args: { slot: string | null; rect: ScreenRect | null }; ret: void };
   open_usage_page: { args: Record<string, never>; ret: void };
-  /** Klick auf eine Info-Karte oder eine ihrer Zeilen: Adresse im Browser (Rust prüft sie). */
-  open_dash_url: { args: { url: string }; ret: void };
-  /** Knopf im Info-Fenster: `approve:<url>`, `titanKill:<name>`, `titanKillAll`, `cleanupWorktrees`, `closePopup` (das ×). */
-  dash_action: { args: { command: string }; ret: void };
   open_settings: { args: Record<string, never>; ret: void };
-  set_setting: { args: { key: SettingKey; value: SettingsView[SettingKey] }; ret: SettingsView };
-  /** Reviewer-Feld: Namen, Mailadressen oder Logins gegen die GitHub-Organisation auflösen (gh) und als Logins speichern. */
-  set_reviewers: { args: { text: string }; ret: ReviewerSave };
+  /** Eine Einstellung; `key` ist ein Feld von SettingsView oder ein Schlüssel einer Erweiterung (`extras`). */
+  set_setting: { args: { key: string; value: unknown }; ret: SettingsView };
   /** „Ändern…“ am Repos-Ordner: Ordner-Dialog von Windows; `null` = abgebrochen. Speichern danach per set_setting. */
   pick_folder: { args: { start: string }; ret: string | null };
   /** „Panel neu starten“: frische Instanz, diese endet. */
@@ -121,4 +108,8 @@ export interface Backend {
   screenRect(el: Element): Promise<ScreenRect>;
   /** Wirksamer Zoom der Webview (DockView.zoom), für screenRect. */
   setZoom(zoom: number): void;
+  /** Befehl einer Erweiterung (nicht in `Commands`, `extensions.ts`). */
+  invokeAny<T>(cmd: string, args: Record<string, unknown>): Promise<T>;
+  /** Ereignis einer Erweiterung (nicht in `EventPayloads`). */
+  listenAny<T>(event: string, handler: (payload: T) => void): Unlisten;
 }

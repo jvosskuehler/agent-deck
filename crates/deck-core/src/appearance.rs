@@ -16,13 +16,10 @@
 
 use serde_json::{Map, Value};
 
-use crate::sun::{self, Place};
 use crate::wt::{SCHEME_DARK, SCHEME_LIGHT};
 
 /// Schlüssel in `deck_settings.json`.
 pub const KEY: &str = "appearance";
-/// Ort für den Sonnenstand (Kennung aus [`sun::PLACES`]).
-pub const PLACE_KEY: &str = "sun_place";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Appearance {
@@ -77,11 +74,6 @@ impl Appearance {
     }
 }
 
-/// Der eingestellte Ort für den Sonnenstand, sonst Hamburg.
-pub fn sun_place(settings: &Map<String, Value>) -> &'static Place {
-    sun::place_or_default(settings.get(PLACE_KEY).and_then(Value::as_str).unwrap_or(""))
-}
-
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -120,12 +112,5 @@ mod tests {
         for a in Appearance::ALL {
             assert_eq!(Appearance::parse(a.as_str()), Some(a));
         }
-    }
-
-    #[test]
-    fn the_sun_place_defaults_to_hamburg() {
-        assert_eq!(sun_place(&Map::new()).id, "hamburg");
-        assert_eq!(sun_place(&map(json!({"sun_place": "wien"}))).id, "wien");
-        assert_eq!(sun_place(&map(json!({"sun_place": "nirgendwo"}))).id, "hamburg");
     }
 }

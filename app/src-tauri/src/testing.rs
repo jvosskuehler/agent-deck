@@ -37,6 +37,12 @@ struct Desk {
     z: Vec<Hwnd>,
     monitors: Vec<Monitor>,
     idle_s: f64,
+    /// Versteckte Fenster (Reserve-Agent), wie `wt`, nur unsichtbar.
+    hidden: Vec<(ClassWindow, Rect)>,
+    /// Jedes `set_visible` in Reihenfolge.
+    visibility: Vec<(Hwnd, bool)>,
+    /// Beim Verstecken „tippt“ jemand: die Eingabe ist dann gerade eben gewesen.
+    type_on_hide: bool,
 }
 
 #[derive(Default)]
@@ -60,6 +66,14 @@ impl FakeDesktop {
     /// Sekunden seit der letzten Eingabe (ohne Aufruf 0: gerade getippt).
     pub fn set_input_idle(&self, secs: f64) {
         self.0.lock().unwrap().idle_s = secs;
+    }
+    /// Jedes Verstecken (`false`) und Zeigen (`true`), in Reihenfolge.
+    pub fn visibility(&self) -> Vec<(Hwnd, bool)> {
+        self.0.lock().unwrap().visibility.clone()
+    }
+    /// Während das Deck ein Fenster versteckt, wird getippt (Eingabe vor 0 s).
+    pub fn type_while_hiding(&self) {
+        self.0.lock().unwrap().type_on_hide = true;
     }
     pub fn placed(&self) -> Vec<(Hwnd, Rect)> {
         self.0.lock().unwrap().placed.clone()
@@ -107,6 +121,17 @@ impl FakeDesktop {
     pub fn minimized(&self) -> Vec<Hwnd> {
         self.0.lock().unwrap().minimized.clone()
     }
+    /// Neue Auflösung des Hauptmonitors (Fläche und Arbeitsfläche).
+    pub fn resize_primary(&self, rect: Rect, work: Rect) {
+        let mut d = self.0.lock().unwrap();
+        if d.monitors.is_empty() {
+            d.monitors = default_monitors();
+        }
+        if let Some(m) = d.monitors.iter_mut().find(|m| m.primary) {
+            m.rect = rect;
+            m.work = work;
+        }
+    }
     /// Einen weiteren Monitor dazustellen (ohne Aufruf gibt es nur den 1920er bei 0,0).
     pub fn add_monitor(&self, rect: Rect, work: Rect, scale: f64) {
         let mut d = self.0.lock().unwrap();
@@ -140,8 +165,12 @@ impl Desktop for FakeDesktop {
         let d = self.0.lock().unwrap();
         if d.monitors.is_empty() { default_monitors() } else { d.monitors.clone() }
     }
-    fn work_area(&self, _: i32, _: i32) -> Option<Rect> {
-        Some(Rect::new(0, 0, 1920, 1040))
+    fn work_area(&self, x: i32, y: i32) -> Option<Rect> {
+        // Die Arbeitsfläche des Monitors unter dem Punkt; ohne eigene Monitore die der
+        // Vorgabe (1920 × 1040).
+        let d = self.0.lock().unwrap();
+        let mons = if d.monitors.is_empty() { default_monitors() } else { d.monitors.clone() };
+        Some(mons.iter().find(|m| m.rect.contains(x, y)).map_or(Rect::new(0, 0, 1920, 1040), |m| m.work))
     }
     fn scale_of(&self, _: Hwnd) -> f64 {
         1.0
@@ -222,6 +251,22 @@ impl Desktop for FakeDesktop {
     }
     fn light_theme(&self) -> Option<bool> {
         self.0.lock().unwrap().light
+    }
+    fn find_window(&self, _: &str, title: &str) -> Option<Hwnd> {
+        let d = self.0.lock().unwrap();
+        d.wt.iter().chain(d.hidden.iter()).find(|(w, _)| w.title == title).map(|(w, _)| w.hwnd)
+    }
+    fn set_visible(&self, hwnd: Hwnd, visible: bool) -> Result<bool> {
+        let mut g = self.0.lock().unwrap();
+        let d = &mut *g;
+        d.visibility.push((hwnd, visible));
+        if !visible && d.type_on_hide {
+            d.idle_s = 0.0;
+        }
+        let (from, to) = if visible { (&mut d.hidden, &mut d.wt) } else { (&mut d.wt, &mut d.hidden) };
+        let Some(i) = from.iter().position(|(w, _)| w.hwnd == hwnd) else { return Ok(false) };
+        to.push(from.remove(i));
+        Ok(true)
     }
     fn join_taskbar_group(&self, hwnd: Hwnd, group: &TaskbarGroup) -> Result<()> {
         self.0.lock().unwrap().grouped.push((hwnd, group.app_id.clone()));

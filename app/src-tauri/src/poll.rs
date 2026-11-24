@@ -45,7 +45,7 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
     let s = shared(app);
     let modal = modal(app);
     let now = crate::now();
-    let (view, app_dir, gap, desktop, dash) = {
+    let (view, app_dir, ext) = {
         let mut d = lock(&s.deck);
         d.modal = modal;
         let v = d.tick(now);
@@ -54,11 +54,8 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
             *m = v.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), t.status)).collect();
         }
         tooltip::refresh(app, &d);
-        let gap = d.dash_gap(&v);
-        (v, d.paths.app_dir.clone(), gap, d.desktop.clone(), d.dash_view.clone())
+        (v, d.paths.app_dir.clone(), d.ext.clone())
     };
-    crate::dash_window::sync(app, desktop.as_ref(), gap);
-    crate::comment_window::sync(app, desktop.as_ref(), dash.as_ref().is_some_and(|d| d.popup.is_some()));
     let changed = {
         let mut last = lock(&s.last_view);
         if last.as_ref() == Some(&view) {
@@ -71,18 +68,10 @@ pub fn tick(app: &AppHandle, beater: &mut Beater) {
     if changed {
         let _ = app.emit("deck://view", &view);
     }
-    let dash_changed = {
-        let mut last = lock(&s.last_dash);
-        let changed = *last != dash;
-        if changed {
-            last.clone_from(&dash);
-        }
-        changed
-    };
-    if dash_changed {
-        let _ = app.emit("deck://dash", &dash);
+    for e in ext.iter() {
+        e.after_tick(app);
     }
-    // Lebenszeichen für den Wächter (deck-watchdog): bezeugt, dass der Takt läuft.
+    // Lebenszeichen (`instance_guard`): bezeugt, dass der Takt läuft.
     beater.tick(&app_dir, now);
 }
 

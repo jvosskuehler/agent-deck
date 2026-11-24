@@ -1,14 +1,16 @@
 //! `deck_settings.json`: Schlüssel, Vorgaben und Versionierung der Deck-Einstellungen.
 //!
 //! **Warum versioniert.** Bis Nov. 2026 lief das Deck nur bei seinem Autor, und jede
-//! Automatik mit Wirkung nach außen war ohne Eintrag an (Titan per ssh, Store-Update per
-//! winget, SpeechMike-Tastenhook, neue Agenten in Auto, `opus[1m]` erzwungen). Seit
-//! Kolleginnen und Kollegen das Deck installieren, ist all das für eine neue Installation
-//! aus. Eine Datei ohne `settings_version` stammt aber von einer bestehenden Installation:
-//! dort schreibt [`migrate`] die bisherigen Werte ausdrücklich hinein, damit sich nichts
-//! ändert. Danach gilt nur noch, was in der Datei steht, sonst die Vorgabe hier.
+//! Automatik mit Wirkung nach außen war ohne Eintrag an (neue Agenten in Auto,
+//! `opus[1m]` erzwungen). Seit Kolleginnen und Kollegen das Deck installieren, ist all das
+//! für eine neue Installation aus. Eine Datei ohne `settings_version` stammt aber von einer
+//! bestehenden Installation: dort schreibt [`migrate`] die bisherigen Werte ausdrücklich
+//! hinein, damit sich nichts ändert. Danach gilt nur noch, was in der Datei steht, sonst
+//! die Vorgabe hier.
 //!
 //! Gelesen wird tolerant wie überall: ein Schalter mit falschem Typ gilt als fehlend.
+//! Schlüssel, die diese Ausgabe nicht kennt (etwa von einer Erweiterung, `extension.rs`
+//! der App), bleiben in der Datei stehen und werden nicht angefasst.
 
 use std::path::{Path, PathBuf};
 
@@ -23,26 +25,25 @@ pub const VERSION_KEY: &str = "settings_version";
 /// Aktuelle Version der Datei.
 pub const VERSION: u64 = 1;
 
-/// Ordner, der alle Repos enthält (Heimat-Block, worktree-Aufräumen, Kosten je Ticket).
+/// Ordner, der alle Repos enthält (Heimat-Block, Ticket-Prompt).
 pub const REPOS_ROOT: &str = "repos_root";
 /// Früherer Name von [`REPOS_ROOT`]; wird weiter gelesen, die Migration kopiert ihn.
 pub const LEGACY_HOME: &str = "terminal_home";
-/// Jira-Projekt („ORPH“); leer = keine Jira-Verknüpfung, Nummern bleiben Nummern.
-pub const JIRA_PREFIX: &str = "jira_prefix";
 /// Modell neuer Agenten als `--model`; fehlt = Claude Codes eigene Vorgabe.
 pub const MODEL: &str = "model";
-/// GitHub-Login, den die PR-Automatik als Reviewer setzt (leer = keiner).
-pub const PR_REVIEWER: &str = "pr_reviewer";
-/// Anzeigenamen der Reviewer, Login → Name (`{"leo-mxyz": "Leo Müller"}`), geschrieben vom
-/// Installer und vom Einstellungsfenster, wenn sie Namen aufgelöst haben. Nur zum Zeigen.
-pub const PR_REVIEWER_NAMES: &str = "pr_reviewer_names";
-/// GitHub-Organisation, auf die sich die PR-Automatik beschränkt (leer = keine).
-pub const GITHUB_ORG: &str = "github_org";
+
+/// Wo neue Agenten laufen: `windows` (PowerShell, Vorgabe) oder `wsl` (`deck_core::wsl`).
+/// In WSL ist [`REPOS_ROOT`] ein Linux-Pfad.
+pub const AGENT_ENV: &str = "agent_env";
+/// Die WSL-Distro der Agenten (`Ubuntu`).
+pub const WSL_DISTRO: &str = "wsl_distro";
+/// `$HOME` in der Distro, ermittelt vom Installer bzw. beim Wählen der Distro.
+pub const WSL_HOME: &str = "wsl_home";
+/// Einhängepunkt der Windows-Laufwerke in der Distro (`/mnt/`), falls abweichend.
+pub const WSL_MOUNT_ROOT: &str = "wsl_mount_root";
 
 /// Modell, das bestehende Installationen bisher erzwungen haben.
 pub const LEGACY_MODEL: &str = "opus[1m]";
-/// Jira-Projekt, mit dem bestehende Installationen bisher gelaufen sind.
-pub const LEGACY_JIRA_PREFIX: &str = "ORPH";
 /// Hell/Dunkel bestehender Installationen: nach dem Sonnenstand, wie die frühere
 /// geplante Aufgabe „DarkModeZeitplan“ des Autors.
 pub const LEGACY_APPEARANCE: Appearance = Appearance::Sun;
@@ -52,50 +53,27 @@ pub const LEGACY_REPOS_DIR: &str = "Repos";
 /// Ein- und Ausschalter des Decks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Switch {
-    /// Titan-Kachel im Info-Fenster samt ssh-Abfrage alle 60 s.
-    Titan,
-    /// PowerShell und Windows Terminal per winget nachziehen.
-    StoreUpdate,
-    /// SpeechMike-Record als Sprechtaste, samt globalem Tastatur-Hook (`paste_guard`).
-    SpeechmikeVoice,
     /// Neue Agenten per Shift+Tab in den Auto-Modus schalten.
     AutoPermissionMode,
     /// `/compact` kurz vor Ablauf des Prompt-Caches (kostet Kontingent).
     AutoCompact,
-    /// Info-Fenster in der freien Fensterkachel (nur lesend).
-    Dashboard,
-    /// PR-Automatik: mergt, setzt Reviewer und Assignee, startet Hintergrund-Agenten.
-    PrAutomation,
 }
 
 impl Switch {
-    pub const ALL: [Switch; 7] = [
-        Switch::Titan,
-        Switch::StoreUpdate,
-        Switch::SpeechmikeVoice,
-        Switch::AutoPermissionMode,
-        Switch::AutoCompact,
-        Switch::Dashboard,
-        Switch::PrAutomation,
-    ];
+    pub const ALL: [Switch; 2] = [Switch::AutoPermissionMode, Switch::AutoCompact];
 
     pub fn key(self) -> &'static str {
         match self {
-            Switch::Titan => "titan",
-            Switch::StoreUpdate => "store_update",
-            Switch::SpeechmikeVoice => "speechmike_voice",
             Switch::AutoPermissionMode => "auto_permission_mode",
             Switch::AutoCompact => "auto_compact",
-            Switch::Dashboard => "dashboard",
-            Switch::PrAutomation => "pr_automation",
         }
     }
 
-    /// Vorgabe einer neuen Installation: alles mit Wirkung nach außen aus, das nur
-    /// lesende Info-Fenster an. Auto-Compact ist auch an (Jorrits Wahl vom 17.11.2026):
-    /// es schreibt nur in den eigenen wartenden Agenten und hält dessen Kontext klein.
+    /// Vorgabe einer neuen Installation: alles mit Wirkung nach außen aus. Auto-Compact
+    /// ist an (Wahl vom 17.11.2026): es schreibt nur in den eigenen wartenden Agenten und
+    /// hält dessen Kontext klein.
     pub fn default_on(self) -> bool {
-        matches!(self, Switch::Dashboard | Switch::AutoCompact)
+        matches!(self, Switch::AutoCompact)
     }
 
     /// Wert, mit dem eine bestehende Installation ohne Eintrag bisher lief: alles an.
@@ -118,11 +96,6 @@ fn some_text(settings: &Map<String, Value>, key: &str) -> Option<String> {
     Some(text(settings, key)).filter(|s| !s.is_empty())
 }
 
-/// Jira-Projekt, groß geschrieben; leer = keins.
-pub fn jira_prefix(settings: &Map<String, Value>) -> String {
-    text(settings, JIRA_PREFIX).to_uppercase()
-}
-
 /// Modell neuer Agenten; `None` = ohne `--model` starten.
 pub fn model(settings: &Map<String, Value>) -> Option<String> {
     some_text(settings, MODEL)
@@ -131,6 +104,13 @@ pub fn model(settings: &Map<String, Value>) -> Option<String> {
 /// Der eingestellte Repos-Ordner ([`REPOS_ROOT`], sonst noch [`LEGACY_HOME`]).
 pub fn repos_root(settings: &Map<String, Value>) -> Option<PathBuf> {
     some_text(settings, REPOS_ROOT).or_else(|| some_text(settings, LEGACY_HOME)).map(PathBuf::from)
+}
+
+/// Der Repos-Ordner so, wie Windows ihn liest: in WSL steht ein Linux-Pfad in der Datei
+/// (`/home/dev/repos`), gelesen wird über `\\wsl.localhost\<Distro>\…` (`deck_core::wsl`).
+pub fn repos_root_local(settings: &Map<String, Value>) -> Option<PathBuf> {
+    let root = repos_root(settings)?;
+    Some(PathBuf::from(crate::wsl::AgentEnv::from_settings(settings).to_windows(&root.to_string_lossy())))
 }
 
 /// Taugt der Repos-Ordner? Das Einstellungsfenster zeigt den Befund.
@@ -160,7 +140,7 @@ pub fn repos_state(root: Option<&Path>) -> ReposState {
 /// Der Repos-Ordner, nur wenn er taugt ([`ReposState::Ok`]). Sonst gibt es keinen
 /// Heimat-Block und nichts, was darin sucht oder aufräumt.
 pub fn usable_repos_root(settings: &Map<String, Value>) -> Option<PathBuf> {
-    let root = repos_root(settings)?;
+    let root = repos_root_local(settings)?;
     (repos_state(Some(&root)) == ReposState::Ok).then_some(root)
 }
 
@@ -184,8 +164,8 @@ pub fn origin(raw: Option<&[u8]>) -> Origin {
 
 /// Auf die aktuelle Version bringen. Mit Version: nichts (auch die Antworten des
 /// Installers bleiben, wie sie sind). Ohne Version aus einer bestehenden Installation:
-/// jeden fehlenden Schalter mit dem bisherigen Wert eintragen, dazu Modell, Jira-Projekt,
-/// Hell/Dunkel (Sonnenstand) und Repos-Ordner wie bisher. Dann die Version setzen.
+/// jeden fehlenden Schalter mit dem bisherigen Wert eintragen, dazu Modell, Hell/Dunkel
+/// (Sonnenstand) und Repos-Ordner wie bisher. Dann die Version setzen.
 /// `home` = Heimatordner (für den früher fest angenommenen `~/Repos`). Gibt zurück, ob sich etwas geändert hat.
 pub fn migrate(settings: &mut Map<String, Value>, origin: Origin, home: &Path) -> bool {
     if settings.contains_key(VERSION_KEY) {
@@ -200,12 +180,8 @@ pub fn migrate(settings: &mut Map<String, Value>, origin: Origin, home: &Path) -
         if model(settings).is_none() {
             settings.insert(MODEL.into(), LEGACY_MODEL.into());
         }
-        if jira_prefix(settings).is_empty() {
-            settings.insert(JIRA_PREFIX.into(), LEGACY_JIRA_PREFIX.into());
-        }
         // Der Autor schaltete Windows bisher per geplanter Aufgabe nach dem Sonnenstand
-        // um; das übernimmt jetzt das Deck (`deck-setup migrate-darkmode` räumt die
-        // Aufgabe weg).
+        // um; das übernimmt seitdem das Deck.
         if settings.get(appearance::KEY).and_then(Value::as_str).and_then(Appearance::parse).is_none() {
             settings.insert(appearance::KEY.into(), LEGACY_APPEARANCE.as_str().into());
         }

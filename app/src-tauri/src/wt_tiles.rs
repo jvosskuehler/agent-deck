@@ -139,6 +139,16 @@ pub fn needs_moving(desktop: &dyn Desktop, plan: &[(Hwnd, Rect)]) -> bool {
     })
 }
 
+/// Ändert der Plan nur Orte, keine Größen (bis auf zwei Pixel)? Dann muss kein Terminal
+/// neu zeichnen, und das Umlegen braucht keinen Vorhang.
+pub fn only_moves(desktop: &dyn Desktop, plan: &[(Hwnd, Rect)]) -> bool {
+    plan.iter().all(|(h, t)| {
+        desktop
+            .frame_rect(*h)
+            .is_some_and(|v| (v.width() - t.width()).abs() <= 2 && (v.height() - t.height()).abs() <= 2)
+    })
+}
+
 /// Die Kachel, die [`tile`] einem weiteren Fenster dieses Blocks geben wird, samt
 /// Skalierung: dort lässt der Host es gleich aufgehen. `slots` sind die lebenden Agenten
 /// in der Reihenfolge, in der gekachelt wird; `ahead` zählt angeforderte Fenster, die
@@ -484,6 +494,17 @@ mod tests {
         assert_eq!(next_tile(&d, &slots, 0), Some((Rect::new(961, 1, 1919, 1039), 1.0)));
         // Ein zweites, gleich hinterher angefordertes: drei Spalten, ganz rechts.
         assert_eq!(next_tile(&d, &slots, 1), Some((Rect::new(1281, 1, 1919, 1039), 1.0)));
+    }
+
+    #[test]
+    fn swapping_places_of_equal_tiles_only_moves_and_a_new_size_does_not() {
+        let d = FakeDesktop::default();
+        d.add_wt(Hwnd(11), "A1", Rect::new(1, 1, 959, 1039), false);
+        d.add_wt(Hwnd(12), "A2", Rect::new(961, 1, 1919, 1039), false);
+        let swapped = tile_plan(&d, &["A2".into(), "A1".into()], 0);
+        assert!(only_moves(&d, &swapped));
+        let three = tile_plan(&d, &["A1".into(), "A2".into()], 1);
+        assert!(!only_moves(&d, &three), "Platz für ein drittes: schmaler");
     }
 
     #[test]

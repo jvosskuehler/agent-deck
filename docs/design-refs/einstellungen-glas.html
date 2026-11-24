@@ -178,16 +178,16 @@ button:focus-visible,input:focus-visible{outline:2px solid #8fb3ff;outline-offse
 const ST = { waiting: ['Rückfrage', '#ffb454'], lost: ['getrennt', '#ff6b6b'], done: ['ungelesen', '#4ade9a'], thinking: ['denkt', '#5cc8ff'], idle: ['ruht', '#9a9aab'] };
 const RANK = { waiting: 0, lost: 1, done: 2, thinking: 3, idle: 4 };
 const BLOCKS = [
-  { letter: 'A', repo: 'orpheus-management-api', agents: [
-    { slot: 'A1', status: 'waiting', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'ORPH-4062', sum: 'Fragt: Testuhr in der Stripe-Sandbox auf den 1. vorstellen?', age: 'wartet seit 3 min' },
-    { slot: 'A2', status: 'thinking', model: 'opus[1m]', effort: 'ultracode', mode: 'bypassPermissions', ref: 'ORPH-3773', sum: 'Rechtekonzept: Integrationstests laufen auf dem Titan', age: 'seit 6 min' },
+  { letter: 'A', repo: 'demoprojekt-management-api', agents: [
+    { slot: 'A1', status: 'waiting', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'DEMO-4062', sum: 'Fragt: Testuhr in der Stripe-Sandbox auf den 1. vorstellen?', age: 'wartet seit 3 min' },
+    { slot: 'A2', status: 'thinking', model: 'opus[1m]', effort: 'ultracode', mode: 'bypassPermissions', ref: 'DEMO-3773', sum: 'Rechtekonzept: Integrationstests laufen auf dem Titan', age: 'seit 6 min' },
     { slot: 'A3', status: 'done', model: 'fable', effort: 'high', mode: 'auto', ref: 'PR #180', sum: 'Review-Threads beantwortet und aufgelöst', age: 'vor 4 min' } ] },
-  { letter: 'B', repo: 'orpheus-client-electron', agents: [
+  { letter: 'B', repo: 'demoprojekt-client-electron', agents: [
     { slot: 'B1', status: 'idle', model: 'opus[1m]', effort: 'xhigh', mode: 'plan', ref: 'PR #347', sum: 'Schrift-Einstellung: wartet auf das Review', age: 'seit 38 min' },
-    { slot: 'B2', status: 'thinking', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'ORPH-3192', sum: 'Mehrfach-RDS: zweite Sitzung auf der Test-VM', age: 'seit 2 min' } ] },
+    { slot: 'B2', status: 'thinking', model: 'opus[1m]', effort: 'xhigh', mode: 'auto', ref: 'DEMO-3192', sum: 'Mehrfach-RDS: zweite Sitzung auf der Test-VM', age: 'seit 2 min' } ] },
   { letter: 'C', repo: 'Repos', agents: [
     { slot: 'C1', status: 'done', model: 'opus[1m]', effort: 'max', mode: 'auto', ref: 'Deck', sum: 'Bypass eingebaut, 443 Tests grün', age: 'gerade eben' },
-    { slot: 'C2', status: 'lost', model: 'fable', effort: 'medium', mode: 'auto', ref: 'ORPH-4105', sum: 'VS-Code-Fenster antwortet nicht mehr', age: 'seit 12 min' } ] }
+    { slot: 'C2', status: 'lost', model: 'fable', effort: 'medium', mode: 'auto', ref: 'DEMO-4105', sum: 'VS-Code-Fenster antwortet nicht mehr', age: 'seit 12 min' } ] }
 ];
 const OPT = {
   model: [['opus[1m]', 'Opus'], ['fable', 'Fable'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku']],
@@ -202,7 +202,7 @@ Object.keys(OPT).forEach(function (k) { LAB[k] = {}; OPT[k].forEach(function (p)
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { sel: 'A1', ov: {}, model: 'opus[1m]', mode: 'auto', effort: 'xhigh', lang: 'german', edge: 'top', ring: true, jira: 'ORPH', restart: false, saved: false };
+    this.state = { sel: 'A1', ov: {}, model: 'opus[1m]', mode: 'auto', effort: 'xhigh', lang: 'german', edge: 'top', ring: true, jira: 'DEMO', restart: false, saved: false };
   }
   put(k, v) { const n = { saved: true }; n[k] = v; this.setState(n); }
   segs(key, label, val, pick) {

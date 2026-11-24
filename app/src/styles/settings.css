@@ -9,6 +9,9 @@ body:has(.settings) {
      (dann begrenzt Rust die Fensterhöhe). */
   overflow-x: hidden;
   overflow-y: auto;
+  /* Kein sichtbarer Rollbalken, auch nicht für einen Rundungspixel (18.11.2026); das
+     Mausrad rollt trotzdem, falls Rust die Höhe einmal begrenzen muss. */
+  scrollbar-width: none;
 }
 
 /* Unsichtbare Vormessung der Ansicht nach dem Umschalten (SettingsView, `pending`). */
@@ -376,38 +379,4 @@ body:has(.settings) {
 
 .set-more {
   margin: 0;
-}
-
-/* ── Reviewer: Wahl und Hinweise unter dem Feld ──────────────────────── */
-
-.rev-notes {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.rev-note {
-  font-size: 11px;
-  color: var(--dim);
-}
-
-.rev-note--warn {
-  color: var(--warn-ink);
-}
-
-.rev-pick {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.rev-choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.rev-choice {
-  margin: 0;
-  font-family: var(--font-mono);
 }

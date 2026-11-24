@@ -9,8 +9,10 @@ Windows-only. Rust (Tauri 2) und React/TypeScript.
 ## Installieren
 
 Voraussetzungen: Windows 10/11 oder Server 2025, Windows Terminal, die WebView2-Laufzeit
-(auf Windows 11 schon da) und Claude Code (`claude`). Fehlt etwas, sagt der Installer,
-wie es nachzuholen ist (`winget install --source winget -e --id …`). Rust, Node und
+(auf Windows 11 schon da) und WSL mit einer Distro (etwa `wsl --install -d Ubuntu`): die
+Agenten laufen mit Claude Code in WSL, das Deck selbst unter Windows. Fehlt Claude Code in
+der Distro, bietet der Installer die Installation an. Fehlt sonst etwas, sagt er, wie es
+nachzuholen ist (`winget install --source winget -e --id …`). Rust, Node und
 PowerShell 7 braucht es nicht; Administratorrechte auch nicht, alles landet im eigenen
 Benutzerprofil.
 
@@ -29,18 +31,19 @@ Oder alles in einem Schritt (in einer PowerShell, lädt das neueste Release):
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/jvosskuehler/agent-deck/main/tools/install.ps1).TrimStart([char]0xFEFF))) -Download
 ```
 
-Beim ersten Mal fragt der Installer vier Dinge:
+Beim ersten Mal fragt der Installer (die Distro nur, wenn es mehrere gibt):
 
 ```text
-In welchem Ordner liegen deine Git-Repos? [C:\Users\du\Repos]
-Jira-Projektkürzel für Ticketnummern (z. B. ORPH, leer = keins)
-Wer soll deine PRs reviewen? Namen, mehrere mit Komma (leer = keiner)
+In welcher WSL-Distro sollen die Agenten laufen (Ubuntu, Debian)? [Ubuntu]
+In welchem WSL-Ordner liegen deine Git-Repos? [/home/du/repos]
 Deck beim Windows-Start mitstarten? (J/n)
 ```
 
 Ein späterer Lauf ist ein Update und fragt nichts mehr. Ohne Rückfragen geht es mit
-Parametern: `-NonInteractive -ReposRoot <ordner> -JiraPrefix <kürzel> -PrReviewer <namen>
--Autostart -NoShortcut`. `-Verbose` zeigt jeden Schritt.
+Parametern: `-NonInteractive -WslDistro <distro> -ReposRoot <linux-ordner> -Autostart
+-NoShortcut`. Wer die Agenten wie früher mit PowerShell und dem Windows-`claude` laufen
+lassen will: `-AgentEnv windows` (dann ist `-ReposRoot` ein Windows-Ordner). Umstellen
+geht auch später im Deck unter Einstellungen. `-Verbose` zeigt jeden Schritt.
 
 **Was der Installer am Rechner ändert** (alles im eigenen Benutzerprofil, verzeichnet in
 `%LOCALAPPDATA%\claude-agent-deck\installed.json`):
@@ -49,15 +52,16 @@ Parametern: `-NonInteractive -ReposRoot <ordner> -JiraPrefix <kürzel> -PrReview
 |---|---|
 | Programme | `%LOCALAPPDATA%\claude-agent-deck\bin` |
 | Einstellungen, Protokoll, Zustände | `%LOCALAPPDATA%\claude-agent-deck` |
-| Sechs Hooks und die Infozeile unter dem Claude-Chat; fehlen Modus oder Effort, Bypass und high | Claudes `settings.json` (`%USERPROFILE%\.claude` bzw. `CLAUDE_CONFIG_DIR`). Eine Infozeile, die schon da war, wird gesichert und läuft hinter der des Decks weiter |
+| Sechs Hooks und die Infozeile unter dem Claude-Chat; fehlen Modus oder Effort, Bypass und high | Claudes `settings.json`, bei Agenten in WSL die in der Distro (`~/.claude`), sonst `%USERPROFILE%\.claude` bzw. `CLAUDE_CONFIG_DIR`. Eine Infozeile, die schon da war, wird gesichert und läuft hinter der des Decks weiter |
+| Hooks als Linux-Programme (schneller als die `.exe` über WSL) | `~/.local/share/agent-deck/bin` in der Distro |
 | Papier-Look: Schrift IBM Plex Mono, Claude-Theme `papier`, Einstellungen nur für die Deck-Agenten, Shader | `%LOCALAPPDATA%\Microsoft\Windows\Fonts` (pro Benutzer), `themes\papier.json` und `agent-deck-wt.settings.json` in Claudes Ordner, `wt-faint-hell.hlsl` im App-Ordner. Vorhandenes wird nie überschrieben |
 | Startmenü-Eintrag „Agent Deck“ | `%APPDATA%\Microsoft\Windows\Start Menu\Programs` |
 | Windows-Terminal-Profil „Agent Deck“ und die Farbschemata `papier-ebenen` | Fragment in `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\AgentDeck`; die `settings.json` des Terminals bleibt unberührt |
 | Autostart (wenn gewünscht) | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, Wert `AgentDeck` |
 | Eintrag unter „Apps“ | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentDeck` |
 
-PR-Automatik, Titan, Store-Update, SpeechMike und Auto-Modus sind nach der Installation
-aus, Auto-Compact ist an. Ändern im Deck unter Einstellungen.
+Der Auto-Modus neuer Agenten ist nach der Installation aus, Auto-Compact ist an. Ändern
+im Deck unter Einstellungen.
 
 **Entfernen:** Windows-Einstellungen › Apps › Agent Deck › Deinstallieren, oder
 
@@ -102,9 +106,13 @@ Die Symbole (Taskleiste der Terminal-Agenten, Vorlage des App-Symbols) zeichnet
 | `crates/deck-core` | Fachkern: Zustände, Reihenfolge, Anzeigemodell; voll getestet |
 | `crates/deck-win` | Win32: Fenster, Monitore, Prozesse, Tasten an Konsolen, Fokus-Rahmen |
 | `crates/deck-hooks` | `deck-report.exe`, `deck-statusline.exe` für Claude Code |
-| `crates/deck-services` | Nutzung, Zusammenfassung, Worktrees, Wächter, Einrichtung (`deck-setup`) |
-| `app/src-tauri` | die App: Fenster, Andocken, Windows-Terminal-Host, Befehle |
-| `app/src` | die Oberfläche |
+| `crates/deck-services` | Nutzung, Zusammenfassung, Hell/Dunkel, Einrichtung (`deck-setup`) |
+| `app/src-tauri` | die App: Fenster, Andocken, Windows-Terminal-Host, Befehle, Erweiterungsschnittstelle (`extension.rs`) |
+| `app/src` | die Oberfläche; Anbaustellen für Erweiterungen in `extensions.ts` |
 | `docs/` | `DESIGN.md` (verbindliche Gestaltung), `IPC.md` (Vertrag Oberfläche ↔ Rust), `DATEIEN.md` (Dateiverträge Hooks ↔ Deck), `BETRIEB.md` (Bauen, Installieren, Diagnose, Offenes) |
+
+Dieses Repo ist der Kern ohne Erweiterungen. Wer eigene Teile braucht (eigene Fenster,
+Einstellungen, Befehle), baut eine eigene Binärdatei gegen `agent_deck_lib::run_with` und
+übergibt ihre Erweiterungen; Einzelheiten in `docs/IPC.md`, „Erweiterungen“.
 
 Regeln und Fallen für alle, die daran arbeiten: `CLAUDE.md`.

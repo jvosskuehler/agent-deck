@@ -90,14 +90,22 @@ impl Deck {
     /// Frisch angelegte Slots für den Startmodus vormerken. Gibt settings.json einen
     /// Start-Permission-Modus vor, startet claude schon darin: dann nicht weiterschalten.
     pub fn register_pending_auto(&mut self, slots: &[String], now: f64) {
+        // Eine übernommene Reserve hat ihre Zustandsdatei selbst geschrieben, sie ist also
+        // schon frisch (sonst wartete der Startmodus vergeblich auf eine neuere). Abgeholt
+        // wird auch, wenn der Startmodus aus ist, sonst bliebe die Marke liegen.
+        let from_reserve: Vec<bool> = slots.iter().map(|s| self.wt.take_from_reserve(s)).collect();
         if !on(&self.store.settings, Switch::AutoPermissionMode)
             || NEW_AGENT_MODE.is_empty()
             || read_values(&self.paths.claude_settings).mode.is_some()
         {
             return;
         }
-        for slot in slots {
-            let base = load_json(&state_path(&self.paths.state_dir, slot)).and_then(|v| number(v.get("ts"))).unwrap_or(0.0);
+        for (slot, reserve) in slots.iter().zip(from_reserve) {
+            let base = if reserve {
+                0.0
+            } else {
+                load_json(&state_path(&self.paths.state_dir, slot)).and_then(|v| number(v.get("ts"))).unwrap_or(0.0)
+            };
             self.pending_auto.insert(slot.clone(), PendingAuto::new(base, now));
         }
     }

@@ -1,6 +1,6 @@
 //! „Hell/Dunkel: Sonnenstand“: das Deck schaltet Windows bei Sonnenaufgang hell und bei
-//! Sonnenuntergang dunkel, für den eingestellten Ort. Ersetzt Jorrits geplante Aufgabe
-//! „DarkModeZeitplan“ (`deck-setup migrate-darkmode` räumt sie weg).
+//! Sonnenuntergang dunkel, für den Ort aus der Zeitzone (oder den einer Erweiterung).
+//! Ersetzt eine frühere geplante Aufgabe des Autors.
 //!
 //! Ein eigener Thread wartet bis kurz nach dem nächsten Wechsel, höchstens aber
 //! [`SAFETY_TICK`] (falls die Uhr springt). Nachgesehen wird außerdem beim Start, nach dem
@@ -87,7 +87,7 @@ impl Checker {
 
 enum Msg {
     /// Ort setzen (`None` = Sonnenstand aus) und sofort nachsehen.
-    Place(Option<&'static Place>),
+    Place(Option<Place>),
     /// Sofort nachsehen und durchsetzen (nach dem Aufwachen).
     Check,
 }
@@ -106,7 +106,7 @@ impl SunSwitch {
     }
 
     /// Sonnenstand an (mit Ort) oder aus (`None`). Wirkt sofort.
-    pub fn set(&self, place: Option<&'static Place>) {
+    pub fn set(&self, place: Option<Place>) {
         self.send(Msg::Place(place));
     }
 
@@ -123,11 +123,11 @@ impl SunSwitch {
 }
 
 fn run(rx: &Receiver<Msg>, theme: &dyn WindowsTheme, clock: fn() -> f64, log: &dyn Fn(String)) {
-    let mut place: Option<&'static Place> = None;
+    let mut place: Option<Place> = None;
     let mut checker = Checker::default();
     loop {
         let msg = match place {
-            Some(p) => rx.recv_timeout(wait_for(clock(), p)),
+            Some(p) => rx.recv_timeout(wait_for(clock(), &p)),
             None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
         };
         let enforce = match msg {
@@ -140,7 +140,7 @@ fn run(rx: &Receiver<Msg>, theme: &dyn WindowsTheme, clock: fn() -> f64, log: &d
             Err(RecvTimeoutError::Disconnected) => return,
         };
         if let Some(p) = place {
-            checker.check(clock(), p, theme, enforce, log);
+            checker.check(clock(), &p, theme, enforce, log);
         }
     }
 }

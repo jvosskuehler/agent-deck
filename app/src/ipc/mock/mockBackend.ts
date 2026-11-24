@@ -6,9 +6,10 @@
 // ?still=1 (keine Zustandswechsel, für Screenshots), ?blocks=3 (dritter Block), ?zoom=0.8,
 // ?orphans=0 (keine Prozesse ohne Fenster), ?orphanError=1 (eine Zeile mit Fehler vom
 // letzten Beenden), ?rows=4,1&cols=4 (Fensterreihen des Heimat-Blocks und Fenster je
-// Monitorreihe), ?blocks=1 (nur der Heimat-Block), ?dash=0 (keine Info-Karten),
-// ?dash=day,prs (nur diese, in dieser Reihenfolge).
-// Playwright steuert über window.__deckMock.
+// Monitorreihe), ?blocks=1 (nur der Heimat-Block).
+// Playwright steuert über window.__deckMock. Befehle einer Erweiterung bedient, was sie
+// mit `registerMockCommands` angemeldet hat (`extensions.ts`); ihre Ereignisse sendet sie
+// über `window.__deckMock.emit`.
 
 import type { DeckView } from "../../bindings/DeckView";
 import type { DockView } from "../../bindings/DockView";
@@ -18,10 +19,7 @@ import type { TileView } from "../../bindings/TileView";
 import { langFromSetting, type Lang } from "../../logic/i18n";
 import type { Backend, CommandName, Commands, EventName, EventPayloads, ScreenRect, Unlisten } from "../contract";
 import type { OrphanView } from "../../bindings/OrphanView";
-import { mockDash } from "./mockDash";
-import { applyFeedAction, mockFeed, mockPopup } from "./mockFeed";
-import type { DashView } from "../../bindings/DashView";
-import { mockApply, mockResolve } from "./mockReviewers";
+import { mockCommand } from "../../extensions";
 import { freshSettings, initialBlocks, initialGlow, initialSettings, orphans as mockOrphans, statusText, SUMMARIES, urgentOf, usage } from "./mockData";
 
 type Handler = (payload: unknown) => void;
@@ -30,6 +28,8 @@ interface MockControl {
   setDock(dock: Partial<DockView>): void;
   setStatus(slot: string, status: Status): void;
   emit<E extends EventName>(event: E, payload: EventPayloads[E]): void;
+  /** Ereignis einer Erweiterung (nicht im Vertrag). */
+  emitAny(event: string, payload: unknown): void;
   /** Letzte gemeldete Panelgröße (panel_content_size). */
   contentSize: { width: number; height: number } | null;
   /** Mitschnitt der Befehle, zum Nachprüfen in Playwright. */
@@ -52,42 +52,24 @@ const NEXT: Partial<Record<Status, Status[]>> = {
 
 export function createMockBackend(): Backend {
   const params = new URLSearchParams(window.location.search);
-  const handlers = new Map<EventName, Set<Handler>>();
+  const handlers = new Map<string, Set<Handler>>();
   const now = () => Date.now() / 1000;
 
   const settings: SettingsView = { ...initialSettings() };
+  // Abschnitte einer Erweiterung im Einstellungsfenster: ihr Mock liefert sie
+  // (`registerMockCommands({ mock_settings_extras: … })`, `extensions.ts`).
+  settings.extras = (mockCommand("mock_settings_extras")?.({ settings }) as SettingsView["extras"] | undefined) ?? [];
   if (params.get("lang") === "en") settings.language = "english";
   if (params.get("mode")) settings.mode = params.get("mode")!;
   if (params.get("edge")) settings.dockEdge = params.get("edge")!;
-  // `?fresh=1`: eine neue Installation (kein Repos-Ordner, alle Automatik aus).
+  // `?fresh=1`: eine neue Installation (kein Repos-Ordner, Automatik aus).
   if (params.get("fresh") === "1") Object.assign(settings, freshSettings());
   // `?appearance=sun`: Hell/Dunkel vorgewählt (system, light, dark, sun).
   if (params.get("appearance")) settings.appearance = params.get("appearance")!;
-  // `?pr=1`: PR-Automatik an (zeigt die Felder für Reviewer und Organisation).
-  if (params.get("pr") === "1") settings.prAutomation = true;
-  // `?orgs=2`: das Konto hat mehrere Organisationen, das Feld fragt nach der richtigen.
-  const severalOrgs = params.get("orgs") === "2";
-  const reviewerNames = new Map<string, string>([["leo-mxyz", "Leo Müller"]]);
 
   let lang: Lang = langFromSetting(settings.language);
   const homeRows = (params.get("rows") ?? "3,3").split(",").map(Number).filter((n) => n > 0);
   const blocks = initialBlocks(lang, now() - 600, params.get("blocks") === "3", homeRows, Number(params.get("cols") ?? 3), params.get("blocks") === "1");
-  const dashParam = params.get("dash");
-  // ?dash=real: Info-Fenster aus einem echten Probelauf (dash::tests::real_dash_dump schreibt
-  // app/dash-real.json; die Datei ist nicht eingecheckt). ?dash=0: abgeschaltet.
-  let dashView: DashView | null = dashParam === "0" ? null : mockDash(lang, now());
-  // Kommentar-Fenster (#/comment): ?popup=0 leer, ?popup=draft mit fertigem Entwurf.
-  if (dashView) dashView.popup = mockPopup(lang, now(), params.get("popup"));
-  if (dashParam === "real") {
-    fetch("/dash-real.json")
-      .then((r) => r.json())
-      .then((d: DashView) => {
-        // Ein Probelauf ohne Feed (älterer Stand) bekommt den Beispiel-Feed.
-        dashView = { ...d, feed: d.feed ?? mockFeed(lang, now()), popup: d.popup ?? mockPopup(lang, now(), params.get("popup")) };
-        emit("deck://dash", dashView);
-      })
-      .catch((e) => console.warn("[mock] dash-real.json fehlt", e));
-  }
   let dock: DockView = { edge: settings.dockEdge, phase: params.get("phase") ?? "open", zoom: Number(params.get("zoom") ?? 1) };
 
   let orphans: OrphanView[] = params.get("orphans") === "0" ? [] : mockOrphans(lang, params.get("orphanError") === "1");
@@ -102,9 +84,10 @@ export function createMockBackend(): Backend {
     }, 700);
   };
 
-  const emit = <E extends EventName>(event: E, payload: EventPayloads[E]) => {
+  const emitAny = (event: string, payload: unknown) => {
     handlers.get(event)?.forEach((h) => h(structuredClone(payload)));
   };
+  const emit = <E extends EventName>(event: E, payload: EventPayloads[E]) => emitAny(event, payload);
   const pushView = () => emit("deck://view", view());
 
   const findTile = (slot: string): TileView | undefined => {
@@ -135,7 +118,6 @@ export function createMockBackend(): Backend {
   let summaryTimer = 0;
   const commands: { [K in CommandName]: (args: Commands[K]["args"]) => Commands[K]["ret"] } = {
     get_view: () => view(),
-    get_dash: () => (dashView ? structuredClone(dashView) : null),
     get_dock: () => ({ ...dock }),
     get_settings: () => ({ ...settings }),
     panel_content_size: (a) => {
@@ -195,37 +177,15 @@ export function createMockBackend(): Backend {
       }, 900);
     },
     open_usage_page: () => console.info("[mock] claude.ai/settings/usage"),
-    open_dash_url: ({ url }) => console.info(`[mock] öffnen: ${url}`),
-    dash_action: ({ command }) => {
-      console.info(`[mock] Aktion: ${command}`);
-      if (!dashView) return;
-      // Wie im echten Deck: Approve nimmt die Zeile weg, Beenden den Lauf.
-      if (command.startsWith("approve:")) dashView.reviews = dashView.reviews.filter((r) => `approve:${r.url}` !== command);
-      // Aus- und Einblenden schiebt die Zeile zwischen den Listen hin und her.
-      const [verb, url] = [command.split(":")[0], command.slice(command.indexOf(":") + 1)];
-      if (verb === "hideReview" || verb === "showReview") {
-        const [from, to] = verb === "hideReview" ? ["reviews", "hiddenReviews"] as const : ["hiddenReviews", "reviews"] as const;
-        const r = dashView[from].find((x) => x.url === url);
-        if (r) {
-          dashView[from] = dashView[from].filter((x) => x !== r);
-          dashView[to] = [...dashView[to], r];
-        }
-      }
-      if (command.startsWith("titanKill") && dashView.titan) {
-        const runs = command === "titanKillAll" ? [] : dashView.titan.runs.filter((r) => `titanKill:${r.name}` !== command);
-        dashView.titan = runs.length ? { ...dashView.titan, runs } : null;
-      }
-      if (command === "cleanupWorktrees") dashView.cleanup = null;
-      if (dashView.feed) {
-        const next = applyFeedAction(dashView.feed, dashView.popup, command);
-        dashView.feed = next.feed;
-        dashView.popup = next.popup;
-      }
-      dashView.notice = `Aktion ${command.split(":")[0]} (Mock)`;
-      emit("deck://dash", dashView);
-    },
     open_settings: () => console.info("[mock] Einstellungen öffnen"),
     set_setting: ({ key, value }) => {
+      // Schlüssel einer Erweiterung: ihr Mock antwortet (er ändert ihren Abschnitt in `extras`).
+      const ext = mockCommand(`set_setting:${key}`);
+      if (ext) {
+        ext({ value, settings });
+        emit("deck://settings", { ...settings });
+        return { ...settings };
+      }
       (settings as Record<string, unknown>)[key] = value;
       if (key === "language") {
         lang = langFromSetting(String(value));
@@ -241,16 +201,6 @@ export function createMockBackend(): Backend {
       }
       emit("deck://settings", { ...settings });
       return { ...settings };
-    },
-    set_reviewers: ({ text }) => {
-      const report = mockResolve(text, settings.githubOrg, severalOrgs);
-      if (report.note === "chooseOrg") return { settings: { ...settings }, report };
-      const { logins, label } = mockApply(report, reviewerNames);
-      settings.prReviewer = logins;
-      settings.prReviewerLabel = label;
-      if (report.org && !settings.githubOrg) settings.githubOrg = report.org;
-      emit("deck://settings", { ...settings });
-      return { settings: { ...settings }, report };
     },
     restart_panel: () => console.info("[mock] Panel neu starten"),
     pick_folder: ({ start }) => {
@@ -292,6 +242,7 @@ export function createMockBackend(): Backend {
     },
     setStatus,
     emit,
+    emitAny,
     contentSize: null,
     calls: [],
   };
@@ -314,6 +265,14 @@ export function createMockBackend(): Backend {
     if (e.key === "d") control.setDock({ phase: dock.phase === "open" ? "closed" : "open" });
   });
 
+  function listenAny<T>(event: string, handler: (payload: T) => void): Unlisten {
+    const set = handlers.get(event) ?? new Set<Handler>();
+    handlers.set(event, set);
+    const h = handler as Handler;
+    set.add(h);
+    return () => set.delete(h);
+  }
+
   return {
     native: false,
     invoke<K extends CommandName>(cmd: K, args: Commands[K]["args"]): Promise<Commands[K]["ret"]> {
@@ -327,12 +286,19 @@ export function createMockBackend(): Backend {
       }
     },
     listen<E extends EventName>(event: E, handler: (payload: EventPayloads[E]) => void): Unlisten {
-      const set = handlers.get(event) ?? new Set<Handler>();
-      handlers.set(event, set);
-      const h = handler as Handler;
-      set.add(h);
-      return () => set.delete(h);
+      return listenAny(event, handler);
     },
+    invokeAny<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+      control.calls.push({ cmd, args });
+      const run = mockCommand(cmd);
+      if (!run) return Promise.reject(new Error(`[mock] unbekannter Befehl ${cmd}`));
+      try {
+        return Promise.resolve(structuredClone(run(args)) as T);
+      } catch (err) {
+        return Promise.reject(err);
+      }
+    },
+    listenAny,
     async screenRect(el: Element): Promise<ScreenRect> {
       // Im Browser zählt die Seite als Bildschirm: der Tooltip erscheint als Überlagerung.
       const r = el.getBoundingClientRect();

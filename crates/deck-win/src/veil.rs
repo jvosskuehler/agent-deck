@@ -170,7 +170,9 @@ impl Veil {
 }
 
 /// Wie lange das Foto am Ende ausblendet, wenn es als [`crate::effects::Curtain`] dient.
-const CURTAIN_FADE: Duration = Duration::from_millis(140);
+/// So kurz wie beim Holen und Verstecken (`together::FADE`): solange das Foto ausblendet,
+/// sieht man den alten und den neuen Stand übereinander.
+const CURTAIN_FADE: Duration = Duration::from_millis(90);
 
 impl crate::effects::Curtain for Veil {
     fn wait(&self, d: Duration) {

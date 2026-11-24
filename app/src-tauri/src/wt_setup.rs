@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use deck_core::paths::WT_HOSTS_FILE;
+use deck_core::wsl::{AgentEnv, Wsl};
 use deck_core::wt;
 use deck_win::effects::{ConsoleInput, Desktop, Processes};
 use deck_win::which::which;
@@ -36,6 +37,21 @@ pub struct WtSetup {
     pub shell: String,
     /// Verstecktes Profil „Agent Deck“, falls in den WT-Einstellungen vorhanden.
     pub profile: Option<String>,
+    /// Agenten in WSL: statt PowerShell steht `deck-wsl.exe` im Fenster.
+    pub wsl: Option<WslLaunch>,
+}
+
+/// Was ein Fenster für einen Agenten in WSL braucht.
+#[derive(Debug, Clone)]
+pub struct WslLaunch {
+    pub wsl: Wsl,
+    /// `deck-wsl.exe` neben der App.
+    pub launcher: String,
+    /// `wt_agent.sh` im App-Ordner, als Linux-Pfad (`/mnt/c/…`).
+    pub script: String,
+    /// Startordner des Fensters für Windows Terminal (`-d`): ein Windows-Ordner, den es
+    /// sicher gibt; in welchem Linux-Ordner der Agent arbeitet, sagt `wsl.exe --cd`.
+    pub window_dir: String,
 }
 
 /// Programm auf dem PATH als Text, sonst die Vorgabe (wie `shutil.which(...) or ...`).
@@ -45,7 +61,7 @@ fn which_or(name: &str, fallback: &str) -> String {
 
 /// Die echte Einrichtung: `wt.exe`, PowerShell 7 (sonst Windows PowerShell) und das
 /// Profil „Agent Deck“, wenn es in den Einstellungen von Windows Terminal steht.
-pub fn real_setup(app_dir: &Path, state_dir: &Path, script: PathBuf) -> WtSetup {
+pub fn real_setup(app_dir: &Path, state_dir: &Path, script: PathBuf, env: &AgentEnv, wsl_files: (&Path, &Path)) -> WtSetup {
     let local = deck_core::paths::local_app_data();
     let wt_settings = local.join("Packages").join("Microsoft.WindowsTerminal_8wekyb3d8bbwe").join("LocalState").join("settings.json");
     // Das Profil steht entweder in der settings.json (Besitzer) oder kommt als Fragment vom
@@ -59,5 +75,18 @@ pub fn real_setup(app_dir: &Path, state_dir: &Path, script: PathBuf) -> WtSetup 
         wt_exe: which_or("wt.exe", "wt.exe"),
         shell: which_or("pwsh.exe", "powershell.exe"),
         profile,
+        wsl: wsl_launch(env, wsl_files.0, wsl_files.1),
     }
+}
+
+/// `launcher` = `deck-wsl.exe`, `script` = `wt_agent.sh` (Windows-Pfade). `None` bei
+/// Windows-Agenten oder wenn das Skript von WSL aus nicht erreichbar ist.
+pub fn wsl_launch(env: &AgentEnv, launcher: &Path, script: &Path) -> Option<WslLaunch> {
+    let w = env.wsl()?;
+    Some(WslLaunch {
+        wsl: w.clone(),
+        launcher: launcher.to_string_lossy().into_owned(),
+        script: w.to_linux(&script.to_string_lossy())?,
+        window_dir: deck_core::paths::home_dir().to_string_lossy().into_owned(),
+    })
 }

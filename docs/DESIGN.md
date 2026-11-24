@@ -67,7 +67,7 @@ Hell ist Rosé Pine Dawn wie das Terminal-Schema „papier-ebenen“; Rosé Pine
   des Prompt-Caches (warm gedämpft `#6e6a86`/`#8e8a84` normal, knapp Textfarbe fett,
   kalt „kalt“ gedämpft mit Deckkraft 0,55; solange der Agent arbeitet leer); rechts
   Modus (mittel). Breitester
-  Fall „ORPH-4116 #1234“ · „42 min“ · „bypass“ passt in 173 px gerade.
+  Fall „ABCD-4116 #1234“ · „42 min“ · „bypass“ passt in 173 px gerade.
 - Fläche: Pigment mit Hex-Alpha `38` (dunkel `30`) über dem Kartengrund; idle und none
   liegen stattdessen auf dem Overlay. Zustandswechsel blenden in 400 ms über.
 - Atmen als eigene Ebene: bei Rückfrage und denkt Pigment `24` (dunkel `1e`), Deckkraft
@@ -99,95 +99,12 @@ Der Kopf meint den ganzen Block: Klick auf den Repo-Namen holt seine Fenster nac
 Rechtsklick öffnet das native Menü (vergessen; beim Heimat-Block kein Menü). Ein ✕ für
 den ganzen Block gibt es bewusst nicht.
 
-## Info-Fenster (Dashboard in der freien Fensterkachel)
+## Freie Kachel
 
-Seit 15.11.2026, neu gebaut am 16.11.2026 nach den Entwürfen im Canvas „Info-Fenster
-Entwürfe“ (Tafel „T1 mit echten Kosten“). Das Deck kachelt die Agentenfenster eines Blocks
-auf dem Monitor (`arrange::tile_grid`). Geht das Raster nicht auf (5 Fenster als 3 + 2),
-bleibt am Ende der letzten Reihe Platz. Dort steht das Info-Fenster, genau so groß wie die
-freie Fläche (`wt_gap.rs`, `dash_window.rs`). Ohne Lücke holt die Info-Taste
-(Strg+Alt+D, `dash_hotkey`) es mitten auf den Monitor unter dem Zeiger, immer oben; nochmal
-oder × oben rechts klappt es zu. Ein Schalter in den Einstellungen nimmt es ganz heraus.
-
-- **Fenster:** rahmenlos, Panelfarbe, Ecken 8 px, nie aktiv, nicht in der Taskleiste. In
-  der Lücke direkt hinter dem vordersten Agentenfenster (geht mit den Agenten nach hinten).
-- **Oben, Tokenkosten:** große Zahl, darunter die Zusammensetzung (Cache lesen, Cache
-  schreiben, Output, Input) und die Modelle. Gestapelte Fläche je Ticket über die Zeit,
-  Zeitraum 1 Std. / 24 Std. / 7 Tage / 30 Tage (merkt sich die Oberfläche) in Minuten,
-  Viertelstunden, Stunden und Vierteltagen. Gezeichnet wird geglättet (Gauß, Breite 14 px
-  auf dem Bildschirm, nicht in Eimern: im schmalen Fenster glättet es also stärker) als
-  monotone Kurve, damit ein Verlauf statt eines Kamms entsteht; Tooltip und Summen zeigen
-  die echten Werte je Eimer. Ist das Fenster schmaler als 760 px (die freie Kachel neben
-  vielen Agenten), steht die Rangliste als zweispaltige Legende ohne Balken unter dem
-  Graphen, damit er die volle Breite bekommt. Fadenkreuz und Tooltip beim Überfahren. Rechts die Rangliste (sieben größte, „+n weitere“, „ohne
-  Ticket“); Klick zeigt nur dieses Ticket im eigenen Maßstab. Einheit: Kosten in
-  Input-Tokens von Opus 5.5 mit den API-Preisen je Modell (`deck_core::dash::costs`).
-- **Farben:** acht Plätze der geprüften Dataviz-Palette, je Thema eigene Stufen
-  (`dash.css`, `--c1` … `--c8`). Ein Ticket behält seine Farbe in jedem Zeitraum
-  (`CostView.colored`); weitere Tickets und „ohne Ticket“ sind grau.
-- **Unten, Leiste:** Kacheln PRs (offen, bereit, bei dir, warten), Reviews für dich, Titan
-  (nur mit eingeschaltetem Schalter „Titan“ und verwaisten Läufen, rot getönt), Worktrees
-  (nur mit Entfernbarem). Klick auf eine Kachel zeigt ihre Liste statt des Graphen;
-  nochmal, Esc oder „Tokenkosten“ in den Brotkrumen zurück.
-- **Listen:** PRs mit Status nach „wer ist am Zug“ (mergebereit, CI rot, Änderungen offen,
-  Reviewer anfragen, wartet auf Re-Review, wartet auf Review, Draft), Klick öffnet GitHub.
-  Reviews mit „Ausblenden“, „Ansehen“ und „Approve“. Ausgeblendete wandern in einen
-  zugeklappten Bereich „Ausgeblendet (n)“ unter der Liste, matt, mit „Einblenden“; die
-  Kachel zählt sie nicht mit. Wartet der PR nicht mehr auf mich (gemergt, geschlossen,
-  Anfrage zurückgezogen), vergisst das Deck das Ausblenden. Titan-Läufe mit Alter und „Beenden“, „Alle
-  beenden“. Worktrees in drei Spalten mit „Alle n entfernen“. Jede Aktion fragt mit
-  einem zweiten Klick nach; Rust prüft danach selbst noch einmal. Hinter „PRs offen“ steht
-  seit 17.11.2026 der PR-Feed (unten); die bisherige PR-Liste ist dort der Reiter „Liste“.
-- **Schrift:** Plex Sans, Tickets und Ordner in Plex Mono. Keine Gedankenstriche.
-
-### PR-Feed (Entwurf „F1 Zeitleiste“, Canvas https://claude.ai/artifact/6KMzZA3qNnWmiTeMSEjAnZ)
-
-Liste hinter der Kachel „PRs offen“ (`FeedPane.tsx`, `feed.css`). Kopf: Brotkrumen
-„Tokenkosten › Deine PRs“, rechts der Schalter „Automatik“ (Spur 28 × 16, an = Pigment
-gemergt, Not-Aus: aus = nur anzeigen) und das Segment „Feed | Liste“ wie der Zeitraum.
-
-- **Abschnittsköpfe** 11 px, halbfett, versal, Sperrung 0,06 em, gedämpft: „Braucht dich“,
-  „Hintergrund-Agenten“ (nur wenn welche laufen oder warten), „Was passiert ist“,
-  „Automatik“ (nur mit eigenen offenen PRs).
-- **Braucht dich:** je PR eine Karte auf dem Overlay, Radius 14, Innenabstand 12 14. Drafts erscheinen nie
-  (geparkt; die Automatik und die Hintergrund-Agenten lassen sie ebenfalls in Ruhe).
-  Avatar-Kreis 28 px mit Kürzel (hl-med), Login fett, dahinter gedämpft „kommentiert ·
-  vor 4 Min.“; Zeile 2 PR-Kürzel (Plex Mono, Ticketfarbe, klickbar) und Titel; Zeile 3
-  der Auszug in Meta-Farbe, eine Zeile mit Auslassung, „und n weitere“ gedämpft. Rechts
-  die Knöpfe: „Claude soll umsetzen“ über die ganze Breite (gefüllt in Textfarbe, Schrift
-  Kartengrund, zweiter Klick bestätigt), darunter „Öffnen“ (hl-med) und „Später“ (leise).
-  Ein laufender Agent steht violett als „◐ …“ unter dem Auszug. Ein fertiger Entwurf steht
-  eingerückt (40 px) unter der Karte im Kartengrund mit 3 px violetter Kante links, Kopf
-  „Entwurf von Claude“, höchstens 4 Zeilen, Knöpfe „Absenden und auflösen“ (bzw.
-  „Absenden“ ohne Thread, mit Rückfrage) und „Ändern“ (öffnet die Datei im Editor; das
-  Fenster nimmt nie Tastatureingaben an).
-- **Hintergrund-Agenten:** Zeile 30 px hoch, violetter Punkt 8 px (atmet; wartend grau,
-  ruhig), PR-Kürzel, Aufgabe, rechts gedämpft „seit 3 Min.“ bzw. „wartet, Session aktiv“
-  und „Abbrechen“ (Rückfrage).
-- **Zeitleiste:** Raster 52 px Zeit (Plex Mono 12 px, `--muted`), 22 px Punkt (10 px),
-  Rest Text 13 px; Haarlinie (Overlay) zwischen den Zeilen. Kürzel in Plex Mono und
-  Ticketfarbe, Detail gedämpft hinter „·“, „Bericht“ in Ticketfarbe klappt die letzte
-  Antwort des Agenten darunter auf (Overlay, Radius 8, max. 160 px hoch).
-- **Punktfarben:** gemergt = Pigment ungelesen (hell `#4fa36a`, dunkel `#86d2a3`), Claude
-  hat gearbeitet = `--c7` (hell `#6250d6`, dunkel `#9085e9`), Review = Pigment denkt (hell
-  `#4f86c6`, dunkel `#8db9ee`), Problem = Pigment getrennt (hell `#c4536f`, dunkel
-  `#f08a9e`), Kleinkram = `--muted`. Die Legende steht unten über die ganze Kartenbreite
-  unter einer Haarlinie.
-- **Automatik je PR:** PR-Kürzel, Titel, rechts gedämpft was die Automatik vorhat
-  („mergt, sobald alles grün ist“, „wartet auf api#214“, gehalten in Achtung-Farbe) und
-  „nicht mergen“ (leise) bzw. „wieder freigeben“.
-- **Leer:** „Nichts offen.“, „Keine Ereignisse in den letzten 24 Std.“; `feed.note`
-  gedämpft am Ende.
-
-### Kommentar-Fenster (Entwurf „N1“)
-
-Eigenes kleines Fenster (`#/comment`, `CommentView.tsx`, `comment.css`), etwa 420 × 190,
-rahmenlos, nie aktiv: Kartengrund, Rand 1 px hl-high, Ecken 8 px, Innenabstand 12 14 14 16.
-Kopf: Avatar 24 px, Login fett, „auf <PR-Kürzel>“ gedämpft, × rechts (28 px, schließt nur,
-der Kommentar bleibt im Feed). Darunter der Kommentar in Meta-Farbe, höchstens drei
-Zeilen. Unten „Claude soll umsetzen“ (gefüllt), „Öffnen“ (öffnet und schließt), „Später“.
-Liegt ein Entwurf vor, steht er statt der Knöpfe da (Kommentar dann eine Zeile) mit
-„Absenden und auflösen“ und „Ändern“.
+Das Deck kachelt die Agentenfenster eines Blocks auf dem Monitor (`arrange::tile_grid`).
+Geht das Raster nicht auf (5 Fenster als 3 + 2), bleibt am Ende der letzten Reihe eine
+Kachel frei (`wt_gap.rs`). Diese Ausgabe zeigt dort nichts; ein Info-Fenster liegt in
+einer eigenen Ausgabe, angebunden über `extension.rs` (`docs/IPC.md`, „Erweiterungen“).
 
 ## Panel, Leiste, Griff
 
@@ -237,41 +154,32 @@ Arbeitsfläche, darüber rollt es.
 
 **Kompakt und erweitert** (seit 17.11.2026, Wunsch von Jorrit): Das Fenster geht kompakt
 auf wie vor den Einstellungen für Kolleginnen und Kollegen, eine Spalte, 480 breit, nur
-„Neue Agenten“ (Modell, Modus, Effort) und „Deck“ (Sprache, Andocken, Info-Fenster,
-Hell/Dunkel, Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
-(`tool-btn`) zieht das Fenster auf 960 und zwei Spalten mit allen vier Bereichen auf,
-dort heißt er „Weniger“. Die Wahl merkt sich die Oberfläche (`localStorage`). Taugt der
+„Neue Agenten“ (Modell, Modus, Effort) und „Deck“ (Sprache, Andocken, Hell/Dunkel,
+Auto-/compact, die drei kleinen Knöpfe). Unten links ein leiser Knopf „Erweitert“
+(`tool-btn`) zieht das Fenster auf 960 und zwei Spalten mit allen Bereichen auf, dort
+heißt er „Weniger“. Die Wahl merkt sich die Oberfläche (`localStorage`). Taugt der
 Repos-Ordner nicht, stehen Hinweis und Ordnerzeile auch kompakt über „Neue Agenten“.
-Erweitert sind es vier Bereiche, durch Haarlinien getrennt (links Konto und Ordner, Neue
-Agenten; rechts Deck, Automatik):
+Erweitert sind es drei Bereiche, durch Haarlinien getrennt (links Konto und Ordner, Neue
+Agenten; rechts Deck), dazu rechts unter „Deck“ die Abschnitte von Erweiterungen:
 
 - **Konto und Ordner** („gilt für dieses Konto“): Repos-Ordner als Pfad in Plex Mono auf
   dem Overlay (Radius 9, zu lang: vorn gekürzt) mit dem leisen Knopf „Ändern…“ rechts
-  darin, der den Ordner-Dialog von Windows öffnet; darunter das Jira-Projekt als
-  Textfeld (Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px; gespeichert beim
-  Verlassen oder mit Enter, Escape verwirft).
+  darin, der den Ordner-Dialog von Windows öffnet.
 - **Neue Agenten** (Modell mit „Standard“ = ohne `--model`, Modus, Effort als Segmente;
   erweitert dazu der Schalter „Neue Agenten in Auto schalten“).
-- **Deck** (Sprache, Andocken, Hell/Dunkel als Segmente; Schalter Info-Fenster und
-  Auto-Compact). Hell/Dunkel hat vier Segmente „System | Hell | Dunkel | Sonnenstand“
-  (englisch „System | Light | Dark | Sunrise/sunset“) und steht auch kompakt. Darunter klein
-  und gedämpft, was die Wahl über das Deck hinaus tut: bei Hell und Dunkel „Nur Deck und
+- **Deck** (Sprache, Andocken, Hell/Dunkel als Segmente; Schalter Auto-Compact).
+  Hell/Dunkel hat vier Segmente „System | Hell | Dunkel | Sonnenstand“ (englisch
+  „System | Light | Dark | Sunrise/sunset“) und steht auch kompakt. Darunter klein und
+  gedämpft, was die Wahl über das Deck hinaus tut: bei Hell und Dunkel „Nur Deck und
   Agenten. Offene Agentenfenster wechseln beim nächsten Start.“, bei Sonnenstand „Schaltet
-  Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel (Hamburg).“; bei System
-  nichts. Den Ort gibt es nur erweitert und nur bei Sonnenstand, als Auswahlliste „Ort für
-  Sonnenstand“ (wie das Textfeld: Kartengrund, Rand hl-med, Radius 9, Plex Mono 12 px,
-  Pfeil gedämpft), so wie die GitHub-Organisation erst mit der PR-Automatik erscheint. „Panel neu starten“
-  steht als kleiner, leiser Knopf rechts in der Kopfzeile, so hoch wie der Hinweis neben
-  „Neue Agenten“.
-- **Automatik** („läuft nur, was du einschaltest“): PowerShell und Terminal
-  aktualisieren, SpeechMike, Titan, PR-Automatik. Darunter das Reviewer-Feld (immer) und
-  bei eingeschalteter PR-Automatik die GitHub-Organisation. Ins Reviewer-Feld kommen
-  Namen, Mailadressen oder Logins; nach Enter oder Verlassen sucht das Deck sie in der
-  Organisation und zeigt sie als „Leo Müller (leo-mxyz)“. Darunter klein (11 px): bei
-  mehreren Treffern „„Anna“: wen meinst du?“ mit je einem leisen Knopf pro Person
-  (Plex Mono), bei mehreren Organisationen dieselbe Wahl für die Organisation, ohne
-  Treffer in Achtung-Farbe „nicht in <org> gefunden, als Login übernommen“ bzw.
-  „… übersprungen“, ohne gh gedämpft „Namen nicht nachgeschlagen (…)“.
+  Windows bei Sonnenaufgang hell und bei Sonnenuntergang dunkel (Zeitzone Mitteleuropa).“;
+  bei System nichts. Den Ort in der Klammer nennt Rust (`sunPlaceName`, grob aus der
+  Zeitzone von Windows); eine Auswahl dafür gibt es nicht, sie wäre eine Frage mehr, die
+  kaum jemand beantworten will. „Panel neu starten“ steht als kleiner, leiser Knopf
+  rechts in der Kopfzeile, so hoch wie der Hinweis neben „Neue Agenten“.
+- **Abschnitte von Erweiterungen** (`SettingsView.extras`, `extensions.ts`): je einer
+  unter einer Haarlinie, in der Reihenfolge, in der Rust sie meldet; kompakt nur die ohne
+  `advancedOnly`. Der Kern bringt keinen mit.
 
 Ein Schalter ist eine Zeile: links der Name (12 px, Textfarbe) und darunter klein und
 gedämpft, was er nach außen tut; rechts „An | Aus“ als schmale Segmente (118 px, 26 px
@@ -289,11 +197,12 @@ Glow und jeder neue): das Fenster ist so hoch wie sein Inhalt (`useDialogFit` +
 Dialog Zeilen hinzufügt oder einen neuen baut, prüft das am Screenshot.
 
 Bewusst **nicht** (seit 09.11.2026): kein Warnsatz und kein Rot bei Bypass, kein Ring um
-den Chat, kein „Repo öffnen“. Jira-Projekt und Repos-Ordner waren vom 09.11. bis
-17.11.2026 ebenfalls draußen, weil nur der Autor das Deck benutzte. Diese Entscheidung
-ist zurückgenommen: seit Kolleginnen und Kollegen das Deck installieren, darf nichts
-Persönliches fest eingebaut sein, und beides muss sich ohne Handarbeit an
-`deck_settings.json` einstellen lassen.
+den Chat, kein „Repo öffnen“. Der Repos-Ordner war vom 09.11. bis 17.11.2026 ebenfalls
+draußen, weil nur der Autor das Deck benutzte. Diese Entscheidung ist zurückgenommen:
+seit Kolleginnen und Kollegen das Deck installieren, darf nichts Persönliches fest
+eingebaut sein, und der Ordner muss sich ohne Handarbeit an `deck_settings.json`
+einstellen lassen. Ein Feld für ein Jira-Projekt gibt es in dieser Ausgabe nicht: das
+Deck erkennt Tickets an ausgeschriebenen Keys (`docs/DATEIEN.md`).
 
 ## Schrift und Texte
 

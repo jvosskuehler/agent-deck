@@ -25,8 +25,9 @@ pub enum Protected {
     Session0,
 }
 
-/// Programme des Decks (Kleinschreibung, ohne `.exe`).
-const DECK_EXES: [&str; 6] = ["agent-deck", "deck-console", "deck-report", "deck-statusline", "deck-watchdog", "deck-setup"];
+/// Programme des Decks (Kleinschreibung, ohne `.exe`); `deck-watchdog` gab es bis
+/// 24.11.2026 und kann auf alten Installationen noch laufen.
+const DECK_EXES: [&str; 7] = ["agent-deck", "deck-console", "deck-report", "deck-statusline", "deck-watchdog", "deck-setup", "deck-wsl"];
 /// Programmordner des Decks unter `%LOCALAPPDATA%`.
 const DECK_DIR: &str = "\\claude-agent-deck\\";
 const CONSOLE_EXES: [&str; 2] = ["conhost", "openconsole"];
@@ -35,7 +36,7 @@ const SYSTEM_EXES: [&str; 16] = [
     "system", "idle", "smss", "csrss", "wininit", "winlogon", "services", "lsass", "lsaiso", "svchost", "spoolsv", "dwm",
     "fontdrvhost", "sihost", "ctfmon", "taskhostw",
 ];
-const DOCKER_PREFIXES: [&str; 5] = ["docker", "com.docker.", "vpnkit", "wslservice", "wslhost"];
+const DOCKER_PREFIXES: [&str; 6] = ["docker", "com.docker.", "vpnkit", "wslservice", "wslhost", "wslrelay"];
 /// Dateinamen, unter denen Claude Code startet (Exe, npm-Shim, Skript).
 const CLAUDE_FILES: [&str; 5] = ["claude", "claude.exe", "claude.cmd", "claude.ps1", "claude.js"];
 

@@ -222,6 +222,8 @@ pub fn start(
     std::thread::Builder::new()
         .name("focus-frame".into())
         .spawn(move || {
+            // Ringe, Schatten und Glow sollen auch unter Last im selben Bild folgen.
+            deck_win::thread_priority::raise_current();
             let mut frame = match deck_win::frame_gpu_overlay::GpuFocusFrame::new() {
                 Ok(f) => Some(f),
                 Err(e) => {
@@ -311,6 +313,10 @@ pub fn start(
                             note(format!("Fokus-Rahmen: {e}"));
                             logged = true;
                             std::thread::sleep(WATCH);
+                        }
+                        // Stiller Glow: das Bild bleibt stehen, draw hat nicht gewartet.
+                        if frame.skipped() {
+                            std::thread::sleep(IDLE);
                         }
                     }
                     _ => {

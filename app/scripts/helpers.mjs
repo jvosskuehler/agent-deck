@@ -4,7 +4,7 @@
 //   deck-console     Tasten in fremde Konsolen (crates/deck-win)
 //   deck-report      Hook „Zustand melden“ (crates/deck-hooks)
 //   deck-statusline  statusLine von Claude Code (crates/deck-hooks)
-//   deck-watchdog    Wächter, startet die App neu, wenn sie verschwindet (crates/deck-services)
+//   deck-wsl         Starter der Agenten in WSL (crates/deck-services)
 //
 // Sie sind Teil desselben Cargo-Workspace und landen darum im selben Zielordner wie die
 // App (target/<profil>/), also direkt neben agent-deck.exe. Zusätzlich kommt je eine
@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const HELPERS = ["deck-console", "deck-report", "deck-statusline", "deck-watchdog"];
+const HELPERS = ["deck-console", "deck-report", "deck-statusline", "deck-wsl"];
 const PACKAGES = ["deck-win", "deck-hooks", "deck-services"];
 const TRIPLE = "x86_64-pc-windows-msvc";
 

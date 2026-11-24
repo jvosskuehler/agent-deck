@@ -29,3 +29,23 @@ fn a_new_window_is_placed_again_after_it_settled_and_then_left_alone() {
     }
     assert_eq!(placed(&r), settled, "danach Ruhe");
 }
+
+#[test]
+fn a_new_resolution_retiles_the_block_on_the_same_monitor() {
+    let mut r = rig();
+    r.wt_block("A", "repo");
+    r.wt_agent("A1", 4242);
+    r.wt_agent("A2", 4243);
+    r.desk.add_wt(Hwnd(31), "A1", Rect::new(1, 1, 959, 1039), false);
+    r.desk.add_wt(Hwnd(32), "A2", Rect::new(961, 1, 1919, 1039), false);
+    for _ in 0..8 {
+        r.deck.wt.terminals("A");
+    }
+    let before = r.desk.placed().len();
+    r.desk.resize_primary(Rect::new(0, 0, 2560, 1440), Rect::new(0, 0, 2560, 1400));
+    r.deck.wt.terminals("A");
+    let placed = r.desk.placed();
+    assert!(placed.len() > before, "nachgekachelt");
+    let a2 = placed.iter().rev().find(|(h, _)| *h == Hwnd(32)).unwrap().1;
+    assert_eq!(a2.right, 2559, "die zweite Kachel reicht bis an den neuen Rand (Ring frei)");
+}

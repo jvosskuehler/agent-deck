@@ -6,7 +6,7 @@
 //! diese Datei (atomar, nur bei Änderung); der Hook liest sie tolerant und erkennt selbst
 //! nichts. Fehlt sie, zeigt die Statuszeile kein Ticket.
 //!
-//! Felder (snake_case, alle dürfen fehlen): `ticket` („ORPH-4116“), `ticket_source`
+//! Felder (snake_case, alle dürfen fehlen): `ticket` („DEMO-4116“), `ticket_source`
 //! (`RefSource` wie in der Oberfläche: `assigned`, `branch` …), `ticket_detected` (nur
 //! geraten: gedimmt zeigen), `pr` („#347“), `pr_source`, `pr_detected`.
 
@@ -28,7 +28,7 @@ pub fn refs_path(dir: &Path, slot: &str) -> PathBuf {
 /// Ein Bezug, wie er in der Datei steht.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefEntry {
-    /// Angezeigter Text: „ORPH-4116“ bzw. „#347“.
+    /// Angezeigter Text: „DEMO-4116“ bzw. „#347“.
     pub text: String,
     /// `None`, wenn die Datei eine unbekannte Quelle nennt.
     pub source: Option<RefSource>,
@@ -96,11 +96,11 @@ mod tests {
 
     #[test]
     fn the_file_carries_text_source_and_dimming_and_reads_back_the_same() {
-        let refs = TileRefs::from_views(Some(&view("ORPH-4116", RefSource::Branch, false)), Some(&view("#347", RefSource::Chat, true)));
+        let refs = TileRefs::from_views(Some(&view("DEMO-4116", RefSource::Branch, false)), Some(&view("#347", RefSource::Chat, true)));
         let v = refs.to_json();
         assert_eq!(
             v,
-            json!({"ticket": "ORPH-4116", "ticket_source": "branch", "ticket_detected": false,
+            json!({"ticket": "DEMO-4116", "ticket_source": "branch", "ticket_detected": false,
                 "pr": "#347", "pr_source": "chat", "pr_detected": true})
         );
         assert_eq!(TileRefs::parse(&v), refs);

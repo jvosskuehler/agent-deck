@@ -49,7 +49,7 @@ pub struct TileView {
     pub mode: String,
     /// Sessiontitel (`session_name` der statusLine). Nur Terminal-Kacheln zeigen ihn.
     pub title: Option<String>,
-    /// Jira-Ticket des Agenten („ORPH-4116“), schon gekürzt. Woher es kommt, steht in
+    /// Jira-Ticket des Agenten („DEMO-4116“), schon gekürzt. Woher es kommt, steht in
     /// `RefView::source` (`ref_sources.rs`).
     pub ticket: Option<RefView>,
     /// Pull Request als „#347“.
@@ -91,7 +91,7 @@ pub enum RefSource {
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct RefView {
-    /// Angezeigter Text: „ORPH-4116“ bzw. „#347“, schon gekürzt.
+    /// Angezeigter Text: „DEMO-4116“ bzw. „#347“, schon gekürzt.
     pub text: String,
     pub source: RefSource,
     /// `true`: nur geraten (Titel, Chat), gedimmt zeichnen.
@@ -287,49 +287,42 @@ pub struct SettingsView {
     /// Automatisch `/compact`, kurz bevor der Prompt-Cache eines wartenden Agenten
     /// abläuft (`deck_settings.json` `auto_compact`; Vorgaben in `deck_settings::Switch`).
     pub auto_compact: bool,
-    /// Info-Fenster in der freien Fensterkachel (`dashboard`).
-    pub dashboard: bool,
-    /// Ordner aller Repos (`repos_root`), wie eingestellt; leer = keiner.
+    /// Ordner aller Repos (`repos_root`), wie eingestellt; leer = keiner. Bei Agenten in
+    /// WSL ein Linux-Pfad.
     pub repos_root: String,
+    /// Wo neue Agenten laufen: `windows` oder `wsl` (`agent_env`). Ein Wechsel gilt ab dem
+    /// nächsten Start des Decks.
+    pub agent_env: String,
+    /// WSL-Distro der Agenten (`wsl_distro`); leer = keine gewählt.
+    pub wsl_distro: String,
+    /// Distros zur Wahl (`wsl.exe -l -v`, ohne die von Docker Desktop); leer = kein WSL.
+    pub wsl_distros: Vec<String>,
     /// Taugt der Ordner? Sonst zeigt das Fenster einen Hinweis und hebt die Zeile hervor.
     pub repos_state: crate::deck_settings::ReposState,
-    /// Jira-Projekt (`jira_prefix`, „ORPH“); leer = keine Jira-Verknüpfung.
-    pub jira_prefix: String,
     /// Neue Agenten per Shift+Tab in den Auto-Modus schalten (`auto_permission_mode`).
     pub auto_permission_mode: bool,
-    /// Titan-Kachel samt ssh-Abfrage (`titan`).
-    pub titan: bool,
-    /// PowerShell und Windows Terminal per winget nachziehen (`store_update`).
-    pub store_update: bool,
-    /// SpeechMike-Record als Sprechtaste (`speechmike_voice`), wirkt ab dem nächsten Start.
-    pub speechmike_voice: bool,
-    /// PR-Automatik (`pr_automation`).
-    pub pr_automation: bool,
-    /// GitHub-Logins, die die PR-Automatik als Reviewer setzt (`pr_reviewer`, mit Komma).
-    pub pr_reviewer: String,
-    /// Dieselbe Liste zum Anzeigen: „Leo Müller (leo-mxyz), anna“ (Namen aus
-    /// `pr_reviewer_names`). Das Feld zeigt und nimmt diese Form; Rust liest den Login in
-    /// der Klammer (`dash::reviewers::split_input`).
-    pub pr_reviewer_label: String,
-    /// GitHub-Organisation der PR-Automatik (`github_org`).
-    pub github_org: String,
     /// Die Tastenkürzel, wie sie gerade gelten (`shortcuts.rs`), für das Fenster „Tastenkürzel“.
     pub shortcuts: Vec<crate::shortcuts::ShortcutRow>,
     /// Hell/Dunkel (`appearance`): `system`, `light`, `dark` oder `sun` (`appearance.rs`).
     pub appearance: String,
-    /// Ort für den Sonnenstand (`sun_place`), eine Kennung aus `sun::PLACES`.
-    pub sun_place: String,
-    /// Die Orte zur Auswahl, in der Sprache des Decks und nach Namen sortiert.
-    pub sun_places: Vec<SunPlaceOption>,
+    /// Ort, nach dem „Sonnenstand“ schaltet, als Name in der Sprache des Decks (für den
+    /// Hinweis unter der Wahl). Kommt grob aus der Zeitzone von Windows (`sun_zone.rs`),
+    /// eine Erweiterung kann ihn ersetzen.
+    pub sun_place_name: String,
+    /// Abschnitte, die Erweiterungen dem Fenster hinzufügen (in dieser Ausgabe keine).
+    /// Die Oberfläche zeigt nur die, für die sie eine Ansicht registriert hat.
+    pub extras: Vec<SettingsSection>,
 }
 
-/// Ein Ort in der Auswahl „Ort für Sonnenstand“.
+/// Ein Abschnitt einer Erweiterung im Einstellungsfenster: Kennung und ihre Werte. Was in
+/// `values` steht, kennen nur die Erweiterung und ihre Ansicht; der Kern reicht es durch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
-pub struct SunPlaceOption {
+pub struct SettingsSection {
     pub id: String,
-    pub name: String,
+    #[ts(type = "Record<string, unknown>")]
+    pub values: serde_json::Value,
 }
 
 /// Inhalt des Dialogs „Ticket zuweisen“ (Kontextmenü einer Kachel). Ein Feld, die

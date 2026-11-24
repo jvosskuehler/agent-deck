@@ -98,8 +98,8 @@ fn a_dev_server_whose_command_line_mentions_claudes_temp_folder_is_not_claude() 
 fn the_shown_command_drops_the_program_and_shortens_paths_and_script_names() {
     let pnpm = format!("{NODE} C:\\Users\\x\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.cjs nx serve management-ui");
     assert_eq!(display_command(Some(&pnpm), "node.exe"), "pnpm nx serve management-ui");
-    let api = "\"C:\\Program Files\\dotnet\\dotnet.exe\" C:\\repo\\bin\\Debug\\net9.0\\Idm.Orpheus.Management.Api.dll";
-    assert_eq!(display_command(Some(api), "dotnet.exe"), "Idm.Orpheus.Management.Api.dll");
+    let api = "\"C:\\Program Files\\dotnet\\dotnet.exe\" C:\\repo\\bin\\Debug\\net9.0\\Demoprojekt.Management.Api.dll";
+    assert_eq!(display_command(Some(api), "dotnet.exe"), "Demoprojekt.Management.Api.dll");
     assert_eq!(display_command(Some("node -e \"setInterval(()=>{}, 1000)\""), "node.exe"), "-e setInterval(()=>{}, 1000)");
     assert_eq!(display_command(Some("node.exe"), "node.exe"), "node");
     assert_eq!(display_command(None, "dotnet.exe"), "dotnet");

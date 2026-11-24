@@ -152,9 +152,15 @@ fn is_deck_statusline(m: &Map<String, Value>) -> bool {
 /// `statusline-chained` (eine fremde wurde gesichert und läuft dahinter weiter),
 /// `default <schlüssel>=<wert>` je neu eingetragener Vorgabe.
 pub fn install(settings_file: &Path, bin_dir: &Path, mode: StatusLine, saved_file: &Path, m: &mut Installed) -> Report {
+    install_with(settings_file, bin_dir, mode, saved_file, None, m)
+}
+
+/// Wie [`install`]; `linux_bin` = Ordner der Linux-Programme in einer WSL-Distro, die vor
+/// den `.exe` laufen (`hook_setup::MergeOptions::linux_bin`).
+pub fn install_with(settings_file: &Path, bin_dir: &Path, mode: StatusLine, saved_file: &Path, linux_bin: Option<&str>, m: &mut Installed) -> Report {
     let mut r = Report::default();
     let Some(before) = read(settings_file, &mut r) else { return r };
-    let opts = MergeOptions { force_statusline: mode == StatusLine::Replace };
+    let opts = MergeOptions { force_statusline: mode == StatusLine::Replace, linux_bin: linux_bin.map(String::from) };
     let (merged, notes) = hook_setup::merge(&before, &bin(bin_dir), opts);
     let (after, _) = settings::fill_defaults(&merged);
     let mut chained = false;

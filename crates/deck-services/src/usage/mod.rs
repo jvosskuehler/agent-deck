@@ -17,6 +17,7 @@ pub mod policy;
 pub mod shared;
 pub mod token;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -119,11 +120,21 @@ impl UsageService {
     /// Named-Mutex, Tokens von CLI und Claude Desktop (Konto je Token über dasselbe
     /// HTTP), HTTPS über Schannel.
     pub fn system(lang: Lang) -> UsageService {
+        UsageService::system_in(lang, None)
+    }
+
+    /// Wie [`UsageService::system`]; `cli_files` = (`.credentials.json`, `.claude.json`)
+    /// an anderer Stelle (Agenten in WSL: in der Distro), `None` = die von Windows.
+    pub fn system_in(lang: Lang, cli_files: Option<(PathBuf, PathBuf)>) -> UsageService {
         let http: Arc<dyn fetch::UsageHttp> = Arc::new(fetch::UreqHttp::new());
+        let tokens = match cli_files {
+            Some((cred, acc)) => token::DiskTokens::system_in(http.clone(), cred, acc),
+            None => token::DiskTokens::system(http.clone()),
+        };
         let poller = SharedPoller::new(
             shared::default_dir(),
             Arc::new(NamedMutex),
-            Arc::new(token::DiskTokens::system(http.clone())),
+            Arc::new(tokens),
             http,
             Arc::new(now_unix),
             Arc::new(random_unit),

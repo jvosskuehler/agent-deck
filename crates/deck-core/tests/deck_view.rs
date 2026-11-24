@@ -76,7 +76,7 @@ impl Fixture {
             worktrees: &self.worktrees,
             detected_refs: &self.refs,
             branches: &self.branches,
-            jira_prefix: "ORPH",
+            ticket_prefix: "ABC",
             slot_mode: &self.slot_mode,
             mode_cycle: &self.cycle,
             active_slot: self.active.as_deref(),
@@ -192,11 +192,11 @@ fn rv(text: &str, source: RefSource, detected: bool) -> Seen {
 fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
     let mut f = Fixture::new();
     f.states = map(json!({"A1": {"status": "idle", "ts": NOW, "session_id": "s1"}}));
-    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into(), ..Refs::default() });
-    assert_eq!(refs_of(&f.tile("A1")), (rv("ORPH-1", RefSource::Chat, true), None), "ein PR wird nie aus dem Chat geraten");
+    f.refs.insert("s1".into(), Refs { ticket: "ABC-1".into(), pr: "62".into(), ..Refs::default() });
+    assert_eq!(refs_of(&f.tile("A1")), (rv("ABC-1", RefSource::Chat, true), None), "ein PR wird nie aus dem Chat geraten");
     f.store.tickets.insert("A1".into(), "4116".into());
     let t = f.tile("A1");
-    assert_eq!(refs_of(&t), (rv("ORPH-4116", RefSource::Assigned, false), None), "ohne worktree-Marker");
+    assert_eq!(refs_of(&t), (rv("ABC-4116", RefSource::Assigned, false), None), "ohne worktree-Marker");
     assert_eq!(t.ticket.unwrap().origin, "zugewiesen");
     f.store.tickets.clear();
     f.found.insert("A1".into(), "SEHR-LANGES-TICKET-1".into());
@@ -208,14 +208,14 @@ fn an_assigned_ticket_wins_at_once_and_the_chat_guess_only_fills_gaps_dimmed() {
 fn branch_folder_statusline_and_title_are_read_from_the_agents_folders_and_live_file() {
     let mut f = Fixture::new();
     f.states = map(json!({"B1": {"status": "idle", "ts": NOW, "session_id": "s1", "cwd": "C:/Repos"}}));
-    f.refs.insert("s1".into(), Refs { ticket: "ORPH-1".into(), pr: "62".into(), ..Refs::default() });
-    f.live = map(json!({"B1": {"session_name": "ORPH-3773 Rechtekonzept", "cwd": "C:/Repos/wt/4116-ui/src"}}));
-    assert_eq!(refs_of(&f.tile("B1")).0, rv("ORPH-4116", RefSource::Folder, false), "Ordner vor Titel");
-    f.branches.insert("C:/Repos/wt/4116-ui/src".into(), "feature/ORPH-4062-gratis".into());
-    assert_eq!(refs_of(&f.tile("B1")).0, rv("ORPH-4062", RefSource::Branch, false), "Branch vor Ordner");
-    f.live = map(json!({"B1": {"session_name": "ORPH-3773 PR 180 Review", "pr": {"number": 347, "review_state": "approved"}}}));
+    f.refs.insert("s1".into(), Refs { ticket: "ABC-1".into(), pr: "62".into(), ..Refs::default() });
+    f.live = map(json!({"B1": {"session_name": "ABC-3773 Rechtekonzept", "cwd": "C:/Repos/wt/4116-ui/src"}}));
+    assert_eq!(refs_of(&f.tile("B1")).0, rv("ABC-4116", RefSource::Folder, false), "Ordner vor Titel");
+    f.branches.insert("C:/Repos/wt/4116-ui/src".into(), "feature/ABC-4062-gratis".into());
+    assert_eq!(refs_of(&f.tile("B1")).0, rv("ABC-4062", RefSource::Branch, false), "Branch vor Ordner");
+    f.live = map(json!({"B1": {"session_name": "ABC-3773 PR 180 Review", "pr": {"number": 347, "review_state": "approved"}}}));
     f.branches.clear();
-    assert_eq!(refs_of(&f.tile("B1")), (rv("ORPH-3773", RefSource::Title, true), rv("#347", RefSource::Statusline, false)));
+    assert_eq!(refs_of(&f.tile("B1")), (rv("ABC-3773", RefSource::Title, true), rv("#347", RefSource::Statusline, false)));
     f.live = map(json!({"B1": {"session_name": "PR 180 Review"}}));
     assert_eq!(refs_of(&f.tile("B1")).1, rv("#180", RefSource::Title, true));
     assert_eq!(f.dirs("B1"), ["C:/Repos"]);

@@ -1,8 +1,8 @@
 //! Das Deck ohne Fenster: Zustand, Poll-Takt und Anzeigemodell.
 //!
 //! Was `deck/ui/panel.py` und `refresh.py` je Takt tun, in der Reihenfolge von dort:
-//! verwaiste Bindungen abräumen, neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen, worktrees fegen,
-//! Hook-Modi übernehmen, Startmodus antreiben, Ansicht bauen. Die Themen stehen in
+//! verwaiste Bindungen abräumen, neuen Chat auto-fokussieren, „gesehen“ setzen, Zustände lesen,
+//! Hook-Modi übernehmen, Startmodus antreiben, Ansicht bauen, Erweiterungen anstoßen. Die Themen stehen in
 //! eigenen Dateien (`window_sync.rs`, `actions.rs`, `ticket.rs`) als `impl Deck`.
 //!
 //! Alles mit Wirkung nach außen geht über den Windows-Terminal-Host ([`WtHost`]), den
@@ -25,11 +25,10 @@ use deck_core::i18n::Lang;
 use deck_core::slot_state::{SlotState, read_all, read_found_tickets, read_found_worktrees, read_live};
 use deck_core::status_model::{adopt_hook_mode, mode_cycle};
 use deck_core::view::{DeckView, RefView};
-use deck_services::worktree_sweep::SweepView;
 use deck_win::effects::Desktop;
 
 use crate::app_paths::Paths;
-use crate::dash::{Dash, DashInput};
+use crate::extension::Extensions;
 use crate::refs_files::RefsFiles;
 use crate::services::Services;
 use crate::wt_host::WtHost;
@@ -44,6 +43,10 @@ pub struct AwaitNew {
 
 pub struct Deck {
     pub paths: Paths,
+    /// Wo die Agenten laufen (`agent_env.rs`); gilt bis zum nächsten Start.
+    pub env: deck_core::wsl::AgentEnv,
+    /// WSL-Distros zur Wahl im Einstellungsfenster, einmal je Lauf gefragt.
+    pub wsl_distros: std::sync::OnceLock<Vec<String>>,
     pub store: BindStore,
     pub wt: WtHost,
     pub desktop: Arc<dyn Desktop>,
@@ -84,10 +87,10 @@ pub struct Deck {
     pub resumes: Vec<Pending>,
     /// Wann welche Session zuletzt fortgesetzt wurde (gegen Kreisläufe).
     pub resume_memo: ResumeMemo,
-    /// Info-Fenster: Dienste und Aktionen (`dash.rs`).
-    pub dash: Dash,
-    /// Ansicht des Info-Fensters aus dem letzten Takt; `None` = abgeschaltet.
-    pub dash_view: Option<deck_core::dash::board::DashView>,
+    /// Erweiterungen dieser Ausgabe (`extension.rs`); in der Team-Ausgabe keine.
+    pub ext: Extensions,
+    /// Letzte Reserve-Pflege (`reserve_agent.rs`).
+    pub reserve_ts: f64,
     last_cycle: Option<Vec<String>>,
     memory: StatusMemory,
     mode_cache: DefaultModeCache,
@@ -100,6 +103,8 @@ impl Deck {
         let lang = Lang::from_settings(&paths.claude_settings);
         let refs_files = RefsFiles::new(paths.state_dir.clone());
         Deck {
+            env: deck_core::wsl::AgentEnv::from_settings(&store.settings),
+            wsl_distros: std::sync::OnceLock::new(),
             paths,
             store,
             wt,
@@ -126,8 +131,8 @@ impl Deck {
             compact_memo: CompactMemo::default(),
             resumes: Vec::new(),
             resume_memo: ResumeMemo::default(),
-            dash: Dash::inert(),
-            dash_view: None,
+            ext: Extensions::default(),
+            reserve_ts: f64::NEG_INFINITY,
             last_cycle: None,
             memory: StatusMemory::default(),
             mode_cache: DefaultModeCache::new(),
@@ -144,23 +149,19 @@ impl Deck {
         self.handle_ended(now);
         self.drive_resumes(now);
         let cycle = self.mode_cycle();
-        let view = self.sweep_view(now);
-        let orphans = self.services.sweep(&view);
-        let mut changed = false;
-        for slot in &orphans {
-            changed |= self.store.tickets.remove(slot).is_some();
-        }
-        if changed {
-            self.store.save_tickets();
-        }
         self.adopt_hook_modes(&cycle);
         self.apply_pending_auto(now, &cycle);
         let sessions = self.sessions();
-        self.services.set_jira_prefix(&self.jira_prefix());
+        self.services.set_ticket_prefix(&self.ticket_prefix());
         self.detected_refs = self.services.detected_refs(&sessions);
         let view = self.view(now);
+        for e in self.ext.clone().iter() {
+            e.on_tick(self, &view, now);
+        }
         // Kurz bevor der Prompt-Cache eines wartenden Agenten abläuft: /compact.
         self.auto_compact(now);
+        // Einen Agenten versteckt bereithalten, wenn eine Erweiterung das will.
+        self.keep_reserve(now);
         // Ticket/PR und Zusammenfassung offener Agenten im Hintergrund vorwärmen.
         let sessions = self.sessions();
         let settled = self.settled_sessions();
@@ -190,33 +191,13 @@ impl Deck {
             .collect()
     }
 
-    /// Was der worktree-Sweep über diesen Takt wissen muss.
-    fn sweep_view(&mut self, now: f64) -> SweepView {
-        let mut v = SweepView { now, bindings: self.store.bindings.clone(), ..SweepView::default() };
-        v.markers = self.worktrees.iter().map(|(k, p)| (k.clone(), p.clone())).collect();
-        for (slot, st) in &self.states {
-            if let Some(cwd) = st.get("cwd").and_then(|c| c.as_str()).filter(|c| !c.is_empty()) {
-                v.cwds.insert(slot.clone(), cwd.to_string());
-            }
-        }
-        v.tickets = self.found.iter().map(|(k, t)| (k.clone(), t.clone())).collect();
-        v.tickets.extend(self.store.tickets.iter().map(|(k, t)| (k.clone(), t.clone())));
-        for w in WINDOWS {
-            if self.wt.has(w) {
-                v.connected.insert(w.to_string());
-                v.live.extend(self.wt.terminals(w));
-            }
-        }
-        v.live.extend(self.held_for_resume());
-        v
-    }
-
     fn read_files(&mut self) {
         let dir = &self.paths.state_dir;
         self.states = read_all(dir);
         self.live = read_live(dir);
         self.found = read_found_tickets(dir);
-        self.worktrees = read_found_worktrees(dir);
+        // Agenten in WSL melden ihren worktree als Linux-Pfad.
+        self.worktrees = read_found_worktrees(dir).into_iter().map(|(s, p)| (s, self.env.to_windows(&p))).collect();
         self.drop_inherited();
     }
 
@@ -291,7 +272,7 @@ impl Deck {
             })
             .collect();
         let branches = self.services.branches(&dirs, now);
-        let prefix = self.jira_prefix();
+        let prefix = self.ticket_prefix();
         let input = DeckInput {
             windows: &windows,
             store: &self.store,
@@ -302,7 +283,7 @@ impl Deck {
             worktrees: &self.worktrees,
             detected_refs: &self.detected_refs,
             branches: &branches,
-            jira_prefix: &prefix,
+            ticket_prefix: &prefix,
             slot_mode: &self.slot_mode,
             mode_cycle: self.last_cycle.as_deref().unwrap_or(&[]),
             active_slot: self.active_slot.as_deref(),
@@ -312,7 +293,6 @@ impl Deck {
         };
         let mut view = build_deck_view(&input, &mut self.memory);
         view.orphans = self.services.orphan_rows(now, self.lang);
-        self.dash_view = self.build_dash(&view, now, &prefix);
         self.shown_slots = view.blocks.iter().flat_map(|b| b.tiles.iter().map(|t| t.slot.clone())).collect();
         self.tile_refs = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| (t.slot.clone(), (t.ticket.clone(), t.pr.clone()))).collect();
         self.refs_files.sync(&self.tile_refs);
@@ -324,37 +304,10 @@ impl Deck {
         view
     }
 
-    /// Info-Fenster dieses Takts (`dash.rs`): die Ordner der offenen Agenten räumt niemand weg.
-    fn build_dash(&mut self, view: &DeckView, now: f64, prefix: &str) -> Option<deck_core::dash::board::DashView> {
-        let slots: Vec<&str> = view.blocks.iter().flat_map(|b| b.tiles.iter()).map(|t| t.slot.as_str()).collect();
-        let mut in_use: Vec<String> = slots.iter().flat_map(|slot| slot_dirs(slot, &self.states, &self.live, &self.worktrees)).collect();
-        in_use.extend(slots.iter().filter_map(|slot| chat_worktree(slot, &self.states, &self.detected_refs)));
-        let settings = &self.store.settings;
-        let input = DashInput {
-            now,
-            lang: self.lang,
-            enabled: deck_core::dash::enabled(settings),
-            titan: deck_core::dash::titan_enabled(settings),
-            repos_root: self.repos_root.clone(),
-            in_use,
-            jira_prefix: prefix,
-            feed: crate::pr_feed::FeedSettings::from_settings(settings, self.repos_root.as_deref()),
-        };
-        self.dash.view(&input)
-    }
-
-    /// Wo das Info-Fenster stehen soll: in der freien Kachel des Heimat-Blocks, sonst des
-    /// ersten Blocks, der eine hat. `None` ohne Karten oder ohne Lücke.
-    pub fn dash_gap(&mut self, view: &DeckView) -> Option<crate::wt_gap::Gap> {
-        self.dash_view.as_ref()?;
-        let mut letters: Vec<(bool, String)> = view.blocks.iter().filter(|b| b.connected).map(|b| (!b.home, b.letter.clone())).collect();
-        letters.sort();
-        letters.into_iter().find_map(|(_, l)| self.wt.gap(&l))
-    }
-
-    /// Jira-Projekt aus `deck_settings.json` (`jira_prefix`); leer = keins.
-    pub fn jira_prefix(&self) -> String {
-        deck_core::deck_settings::jira_prefix(&self.store.settings)
+    /// Projektkürzel für Tickets: das einer Erweiterung, sonst leer (dann zählen nur
+    /// ausgeschriebene Keys wie `ABC-123`).
+    pub fn ticket_prefix(&self) -> String {
+        self.ext.ticket_prefix(&self.store.settings)
     }
 
     /// Zustand eines Slots aus dem letzten Takt.

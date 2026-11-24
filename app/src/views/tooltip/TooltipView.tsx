@@ -48,12 +48,12 @@ export function TooltipView() {
           <TooltipCard
             tip={{
               slot: "B1",
-              ticket: { text: "ORPH-4062", source: "branch", detected: false, origin: "Branch" },
+              ticket: { text: "DEMO-4062", source: "branch", detected: false, origin: "Branch" },
               pr: { text: "#355", source: "statusline", detected: false, origin: "Claude Code" },
               summary:
                 "Fragt, ob die Testuhr in der Stripe-Sandbox auf den 1. des Monats vorgestellt werden soll, damit der Gratismonat abläuft.",
               lastPrompt: null,
-              origin: ["orpheus-management-api · Fenster B · B1", "↳ wt/orph-4062"],
+              origin: ["demoprojekt-management-api · Fenster B · B1", "↳ wt/demo-4062"],
             }}
           />
         </div>

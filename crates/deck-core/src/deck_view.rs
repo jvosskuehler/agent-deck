@@ -55,8 +55,9 @@ pub struct DeckInput<'a> {
     pub detected_refs: &'a HashMap<String, Refs>,
     /// git-Branch je Ordner (`dirs_of`), von der App gelesen; fehlt = keiner.
     pub branches: &'a HashMap<String, String>,
-    /// Jira-Projekt (`jira_prefix`), z. B. `ORPH`.
-    pub jira_prefix: &'a str,
+    /// Projektkürzel für reine Ticketnummern (`ABC` macht aus `4116-ui` `ABC-4116`); leer =
+    /// allgemeine Erkennung an `ABC-123` (`ref_sources.rs`).
+    pub ticket_prefix: &'a str,
     /// Gemerkter Modus-Index je Slot (Index in `mode_cycle`).
     pub slot_mode: &'a HashMap<String, usize>,
     pub mode_cycle: &'a [String],
@@ -203,7 +204,7 @@ impl DeckInput<'_> {
             title: lv.and_then(|l| text(l.get("session_name"))),
             chat: if TICKET_AUTODETECT_ON_CARD { chat } else { None },
             worktree_branch: wt_branch.map(String::as_str),
-            prefix: self.jira_prefix,
+            prefix: self.ticket_prefix,
         };
         (pick_ticket(&ev, self.lang), pick_pr(&ev, self.lang))
     }

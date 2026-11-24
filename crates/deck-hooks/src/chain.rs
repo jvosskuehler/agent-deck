@@ -18,7 +18,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use deck_core::claude::hook_setup::{Owner, owner};
-use deck_core::paths::{STATUSLINE_BACKUP_FILE, load_json};
+use deck_core::paths::{STATUSLINE_BACKUP_FILE, STATUSLINE_BACKUP_WSL_FILE, load_json};
 
 /// So lange darf die alte Zeile brauchen. Claude Code ruft die Statuszeile in jedem
 /// Pane alle paar Sekunden auf; länger warten hieße, die eigene Zeile hängt mit.
@@ -31,12 +31,19 @@ pub enum Shell {
     Bash(PathBuf),
     /// `cmd.exe /d /s /c "<kommando>"`, wenn es kein Git Bash gibt.
     Cmd,
+    /// In der WSL-Distro der Agenten (`wsl.exe -d <Distro> -e sh -c <kommando>`): dort hat
+    /// Claude Code die alte Zeile aufgerufen.
+    Wsl(String),
 }
 
 /// Das gesicherte Kommando aus `<app_dir>\statusline.before.json`; `None`, wenn es keins
 /// gibt, es leer ist oder (Schutz vor einer Schleife) dem Deck selbst gehört.
 pub fn saved_command(app_dir: &Path) -> Option<String> {
-    let v = load_json(&app_dir.join(STATUSLINE_BACKUP_FILE))?;
+    saved_in(&app_dir.join(STATUSLINE_BACKUP_FILE))
+}
+
+fn saved_in(file: &Path) -> Option<String> {
+    let v = load_json(file)?;
     let cmd = v.get("statusLine")?.get("command")?.as_str()?.trim();
     (!cmd.is_empty() && owner(cmd) == Owner::Foreign).then(|| cmd.to_string())
 }
@@ -62,10 +69,25 @@ fn command_for(shell: &Shell, cmd: &str) -> Command {
             c.arg("-c").arg(cmd);
             c
         }
+        #[cfg(windows)]
         Shell::Cmd => {
             use std::os::windows::process::CommandExt;
             let mut c = Command::new("cmd.exe");
             c.raw_arg(format!("/d /s /c \"{cmd}\""));
+            c
+        }
+        #[cfg(windows)]
+        Shell::Wsl(distro) => {
+            let mut c = Command::new("wsl.exe");
+            c.args(["-d", distro, "-e", "sh", "-c", cmd]);
+            c
+        }
+        // Als Linux-Programm in der Distro (`deck-statusline` für WSL-Agenten): die alte
+        // Zeile läuft direkt in `sh`, ohne den Umweg über `wsl.exe`.
+        #[cfg(not(windows))]
+        Shell::Cmd | Shell::Wsl(_) => {
+            let mut c = Command::new("sh");
+            c.arg("-c").arg(cmd);
             c
         }
     }
@@ -75,15 +97,15 @@ fn command_for(shell: &Shell, cmd: &str) -> Command {
 /// Zeilenumbrüche liefern. `None` bei Fehler, Exit ≠ 0, leerer Ausgabe oder wenn es
 /// länger als `timeout` braucht (dann wird es beendet).
 pub fn run_command(shell: &Shell, cmd: &str, stdin: &[u8], timeout: Duration) -> Option<String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let mut child = command_for(shell, cmd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .ok()?;
+    let mut c = command_for(shell, cmd);
+    c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = c.spawn().ok()?;
     // Ein- und Ausgabe in eigenen Fäden: ein Kommando, das seine Eingabe nicht liest
     // oder viel ausgibt, darf uns nicht festhalten.
     if let Some(mut input) = child.stdin.take() {
@@ -130,9 +152,12 @@ pub fn append(own: &str, extra: Option<&str>) -> String {
 }
 
 /// Die gesicherte Zeile ausführen, falls es eine gibt.
-pub fn previous_line(app_dir: &Path, stdin: &[u8]) -> Option<String> {
-    let cmd = saved_command(app_dir)?;
-    run_command(&find_shell(), &cmd, stdin, TIMEOUT)
+/// `distro`: der Agent läuft in WSL, dann gilt die Sicherung aus dessen Einstellungen.
+pub fn previous_line(app_dir: &Path, stdin: &[u8], distro: Option<&str>) -> Option<String> {
+    match distro {
+        Some(d) => run_command(&Shell::Wsl(d.to_string()), &saved_in(&app_dir.join(STATUSLINE_BACKUP_WSL_FILE))?, stdin, TIMEOUT),
+        None => run_command(&find_shell(), &saved_command(app_dir)?, stdin, TIMEOUT),
+    }
 }
 
 #[cfg(test)]

@@ -128,7 +128,7 @@
 
 /* Fußzeile „A“ (Vorlage „A: 01 mit Ticket und PR“, 09.11.2026): Ticket und PR links,
  * Cache-Restzeit in der Mitte, Modus rechts. Platz: 173 px; der breiteste Fall
- * „ORPH-4116 #1234“, „42 min“, „bypass“ geht gerade auf. Wird es doch zu eng, kürzt
+ * „DEMO-4116 #1234“, „42 min“, „bypass“ geht gerade auf. Wird es doch zu eng, kürzt
  * links der Bezug, Zeit und Modus bleiben ganz. */
 .tile-row--foot {
   justify-content: space-between;

@@ -27,10 +27,9 @@ fn a_fresh_install_gets_only_the_version_and_everything_with_side_effects_stays_
     assert!(migrate(&mut s, Origin::Fresh, home.path()));
     assert_eq!(Value::Object(s.clone()), json!({"settings_version": 1}));
     for sw in Switch::ALL {
-        assert_eq!(on(&s, sw), matches!(sw, Switch::Dashboard | Switch::AutoCompact), "{}", sw.key());
+        assert_eq!(on(&s, sw), matches!(sw, Switch::AutoCompact), "{}", sw.key());
     }
     assert_eq!(model(&s), None, "ohne --model");
-    assert_eq!(jira_prefix(&s), "");
     assert_eq!(repos_root(&s), None, "kein still angenommenes ~/Repos");
 }
 
@@ -44,7 +43,8 @@ fn an_existing_install_without_version_keeps_todays_behaviour() {
         assert_eq!(s.get(sw.key()), Some(&json!(true)), "{} ausdrücklich an", sw.key());
     }
     assert_eq!(s["model"], "opus[1m]");
-    assert_eq!(s["jira_prefix"], "ORPH");
+    let known = ["dock_edge", "auto_permission_mode", "auto_compact", "model", "appearance", "repos_root", "settings_version"];
+    assert!(s.keys().all(|k| known.contains(&k.as_str())), "nichts Ausgedachtes dazu: {s:?}");
     assert_eq!(s["repos_root"], json!(home.path().join("Repos").to_string_lossy()));
     assert_eq!(s["settings_version"], 1);
     assert_eq!(s["dock_edge"], "left");
@@ -66,15 +66,13 @@ fn a_fresh_install_follows_windows_and_an_own_choice_survives_the_migration() {
 fn the_migration_keeps_values_the_owner_already_chose() {
     let home = tempfile::tempdir().unwrap();
     let mut s = map(json!({
-        "auto_compact": false, "speechmike_voice": false, "model": "fable",
-        "jira_prefix": "ABC", "terminal_home": "D:/Code"
+        "auto_compact": false, "model": "fable", "extension_key": "x", "terminal_home": "D:/Code"
     }));
     migrate(&mut s, Origin::Existing, home.path());
     assert_eq!(s["auto_compact"], false);
-    assert_eq!(s["speechmike_voice"], false);
-    assert_eq!(s["titan"], true);
+    assert_eq!(s["auto_permission_mode"], true);
     assert_eq!(s["model"], "fable");
-    assert_eq!(s["jira_prefix"], "ABC");
+    assert_eq!(s["extension_key"], "x", "fremde Schlüssel bleiben stehen");
     assert_eq!(s["repos_root"], "D:/Code", "der alte Schlüssel wird übernommen");
 }
 
@@ -90,18 +88,18 @@ fn without_a_repos_folder_the_migration_sets_none() {
 fn a_versioned_file_is_left_alone_even_with_missing_switches() {
     let home = tempfile::tempdir().unwrap();
     std::fs::create_dir(home.path().join("Repos")).unwrap();
-    let installer = json!({"settings_version": 1, "repos_root": "C:/src", "titan": false});
+    let installer = json!({"settings_version": 1, "repos_root": "C:/src", "auto_compact": false});
     let mut s = map(installer.clone());
     assert!(!migrate(&mut s, Origin::Existing, home.path()));
     assert_eq!(Value::Object(s.clone()), installer);
-    assert!(!on(&s, Switch::StoreUpdate), "fehlt = Vorgabe aus");
+    assert!(!on(&s, Switch::AutoPermissionMode), "fehlt = Vorgabe aus");
 }
 
 #[test]
 fn a_switch_with_the_wrong_type_counts_as_missing() {
-    let s = map(json!({"titan": "ja", "dashboard": 0}));
-    assert!(!on(&s, Switch::Titan));
-    assert!(on(&s, Switch::Dashboard));
+    let s = map(json!({"auto_permission_mode": "ja", "auto_compact": 0}));
+    assert!(!on(&s, Switch::AutoPermissionMode));
+    assert!(on(&s, Switch::AutoCompact));
 }
 
 #[test]
@@ -122,10 +120,4 @@ fn a_repos_folder_counts_only_with_a_git_repo_inside() {
     assert_eq!(repos_state(Some(dir.path())), ReposState::Ok);
     let s = map(json!({"repos_root": dir.path().to_string_lossy()}));
     assert_eq!(usable_repos_root(&s).as_deref(), Some(dir.path()));
-}
-
-#[test]
-fn the_jira_prefix_is_upper_case_and_empty_means_none() {
-    assert_eq!(jira_prefix(&map(json!({"jira_prefix": " orph "}))), "ORPH");
-    assert_eq!(jira_prefix(&map(json!({"jira_prefix": 5}))), "");
 }

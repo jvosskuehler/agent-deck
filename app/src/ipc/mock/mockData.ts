@@ -68,20 +68,20 @@ function cache(text: string, stage: CacheStage): CacheView {
 }
 
 const HOME: TileSeed[] = [
-  { slot: "B1", status: "waiting", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4062 Gratismonat: Testuhr in Stripe vorstellen", ticket: ref("ORPH-4062", "assigned"), pr: ref("#355", "statusline"), cache: cache("6 min", "low") },
-  { slot: "B2", status: "thinking", model: "Opus 5.5", effort: "ultracode", mode: "bypass", title: "ORPH-3773 Rechtekonzept Integrationstests", ticket: ref("ORPH-3773", "branch") },
-  { slot: "B3", status: "done", model: "Fable 5.2", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", ticket: ref("ORPH-4116", "folder"), pr: ref("#1234", "statusline"), cache: cache("42 min", "warm") },
-  { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-3192 Mehrfach-RDS auf der Test-VM", ticket: ref("ORPH-3192", "assigned"), cache: cache("kalt", "cold") },
-  { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", ticket: ref("ORPH-4116", "chat"), pr: ref("#347", "chat"), cache: cache("kalt", "cold") },
+  { slot: "B1", status: "waiting", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "DEMO-4062 Gratismonat: Testuhr in Stripe vorstellen", ticket: ref("DEMO-4062", "assigned"), pr: ref("#355", "statusline"), cache: cache("6 min", "low") },
+  { slot: "B2", status: "thinking", model: "Opus 5.5", effort: "ultracode", mode: "bypass", title: "DEMO-3773 Rechtekonzept Integrationstests", ticket: ref("DEMO-3773", "branch") },
+  { slot: "B3", status: "done", model: "Fable 5.2", effort: "high", mode: "auto", title: "PR 180 Review-Threads schließen", ticket: ref("DEMO-4116", "folder"), pr: ref("#1234", "statusline"), cache: cache("42 min", "warm") },
+  { slot: "B4", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "DEMO-3192 Mehrfach-RDS auf der Test-VM", ticket: ref("DEMO-3192", "assigned"), cache: cache("kalt", "cold") },
+  { slot: "B5", status: "idle", model: "Opus 5.5", effort: "max", mode: "auto", title: "Agent Deck neues Design", ticket: ref("DEMO-4116", "chat"), pr: ref("#347", "chat"), cache: cache("kalt", "cold") },
   { slot: "B6", status: "idle", model: "Opus 5.5", effort: "high", mode: "auto", title: "Makropad-Raster", cache: cache("18 min", "warm") },
-  { slot: "B7", status: "done", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "ORPH-4256 Tests laufen parallel", ticket: ref("ORPH-4256", "folder"), pr: ref("#213", "statusline"), cache: cache("31 min", "warm") },
-  { slot: "B8", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "bypass", title: "Backend-Monorepo: Module verschieben", ticket: ref("ORPH-4257", "branch") },
+  { slot: "B7", status: "done", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "DEMO-4256 Tests laufen parallel", ticket: ref("DEMO-4256", "folder"), pr: ref("#213", "statusline"), cache: cache("31 min", "warm") },
+  { slot: "B8", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "bypass", title: "Backend-Monorepo: Module verschieben", ticket: ref("DEMO-4257", "branch") },
 ];
 
 const REPO: TileSeed[] = [
-  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Rechtstexte als PDF", ticket: ref("ORPH-4107", "assigned") },
-  { slot: "A2", status: "idle", model: "Fable 5.2", effort: "high", mode: "plan", title: "Plan für /sessions", ticket: ref("ORPH-4062", "worktree") },
-  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Gruppen-Claim für AD FS", ticket: ref("ORPH-4105", "assigned") },
+  { slot: "A1", status: "thinking", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Rechtstexte als PDF", ticket: ref("DEMO-4107", "assigned") },
+  { slot: "A2", status: "idle", model: "Fable 5.2", effort: "high", mode: "plan", title: "Plan für /sessions", ticket: ref("DEMO-4062", "worktree") },
+  { slot: "A3", status: "lost", model: "Opus 5.5", effort: "xhigh", mode: "auto", title: "Gruppen-Claim für AD FS", ticket: ref("DEMO-4105", "assigned") },
 ];
 
 function tile(seed: TileSeed, lang: Lang, selected: string, now: number): TileView {
@@ -117,10 +117,10 @@ export function initialBlocks(lang: Lang, now: number, extra = false, home: numb
     { letter: "B", name: "Repos", home: true, connected: true, rows: home, screenCols, tiles: HOME.slice(0, count).map((s) => tile(s, lang, selected, now)) },
   ];
   if (!only) {
-    blocks.push({ letter: "A", name: "orpheus-management-api", home: false, connected: true, rows: [3], screenCols: 3, tiles: REPO.map((s) => tile(s, lang, selected, now)) });
+    blocks.push({ letter: "A", name: "demoprojekt-management-api", home: false, connected: true, rows: [3], screenCols: 3, tiles: REPO.map((s) => tile(s, lang, selected, now)) });
   }
   if (extra) {
-    blocks.push({ letter: "C", name: "orpheus-client-electron", home: false, connected: true, rows: [2], screenCols: 3, tiles: EXTRA.map((s) => tile(s, lang, selected, now)) });
+    blocks.push({ letter: "C", name: "demoprojekt-client-electron", home: false, connected: true, rows: [2], screenCols: 3, tiles: EXTRA.map((s) => tile(s, lang, selected, now)) });
   }
   return blocks;
 }
@@ -157,8 +157,8 @@ export function orphans(lang: Lang, failed = false): OrphanView[] {
     },
     {
       id: "38820-134387211170000000", pid: 38820, ports: [5116, 7116], portText: ":5116 :7116", program: "dotnet",
-      command: "Idm.Orpheus.Management.Api.dll",
-      commandFull: String.raw`"C:\Program Files\dotnet\dotnet.exe" C:\Users\jv\Repos\wt\4062-api\bin\Debug\net9.0\Idm.Orpheus.Management.Api.dll`,
+      command: "Demoprojekt.Management.Api.dll",
+      commandFull: String.raw`"C:\Program Files\dotnet\dotnet.exe" C:\Users\jv\Repos\wt\4062-api\bin\Debug\net9.0\Demoprojekt.Management.Api.dll`,
       origin: ago("A3", "2 h", "2 h"), busy: false,
       error: failed ? (de ? "PID 38820: kein Zugriff (läuft erhöht?)" : "PID 38820: access denied (elevated?)") : null,
     },
@@ -179,32 +179,15 @@ export function initialSettings(): SettingsView {
     language: "german",
     dockEdge: "top",
     autoCompact: true,
-    dashboard: true,
     reposRoot: "C:/Users/name/Repos",
     reposState: "ok",
-    jiraPrefix: "ORPH",
+    agentEnv: "windows",
+    wslDistro: "",
+    wslDistros: ["Ubuntu", "Debian"],
     autoPermissionMode: true,
-    titan: true,
-    storeUpdate: true,
-    speechmikeVoice: true,
-    prAutomation: true,
-    prReviewer: "leo-mxyz",
-    prReviewerLabel: "Leo Müller (leo-mxyz)",
-    githubOrg: "beispiel-org",
     appearance: "system",
-    sunPlace: "hamburg",
-    sunPlaces: [
-      ["berlin", "Berlin"],
-      ["dresden", "Dresden"],
-      ["duesseldorf", "Düsseldorf"],
-      ["frankfurt", "Frankfurt am Main"],
-      ["hamburg", "Hamburg"],
-      ["koeln", "Köln"],
-      ["muenchen", "München"],
-      ["stuttgart", "Stuttgart"],
-      ["wien", "Wien"],
-      ["zuerich", "Zürich"],
-    ].map(([id, name]) => ({ id, name })),
+    sunPlaceName: "Zeitzone Mitteleuropa",
+    extras: [],
     shortcuts: [
       { keys: "Strg+<", action: "Zum Agenten, der am längsten wartet" },
       { keys: "Strg+Shift+<", action: "Alle Agenten nach vorn, nochmal: zurück" },
@@ -222,15 +205,9 @@ export function freshSettings(): Partial<SettingsView> {
     autoCompact: false,
     reposRoot: "",
     reposState: "unset",
-    jiraPrefix: "",
+    agentEnv: "wsl",
+    wslDistro: "Ubuntu",
     autoPermissionMode: false,
-    titan: false,
-    storeUpdate: false,
-    speechmikeVoice: false,
-    prAutomation: false,
-    prReviewer: "",
-    prReviewerLabel: "",
-    githubOrg: "",
   };
 }
 
@@ -252,9 +229,9 @@ export function initialGlow(): GlowSettings {
 /** Zusammenfassungen für den Tooltip, wie die KI sie liefern würde. */
 export const SUMMARIES: Record<string, { summary: string; lastPrompt: string }> = {
   B1: { summary: "Fragt, ob die Testuhr in der Stripe-Sandbox auf den 1. des Monats vorgestellt werden soll, damit der Gratismonat abläuft.", lastPrompt: "Stell die Testuhr vor und prüf die Rechnung" },
-  B2: { summary: "Lässt die Integrationstests zum Rechtekonzept auf dem Titan laufen; 3 von 41 sind noch rot.", lastPrompt: "Mach die Integrationstests grün" },
+  B2: { summary: "Lässt die Integrationstests zum Rechtekonzept auf dem Testserver laufen; 3 von 41 sind noch rot.", lastPrompt: "Mach die Integrationstests grün" },
   B3: { summary: "Alle Review-Threads in PR 180 beantwortet und aufgelöst, Commit 4ca3429 gepusht.", lastPrompt: "Schließ die Review-Threads" },
-  B4: { summary: "Zweite RDP-Sitzung auf der Test-VM gestartet; das Fenster antwortet nicht mehr.", lastPrompt: "Teste die zweite Sitzung auf orph3192-ts" },
+  B4: { summary: "Zweite RDP-Sitzung auf der Test-VM gestartet; das Fenster antwortet nicht mehr.", lastPrompt: "Teste die zweite Sitzung auf demo3192-ts" },
   B5: { summary: "Neues Aussehen des Decks: Karten nach Variante 05, Farben nach Variante 01.", lastPrompt: "Bau die Oberfläche nach DESIGN.md" },
   A1: { summary: "Rechtstexte als PDF: baut die Vorschau für die Endnutzer-Seite.", lastPrompt: "Bau das PDF für die Rechtstexte" },
   A2: { summary: "Plant die Umstellung der Sessions-Route, wartet auf Freigabe.", lastPrompt: "Mach einen Plan für /sessions" },

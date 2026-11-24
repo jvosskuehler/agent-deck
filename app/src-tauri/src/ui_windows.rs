@@ -6,8 +6,6 @@
 //! | `panel` | rahmenlos, transparent, immer oben, nicht in der Taskleiste, nie aktiv beim Zeigen |
 //! | `handle` | dasselbe, klein, nie aktiv |
 //! | `tooltip` | dasselbe, klickt durch |
-//! | `dash` | Info-Karten in der freien Fensterkachel: rahmenlos, nicht in der Taskleiste, nie aktiv, aber **nicht** immer oben (liegt hinter dem vordersten Agenten, `dash_window.rs`) |
-//! | `comment` | Kommentar-Fenster (neuer Kommentar eines Menschen): rahmenlos, nicht in der Taskleiste, nie aktiv, nicht immer oben (liegt direkt über dem vordersten Agenten, `comment_window.rs`) |
 //! | `settings` | normales Fenster, Titelleiste folgt dem Thema (Windows oder „Hell/Dunkel“), Schließen versteckt nur |
 //! | `ticket` | kleiner Dialog „Ticket zuweisen“, Schließen versteckt nur |
 //! | `keys` | „Tastenkürzel“, nur zum Ansehen, Schließen versteckt nur |
@@ -16,6 +14,9 @@
 //! Jeder Dialog (`dialog()`) ist so hoch wie sein Inhalt: die Ansicht misst sich mit
 //! `useDialogFit`, Rust setzt die Höhe (`fit_dialog`). Ein Rollbalken erscheint nur, wenn
 //! der Inhalt höher als der Bildschirm ist. Wer einen Dialog dazubaut, hängt ihn dort an.
+//!
+//! Erweiterungen (`extension.rs`) legen ihre Fenster in `setup` mit [`companion`] an:
+//! dieselbe Seite, eigener Hash.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -29,13 +30,26 @@ pub const SETTINGS: &str = "settings";
 pub const TICKET: &str = "ticket";
 pub const GLOW: &str = "glow";
 pub const KEYS: &str = "keys";
-pub const DASH: &str = "dash";
-pub const COMMENT: &str = "comment";
+
+/// Grundgerüst jedes Fensters. Nur im Messstand (`tools/probe`) gesetzt:
+/// `AGENT_DECK_DEVTOOLS_PORT` öffnet den DevTools-Port der WebView2, darüber ruft das
+/// Messskript dieselben Befehle wie ein Klick. Die Umgebungsvariable und die Richtlinie
+/// der WebView2 für Zusatzargumente greifen nicht, weil Tauri eigene setzt; die Argumente
+/// müssen in allen Fenstern gleich sein, sonst lehnt WebView2 das zweite ab.
+fn builder<'a>(app: &'a AppHandle, label: &str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
+    let b = WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("index.html#/{label}").into()));
+    match std::env::var("AGENT_DECK_DEVTOOLS_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+        Some(port) => b.additional_browser_args(&format!(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
+        )),
+        None => b,
+    }
+}
 
 /// Rahmenlose Überlagerung (Panel, Griff, Tooltip): versteckt angelegt, gezeigt wird
 /// sie über `native::show_at`.
 fn overlay(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("index.html#/{label}").into()))
+    builder(app, label)
         .title(title)
         .inner_size(size.0, size.1)
         .decorations(false)
@@ -56,32 +70,14 @@ fn overlay(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri
         .build()
 }
 
-/// Das Info-Fenster: wie eine Überlagerung, aber nicht immer oben. Es gehört zu den
-/// Agentenfenstern und geht mit ihnen nach hinten.
-fn info(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, DASH, WebviewUrl::App(format!("index.html#/{DASH}").into()))
-        .title("Agent Deck Info")
-        .inner_size(600.0, 400.0)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(false)
-        .skip_taskbar(true)
-        .resizable(false)
-        .minimizable(false)
-        .maximizable(false)
-        .focusable(false)
-        .focused(false)
-        .visible(false)
-        .theme(None)
-        .build()
-}
-
-/// Das Kommentar-Fenster: klein, wie das Info-Fenster nie aktiv und nicht immer oben.
-fn comment(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    WebviewWindowBuilder::new(app, COMMENT, WebviewUrl::App(format!("index.html#/{COMMENT}").into()))
-        .title("Agent Deck Kommentar")
-        .inner_size(420.0, 190.0)
+/// Ein Begleiter der Agentenfenster für Erweiterungen: rahmenlos, nicht in der
+/// Taskleiste, nie aktiv, aber **nicht** immer oben. Er gehört zu den Agenten und geht mit
+/// ihnen nach hinten; wo er liegt, bestimmt die Erweiterung (`native::show_behind`,
+/// `native::show_above`). Versteckt angelegt, Seite `index.html#/<label>`.
+pub fn companion(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri::Result<WebviewWindow> {
+    builder(app, label)
+        .title(title)
+        .inner_size(size.0, size.1)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -100,7 +96,7 @@ fn comment(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 /// Normales Fenster, das beim Schließen nur verschwindet (der nächste Aufruf zeigt es
 /// sofort wieder, ohne die Seite neu zu laden).
 fn dialog(app: &AppHandle, label: &str, title: &str, size: (f64, f64)) -> tauri::Result<WebviewWindow> {
-    let w = WebviewWindowBuilder::new(app, label, WebviewUrl::App(format!("index.html#/{label}").into()))
+    let w = builder(app, label)
         .title(title)
         .inner_size(size.0, size.1)
         .resizable(false)
@@ -134,8 +130,6 @@ pub fn create_all(app: &AppHandle, english: bool) -> tauri::Result<()> {
     overlay(app, HANDLE, "Agent Deck Griff", (152.0, 30.0))?;
     let tip = overlay(app, TOOLTIP, "Agent Deck Tooltip", (360.0, 120.0))?;
     tip.set_ignore_cursor_events(true)?;
-    info(app)?;
-    comment(app)?;
     // Kompakt eine Spalte (480); „Erweitert“ zieht es auf zwei Spalten (960) auf. Die
     // Maße hier sind nur der Start, useDialogFit setzt Breite und Inhaltshöhe.
     dialog(app, SETTINGS, if english { "Settings" } else { "Einstellungen" }, (480.0, 572.0))?;

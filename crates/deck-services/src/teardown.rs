@@ -43,6 +43,9 @@ impl Targets {
 /// danach leer bis auf das, was nicht entfernt werden konnte.
 pub fn uninstall_all(t: &Targets, sys: &dyn UserSystem, m: &mut Installed) -> Report {
     let mut r = install::uninstall(&t.settings, &t.saved_statusline, m);
+    // Agenten in WSL: dieselben Einträge in den Claude-Einstellungen der Distro.
+    let wsl_saved = t.saved_statusline.with_file_name(deck_core::paths::STATUSLINE_BACKUP_WSL_FILE);
+    r.append(crate::install_wsl::uninstall(&wsl_saved, &crate::wsl_cli::WslExe, m));
     r.append(look::remove(&t.look, sys, m));
     let link = shortcut::remove(&t.shortcut);
     if link.is_ok() {
