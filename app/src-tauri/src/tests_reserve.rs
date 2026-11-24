@@ -271,3 +271,27 @@ fn with_agents_in_wsl_the_reserve_starts_in_the_distro() {
     assert!(l[0].iter().any(|a| a.ends_with("deck-wsl.exe")), "{:?}", l[0]);
     assert!(!l[0].iter().any(|a| a == "pwsh.exe"), "keine PowerShell: {:?}", l[0]);
 }
+
+/// Endet das Deck mitten im Anlegen, liegt eine unfertige Reserve in `wt_reserve.json`,
+/// deren Fenster womöglich nie versteckt wurde. Das nächste Deck beendet sie, statt sie
+/// als unsichtbaren, aber sichtbar offenen Agenten ohne Kachel stehen zu lassen.
+#[test]
+fn an_unfinished_reserve_from_a_deck_that_died_while_spawning_is_ended_on_the_next_start() {
+    let mut r = quiet_desk();
+    let file = r.deck.paths.app_dir.join(deck_core::reserve::FILE);
+    let left = json!({"slot": "B1", "recipe": {"win": "B", "folder": "C:/Repos", "argv": [], "scheme": null}, "since": T0 - 30.0, "ready": false});
+    std::fs::write(&file, left.to_string()).unwrap();
+    let setup = r.deck.wt.setup_for_tests();
+    r.deck.wt = crate::wt_host::WtHost::new(setup, r.deck.wt.effects_for_tests(), crate::worker::Worker::inline(), || T0);
+    r.wt_agent("B1", SHELL);
+    r.desk.set_input_idle(0.0);
+    r.deck.tick(T0);
+    assert_eq!(*r.procs.killed.lock().unwrap(), vec![SHELL], "die Shell der unfertigen Reserve ist beendet");
+    assert_eq!(r.deck.wt.reserve_slot(), None);
+    assert!(!file.exists());
+    // Kein Fehlschlag: bei Ruhe kommt gleich eine neue, ohne Pause.
+    r.desk.set_input_idle(120.0);
+    r.desk.add_wt(Hwnd(83), "B2", Rect::new(0, 0, 800, 600), false);
+    r.deck.tick(T0 + 3.0);
+    assert_eq!(launches(&r).len(), 1, "neue Reserve sofort");
+}

@@ -37,6 +37,9 @@ pub const FAIL_COOLDOWN_S: f64 = 600.0;
 /// des Decks (Installation), sonst stünde die versteckte Reserve danach als gewöhnlicher
 /// Agent ohne Fenster im Deck.
 pub const FILE: &str = "wt_reserve.json";
+/// Grund für eine unfertige Reserve aus einem früheren Lauf. Kein Fehlschlag des
+/// Anlegens, darum ohne [`FAIL_COOLDOWN_S`]: die nächste kommt beim nächsten ruhigen Moment.
+pub const LEFT_OVER: &str = "unfertig vom letzten Lauf";
 
 /// Fensterklassen, bei denen vorn jemand in eine Konsole schreibt: Windows Terminal (auch
 /// jeder Agent), die alte Konsole, Git Bash (mintty), ConEmu. Ist eine davon vorn, legt das
@@ -100,6 +103,8 @@ pub struct Situation<'a> {
     pub current: Option<&'a Reserve>,
     /// Lebt die Shell der vorhandenen Reserve?
     pub alive: bool,
+    /// Legt dieser Lauf des Decks die vorhandene Reserve gerade an (Ergebnis steht aus)?
+    pub spawning: bool,
     /// Vor diesem Zeitpunkt kein neuer Versuch (nach Fehlschlag).
     pub retry_after: f64,
 }
@@ -129,6 +134,12 @@ pub fn decide(s: &Situation) -> Step {
         let age = s.now - cur.since;
         if s.want != Some(&cur.recipe) {
             return Step::Retire(if s.want.is_none() { "abgeschaltet" } else { "Einstellungen geändert" });
+        }
+        // Nicht fertig und niemand legt sie mehr an: das Deck endete mitten im Anlegen
+        // (Absturz, Update, beendet). Ihr Fenster ist dann womöglich nie versteckt worden
+        // und stünde sonst für immer als Agent ohne Kachel da (VM, 24.11.2026).
+        if !cur.ready && !s.spawning {
+            return Step::Retire(LEFT_OVER);
         }
         if !s.alive {
             // Eine frische hat ihre PID-Datei womöglich noch nicht geschrieben, auch wenn

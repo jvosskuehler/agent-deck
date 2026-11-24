@@ -177,7 +177,7 @@ Protokoll: `%LOCALAPPDATA%\claude-agent-deck\agent-deck.log`. Erste Stellen je F
 |---|---|
 | Leiste weg, Neustart tut nichts | „Oberfläche hängt: …“ (sagt Hauptthread oder Webview), „Vorgänger-Deck … hing“ |
 | Agentenfenster plötzlich zu | „… ohne das Deck beendet …“; schweigt das Log, im Ereignisprotokoll nachsehen (AppXDeploymentServer/Operational, „Application Hang pwsh.exe … was closed“) |
-| Neuer Agent braucht wieder Sekunden, Fenster blitzt beim Nichtstun auf (nur mit einer Erweiterung, die den Reserve-Agenten will) | „Reserve-Agent …“: wird angelegt / bereit nach / übernommen / beendet: Grund; „nicht angelegt, es war nicht mehr ruhig“ und „Eingabe während des Anlegens“ = der Schutz vor verlorenen Tasten hat gegriffen; „zeigte sich wieder“ = Windows Terminal hat das versteckte Fenster nochmal gezeigt (`app/src-tauri/src/wt_reserve.rs`) |
+| Neuer Agent braucht wieder Sekunden, Fenster blitzt beim Nichtstun auf (nur mit einer Erweiterung, die den Reserve-Agenten will) | „Reserve-Agent …“: wird angelegt / bereit nach / übernommen / beendet: Grund; „nicht angelegt, es war nicht mehr ruhig“ und „Eingabe während des Anlegens“ = der Schutz vor verlorenen Tasten hat gegriffen; „unfertig vom letzten Lauf“ = das vorige Deck endete mitten im Anlegen (Update, Absturz), seine halbe Reserve wird beendet; „zeigte sich wieder“ = Windows Terminal hat das versteckte Fenster nochmal gezeigt (`app/src-tauri/src/wt_reserve.rs`) |
 
 ### Hängendes Deck (11.11.2026)
 

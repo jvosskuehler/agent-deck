@@ -11,7 +11,7 @@ fn reserve(since: f64, ready: bool) -> Reserve {
 }
 
 fn sit<'a>(want: Option<&'a Recipe>, current: Option<&'a Reserve>) -> Situation<'a> {
-    Situation { now: 1000.0, idle_s: 120.0, front_class: Some("Notepad"), want, current, alive: true, retry_after: 0.0 }
+    Situation { now: 1000.0, idle_s: 120.0, front_class: Some("Notepad"), want, current, alive: true, spawning: true, retry_after: 0.0 }
 }
 
 #[test]
@@ -68,6 +68,16 @@ fn a_fresh_reserve_gets_time_to_start_its_shell() {
     assert_eq!(decide(&Situation { alive: false, ..sit(Some(&want), Some(&cur)) }), Step::Keep);
     let late = reserve(900.0, false);
     assert_eq!(decide(&Situation { alive: false, ..sit(Some(&want), Some(&late)) }), Step::Retire("Shell lebt nicht"));
+}
+
+#[test]
+fn an_unfinished_reserve_left_over_from_an_earlier_run_is_retired() {
+    let want = recipe("opus");
+    let cur = reserve(995.0, false);
+    let left_over = Situation { spawning: false, idle_s: 0.0, ..sit(Some(&want), Some(&cur)) };
+    assert_eq!(decide(&left_over), Step::Retire(LEFT_OVER), "auch wenn gerade jemand tippt");
+    let ready = reserve(995.0, true);
+    assert_eq!(decide(&Situation { spawning: false, ..sit(Some(&want), Some(&ready)) }), Step::Keep, "eine fertige übersteht den Neustart");
 }
 
 #[test]

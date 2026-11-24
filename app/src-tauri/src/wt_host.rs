@@ -843,3 +843,14 @@ impl WtHost {
         true
     }
 }
+
+/// Für Tests, die einen Neustart des Decks nachstellen: derselbe Host noch einmal frisch.
+#[cfg(test)]
+impl WtHost {
+    pub(crate) fn setup_for_tests(&self) -> WtSetup {
+        self.setup.clone()
+    }
+    pub(crate) fn effects_for_tests(&self) -> WtEffects {
+        self.fx.clone()
+    }
+}

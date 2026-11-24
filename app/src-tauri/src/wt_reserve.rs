@@ -1,7 +1,6 @@
 //! Reserve-Agent im Windows-Terminal-Host: anlegen, verstecken, übernehmen, austauschen.
 //! Wann was geschieht, rechnet `deck_core::reserve`; hier stehen Fenster und Prozesse. Ob
-//! es eine Reserve gibt, sagt der Aufrufer ([`WtHost::keep_reserve`] mit `want`); in der
-//! Team-Ausgabe nie (`reserve_agent.rs`).
+//! es eine gibt, sagt `want` in [`WtHost::keep_reserve`] (`reserve_agent.rs`).
 //!
 //! Ablauf:
 //! 1. **Anlegen** (nur bei Ruhe, [`reserve::quiet`]): Slot-Namen vergeben, `wt.exe` wie
@@ -24,8 +23,7 @@ use deck_core::reserve::{self, Recipe, Reserve, Situation, Step as Plan};
 
 use super::*;
 
-/// So lange nach dem Verstecken schaut das Deck noch, ob Windows Terminal das Fenster
-/// wieder zeigt.
+/// So lange nach dem Verstecken schaut das Deck, ob Windows Terminal es wieder zeigt.
 const HIDE_SETTLE: Duration = Duration::from_millis(1000);
 
 /// Wie das Anlegen auf dem Arbeiter-Thread ausging.
@@ -52,6 +50,8 @@ pub struct ReserveState {
     /// Vor diesem Zeitpunkt kein neuer Versuch (nach einem Fehlschlag).
     retry_after: f64,
     outcome: OutcomeSlot,
+    /// Dieser Lauf legt `current` gerade an; das Ergebnis steht noch aus.
+    spawning: bool,
     file: PathBuf,
     /// Aus der Reserve übernommene Slots, bis das Deck sie abholt
     /// ([`WtHost::take_from_reserve`]).
@@ -86,6 +86,9 @@ impl ReserveState {
     }
 
     fn set(&mut self, r: Option<Reserve>) {
+        if r.is_none() {
+            self.spawning = false;
+        }
         self.current = r;
         match &self.current {
             Some(r) => {
@@ -137,11 +140,12 @@ impl WtHost {
             want: want.as_ref(),
             current: self.reserve.current.as_ref(),
             alive: self.reserve.pid.is_some(),
+            spawning: self.reserve.spawning,
             retry_after: self.reserve.retry_after,
         });
         match plan {
             Plan::Keep => {}
-            Plan::Retire(why) => self.retire_reserve(why, now, true),
+            Plan::Retire(why) => self.retire_reserve(why, now, why != reserve::LEFT_OVER),
             Plan::Spawn => {
                 if let Some(w) = want {
                     self.spawn_reserve(w, now);
@@ -154,6 +158,7 @@ impl WtHost {
     fn collect_outcome(&mut self, now: f64) {
         let got = self.reserve.outcome.lock().ok().and_then(|mut o| o.take());
         let Some(outcome) = got else { return };
+        self.reserve.spawning = false;
         let Some(mut r) = self.reserve.current.clone() else { return };
         match outcome {
             Outcome::Ready => {
@@ -185,6 +190,7 @@ impl WtHost {
         self.reserve.set(Some(Reserve { slot: name.clone(), recipe, since: now, ready: false }));
         let outcome: OutcomeSlot = Arc::new(Mutex::new(None));
         self.reserve.outcome = outcome.clone();
+        self.reserve.spawning = true;
         let (launcher, d, hold) = (self.fx.launcher.clone(), self.fx.desktop.clone(), self.frame_hold.clone());
         note(format!("Reserve-Agent {name} wird angelegt"));
         self.worker.run(move || {
